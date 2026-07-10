@@ -32,6 +32,23 @@ def test_detect_presence_search_unavailable_returns_note():
     used, note = detect_presence(FakeClient({}, raise_exc=GitLabError("404 search")), 1, "clients/a", PATTERNS)
     assert used == [] and note is not None      # coverage note, not silent
 
+def test_detect_presence_dedupes_multiple_patterns_same_techkey():
+    # Two patterns for the SAME techKey (mirrors patterns.yaml's two api:amazon-sp-api entries).
+    # A repo whose code matches BOTH must still yield exactly ONE UsedTech.
+    patterns = [
+        {"techKey": "api:amazon-sp-api", "query": "sellingpartnerapi", "label": "SP-API"},
+        {"techKey": "api:amazon-sp-api", "query": "mws.amazonservices", "label": "Amazon MWS (legacy)"},
+    ]
+    client = FakeClient({
+        "sellingpartnerapi": [{"path": "src/New.php", "data": "sellingpartnerapi"}],
+        "mws.amazonservices": [{"path": "src/Old.php", "data": "mws.amazonservices"}],
+    })
+    used, note = detect_presence(client, 1, "clients/a", patterns)
+    assert note is None
+    assert len(used) == 1                                  # deduped to one
+    assert used[0].tech_key == "api:amazon-sp-api"
+    assert "src/New.php" in used[0].evidence               # first-listed pattern wins
+
 def test_load_patterns(tmp_path):
     p = tmp_path / "patterns.yaml"
     p.write_text("- {techKey: api:ebay, query: api.ebay.com, label: eBay}\n")
