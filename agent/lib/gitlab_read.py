@@ -101,3 +101,18 @@ class GitLabClient:
                 break
             page = int(nxt)
         return out
+
+    def list_candidate_projects(self, since_iso: str) -> list:
+        return self.get_paginated("/projects", {
+            "last_activity_after": since_iso,
+            "archived": "false",
+            "simple": "true",
+            "order_by": "last_activity_at",
+        })
+
+    def has_commit_since(self, project_id: int, since_iso: str, ref: str | None = None) -> "str | None":
+        params = {"all": "true", "per_page": 1, "since": since_iso}
+        if ref:
+            params["ref_name"] = ref
+        commits = self.get(f"/projects/{project_id}/repository/commits", params).json() or []
+        return commits[0]["committed_date"] if commits else None
