@@ -39,12 +39,28 @@ class ScanConfig:
 
 
 @dataclass
+class DeliveryConfig:
+    reports_project: str
+    reports_branch: str = "main"
+    report_token_env: str = "REPORTS_TOKEN"
+    chat_webhook_env: str = "GCHAT_WEBHOOK_URL"
+    health_ping_env: str = "HEALTHCHECK_URL"
+    actions: list = None
+    review_horizon_months: int = 6
+    urgent_deadline_days: int = 90
+
+    def __post_init__(self):
+        self.actions = self.actions or []
+
+
+@dataclass
 class Config:
     kb_root: str
     feeds: list[FeedSpec]
     raw: dict
     gitlab: "GitLabConfig | None" = None
     scan: "ScanConfig" = None
+    delivery: "DeliveryConfig | None" = None
 
 
 def _feed_from(d: dict) -> FeedSpec:
@@ -88,6 +104,23 @@ def _scan_from(raw: dict) -> "ScanConfig":
     )
 
 
+def _delivery_from(raw: dict) -> "DeliveryConfig | None":
+    d = raw.get("delivery")
+    if not d:
+        return None
+    if not d.get("reportsProject"):
+        raise ConfigError("delivery section: missing required field 'reportsProject'")
+    return DeliveryConfig(
+        reports_project=d["reportsProject"], reports_branch=d.get("reportsBranch", "main"),
+        report_token_env=d.get("reportTokenEnv", "REPORTS_TOKEN"),
+        chat_webhook_env=d.get("chatWebhookEnv", "GCHAT_WEBHOOK_URL"),
+        health_ping_env=d.get("healthPingEnv", "HEALTHCHECK_URL"),
+        actions=list(d.get("actions") or []),
+        review_horizon_months=int(d.get("reviewHorizonMonths", 6)),
+        urgent_deadline_days=int(d.get("urgentDeadlineDays", 90)),
+    )
+
+
 def load_config(path: str) -> Config:
     with open(path, "r", encoding="utf-8") as fh:
         raw = yaml.safe_load(fh) or {}
@@ -102,4 +135,5 @@ def load_config(path: str) -> Config:
         raw=raw,
         gitlab=_gitlab_from(raw),
         scan=_scan_from(raw),
+        delivery=_delivery_from(raw),
     )
