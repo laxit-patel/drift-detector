@@ -16,7 +16,7 @@ def test_report_cli_end_to_end(tmp_path):
     kb_root = str(tmp_path / "kb")
     # KB has a passed PHP EOL entry
     kb_store.append_entries(kb_root, "runtime:php", [ChangeEntry(
-        techKey="runtime:php", date="2023-11-26", changeType="eol", title="PHP 8.0 EOL",
+        techKey="runtime:php", date="2023-11-26", changeType="deprecation", title="PHP 8.0 EOL",
         summary="", sourceUrl="https://endoflife.date/php", sourceTier=1, evidence="PHP 8.0 EOL 2023-11-26")])
     inv = tmp_path / "inventory.json"
     inv.write_text(json.dumps({
@@ -43,7 +43,7 @@ def test_report_persistent_risk_is_ongoing_not_resolved(tmp_path):
     leaves inventory for two consecutive runs (flap damping)."""
     kb_root = str(tmp_path / "kb")
     kb_store.append_entries(kb_root, "runtime:php", [ChangeEntry(
-        techKey="runtime:php", date="2023-11-26", changeType="eol", title="PHP 8.0 EOL",
+        techKey="runtime:php", date="2023-11-26", changeType="deprecation", title="PHP 8.0 EOL",
         summary="", sourceUrl="https://endoflife.date/php", sourceTier=1,
         evidence="PHP 8.0 EOL 2023-11-26", affectedArea="cycle 8.0")])
 
