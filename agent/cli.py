@@ -112,17 +112,10 @@ def _cmd_report(args) -> int:
     else:
         prev_doc = {}
 
-    watermarks = (prev_doc.get("reportedWatermarks") or {})
-    cands = candidates_mod.build_candidates(inventory, cfg.kb_root, watermarks, repo_ids=repo_ids)
+    cands = candidates_mod.build_candidates(inventory, cfg.kb_root, repo_ids=repo_ids)
     findings = [classify_rules.candidate_to_finding(c, args.now, review_horizon_months=horizon) for c in cands]
     delta, stamped = delta_mod.compute_delta(findings, prev_doc, args.now)
-    # persist per-tech reported watermark = latest change-entry date surfaced this run
-    new_wm = dict(watermarks)
-    for c in cands:
-        d = c["changeEntry"].get("date", "")
-        if d:
-            new_wm[c["techKey"]] = max(new_wm.get(c["techKey"], ""), d)
-    doc = report_mod.assemble_findings_doc(stamped, delta, inventory.get("coverage", {}), new_wm, args.now)
+    doc = report_mod.assemble_findings_doc(stamped, delta, inventory.get("coverage", {}), {}, args.now)
     md = report_mod.render_report(doc)
     with open(args.out_findings, "w", encoding="utf-8") as fh:
         json.dump(doc, fh, ensure_ascii=False, indent=2)

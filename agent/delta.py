@@ -3,8 +3,6 @@ from __future__ import annotations
 
 from dataclasses import replace
 
-from agent.lib.finding import Finding
-
 _ACTIONABLE = {"ACTION", "REVIEW"}
 
 

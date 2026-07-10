@@ -23,7 +23,7 @@ def test_candidate_to_finding_eol():
     f = candidate_to_finding(cand, "2026-07-10")
     assert f.severity == "ACTION" and f.findingType == "lifecycle"
     assert f.urgencyDays < 0 and f.deadlineDate == "2020-01-01"
-    assert f.id.startswith("42|runtime:php|lifecycle:")
+    assert f.changeEntryId in f.id and f.id.startswith("42|runtime:php|")
     assert f.sourceUrl == "https://eol" and f.evidence == "PHP 8.0 EOL"
 
 def test_candidate_to_finding_additive_needs_review():
