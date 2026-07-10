@@ -16,9 +16,14 @@ def test_used_tech_to_dict():
     assert u.to_dict()["tech_key"] == "api:amazon-sp-api"
 
 def test_registry_matches_by_basename():
-    @extractors.register("frobfile.json")
-    def fake(repo, path, content):
-        return []
-    assert extractors.extractor_for("a/b/frobfile.json") is fake
-    assert extractors.extractor_for("a/b/other.json") is None
-    assert "frobfile.json" in extractors.registered_basenames()
+    saved = dict(extractors._BY_NAME)
+    try:
+        @extractors.register("frobfile.json")
+        def fake(repo, path, content):
+            return []
+        assert extractors.extractor_for("a/b/frobfile.json") is fake
+        assert extractors.extractor_for("a/b/other.json") is None
+        assert "frobfile.json" in extractors.registered_basenames()
+    finally:
+        extractors._BY_NAME.clear()
+        extractors._BY_NAME.update(saved)

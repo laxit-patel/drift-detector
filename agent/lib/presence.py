@@ -10,7 +10,11 @@ from agent.lib.gitlab_read import GitLabError
 
 def load_patterns(path: str) -> list:
     with open(path, "r", encoding="utf-8") as fh:
-        return yaml.safe_load(fh) or []
+        pats = yaml.safe_load(fh) or []
+    for i, p in enumerate(pats):
+        if not isinstance(p, dict) or "techKey" not in p or "query" not in p:
+            raise ValueError(f"patterns[{i}] must have 'techKey' and 'query': {p!r}")
+    return pats
 
 
 def detect_presence(client, project_id: int, repo: str, patterns: list):

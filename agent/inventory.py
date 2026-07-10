@@ -8,7 +8,7 @@ from agent.lib.extractors import extractor_for
 # Import extractors so they self-register:
 from agent.lib.extractors import npm, composer, python, runtime_pins  # noqa: F401
 from agent.lib.presence import detect_presence
-from agent.lib.gitlab_read import GitLabError, GitLabForbidden
+from agent.lib.gitlab_read import GitLabError
 
 
 def inventory_repo(client, repo_entry: dict, patterns: list) -> dict:
@@ -18,7 +18,7 @@ def inventory_repo(client, repo_entry: dict, patterns: list) -> dict:
     notes = {"unparsed": [], "noManifest": False, "presenceNote": None, "repoError": None}
     try:
         paths = client.get_tree(pid, ref)
-    except (GitLabForbidden, GitLabError) as exc:
+    except GitLabError as exc:
         notes["repoError"] = str(exc)
         return {"records": [], "usedTechs": [], "notes": notes}
 
@@ -29,8 +29,13 @@ def inventory_repo(client, repo_entry: dict, patterns: list) -> dict:
         if not fn:
             continue
         matched_any = True
-        content = client.get_raw_file(pid, path, ref)
-        if content is None:
+        try:
+            content = client.get_raw_file(pid, path, ref)
+        except GitLabError as exc:      # 401/403/500/network on the file fetch -> coverage gap, not a crash
+            notes["unparsed"].append({"path": path, "reason": f"fetch error: {exc}"})
+            continue
+        if content is None:             # 404 -> file listed in tree but not fetchable; do not read as clean
+            notes["unparsed"].append({"path": path, "reason": "raw fetch returned no content (404)"})
             continue
         try:
             records.extend(fn(repo, path, content))
@@ -51,7 +56,11 @@ def build_inventory(client, active_repos: dict, patterns: list, now: str) -> dic
     for entry in active_repos.get("active", []):
         repo = entry["path_with_namespace"]
         cov["reposScanned"] += 1
-        res = inventory_repo(client, entry, patterns)
+        try:
+            res = inventory_repo(client, entry, patterns)
+        except Exception as exc:        # no single repo may abort the whole scan
+            cov["reposErrored"].append({"repo": repo, "reason": f"unexpected: {exc}"})
+            continue
         all_records.extend(r.to_dict() for r in res["records"])
         all_used.extend(u.to_dict() for u in res["usedTechs"])
         n = res["notes"]
