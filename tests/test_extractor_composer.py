@@ -23,3 +23,12 @@ def test_composer_invalid_json_raises():
 
 def test_composer_registered():
     assert extractor_for("x/composer.json") is composer.extract
+
+def test_composer_vendor_package_not_treated_as_platform():
+    # composer/ca-bundle is a REAL vendor package, not a platform requirement -> must be a library record.
+    content = '{"require": {"composer/ca-bundle": "^1.3", "ext-json": "*", "composer-plugin-api": "^2.0"}}'
+    recs = composer.extract("clients/x", "composer.json", content)
+    keys = {r.tech_key for r in recs}
+    assert "lib:composer/composer/ca-bundle" in keys      # vendor package kept
+    assert not any("ext-json" in k for k in keys)          # platform req still skipped
+    assert not any("composer-plugin-api" in k for k in keys)  # real platform key still skipped

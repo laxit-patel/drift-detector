@@ -8,7 +8,7 @@ from agent.lib.inventory_models import InventoryRecord, library_techkey
 from agent.lib.extractors import register
 
 _RANGE = re.compile(r"[\^~<>*|\-\s]")
-_PLATFORM = re.compile(r"^(ext-|lib-|composer|composer-)")
+_PLATFORM = re.compile(r"^(ext-|lib-|composer-)")
 
 
 def _quality(spec: str) -> str:
