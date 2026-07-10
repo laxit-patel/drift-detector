@@ -8,7 +8,7 @@ import sys
 
 from agent.config import load_config
 from agent import kb_ingest, drift
-from agent.lib.gitlab_read import GitLabClient
+from agent.lib.gitlab_read import GitLabClient, GitLabError, GitLabUnreachable, GitLabAuthError
 from agent import discover as discover_mod
 
 
@@ -52,7 +52,11 @@ def _cmd_discover(args, client=None) -> int:
             print(f"ERROR: env var {cfg.gitlab.token_env} is not set.")
             return 2
         client = GitLabClient(cfg.gitlab.base_url, token)
-    result = discover_mod.discover(cfg, client, args.now)
+    try:
+        result = discover_mod.discover(cfg, client, args.now)
+    except (GitLabUnreachable, GitLabAuthError, GitLabError) as exc:
+        print(f"ERROR: {exc}")
+        return 2
     discover_mod.write_active_repos(args.out, result)
     print(f"Discovered {len(result['active'])} active repos "
           f"({len(result['excluded'])} excluded). Namespaces: {result['namespacesCovered']}")

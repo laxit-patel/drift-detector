@@ -4,7 +4,7 @@ from __future__ import annotations
 import json
 from datetime import date, timedelta
 
-from agent.lib.gitlab_read import GitLabForbidden
+from agent.lib.gitlab_read import GitLabForbidden, GitLabError, GitLabUnreachable, GitLabAuthError
 
 
 def since_iso(now: str, window_days: int) -> str:
@@ -40,8 +40,13 @@ def discover(config, client, now: str) -> dict:
         ref = scan.branch_overrides.get(path) or p.get("default_branch")
         try:
             committed = client.has_commit_since(p["id"], since, ref=ref)
+        except (GitLabUnreachable, GitLabAuthError):
+            raise                        # infra failure stays FATAL
         except GitLabForbidden:
             excluded.append({"repo": path, "reason": "forbidden"})
+            continue
+        except GitLabError:              # per-repo 404/500/other -> coverage gap
+            excluded.append({"repo": path, "reason": "probe_error"})
             continue
         if committed:
             reason = "active"

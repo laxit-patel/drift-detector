@@ -1,7 +1,8 @@
 # tests/test_discover.py
 import json
+import pytest
 from agent.config import GitLabConfig, ScanConfig, Config
-from agent.lib.gitlab_read import GitLabForbidden
+from agent.lib.gitlab_read import GitLabForbidden, GitLabError, GitLabUnreachable
 from agent import discover
 
 def _cfg(**scan):
@@ -11,13 +12,16 @@ def _cfg(**scan):
 
 class FakeClient:
     """Stands in for GitLabClient: canned candidates + per-id commit results."""
-    def __init__(self, candidates, commits, forbidden=()):
+    def __init__(self, candidates, commits, forbidden=(), errors=None):
         self._cands = candidates
         self._commits = commits          # id -> committed_date or None
         self._forbidden = set(forbidden)
+        self._errors = errors or {}      # id -> Exception instance to raise
     def list_candidate_projects(self, since_iso):
         return self._cands
     def has_commit_since(self, pid, since_iso, ref=None):
+        if pid in self._errors:
+            raise self._errors[pid]
         if pid in self._forbidden:
             raise GitLabForbidden(f"/projects/{pid}")
         return self._commits.get(pid)
@@ -84,3 +88,22 @@ def test_max_repos_caps_and_excludes():
     res = discover.discover(_cfg(max_repos=1), client, "2026-07-10")
     assert len(res["active"]) == 1
     assert any(e["reason"] == "max_repos_cap" for e in res["excluded"])
+
+def test_probe_http_error_becomes_coverage_gap():
+    client = FakeClient(
+        [_proj(1, "clients/a"), _proj(5, "clients/broken")],
+        {1: "2026-06-20T00:00:00Z"},
+        errors={5: GitLabError("404 on /projects/5/repository/commits")},
+    )
+    res = discover.discover(_cfg(), client, "2026-07-10")
+    assert [r["path_with_namespace"] for r in res["active"]] == ["clients/a"]
+    assert {"repo": "clients/broken", "reason": "probe_error"} in res["excluded"]
+
+def test_unreachable_during_probe_is_fatal():
+    client = FakeClient(
+        [_proj(1, "clients/a")],
+        {},
+        errors={1: GitLabUnreachable("dropped")},
+    )
+    with pytest.raises(GitLabUnreachable):
+        discover.discover(_cfg(), client, "2026-07-10")
