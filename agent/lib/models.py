@@ -1,8 +1,9 @@
 """Core data models for the change-monitoring agent. Pure data, no I/O."""
 from __future__ import annotations
 
+import hashlib
 import re
-from dataclasses import dataclass, asdict, field
+from dataclasses import dataclass, asdict
 
 CHANGE_TYPES = {"breaking", "deprecation", "behavioral", "security", "additive"}
 
@@ -15,6 +16,11 @@ def slugify(text: str) -> str:
 def techkey_to_dir(techKey: str) -> str:
     """Filesystem-safe directory name for a techKey (e.g. 'api:amazon-sp-api')."""
     return re.sub(r"[^A-Za-z0-9._-]", "_", techKey)
+
+
+def _stable_hash(text: str) -> str:
+    """Deterministic 8-hex-char hash (hashlib, NOT builtin hash() which is per-process randomized for str)."""
+    return hashlib.sha1((text or "").encode("utf-8")).hexdigest()[:8]
 
 
 @dataclass(frozen=True)
@@ -36,7 +42,8 @@ class ChangeEntry:
     def __post_init__(self) -> None:
         if not self.id:
             object.__setattr__(
-                self, "id", f"{self.techKey}|{self.date}|{slugify(self.title)}"
+                self, "id",
+                f"{self.techKey}|{self.date}|{slugify(self.title)}|{_stable_hash(self.title)}",
             )
 
     def to_dict(self) -> dict:

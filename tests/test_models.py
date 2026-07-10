@@ -20,7 +20,20 @@ def test_change_entry_autocomputes_id():
         title="Orders API: BuyerInfo now optional", summary="null-check required",
         sourceUrl="https://x/y", sourceTier=1,
     )
-    assert e.id == "api:amazon-sp-api|2026-07-03|orders-api-buyerinfo-now-optional"
+    assert e.id.startswith("api:amazon-sp-api|2026-07-03|orders-api-buyerinfo-now-optional|")
+    # deterministic: same inputs -> same id
+    e2 = ChangeEntry(techKey="api:amazon-sp-api", date="2026-07-03", changeType="breaking",
+                     title="Orders API: BuyerInfo now optional", summary="different summary",
+                     sourceUrl="https://z", sourceTier=1)
+    assert e.id == e2.id
+
+def test_id_distinguishes_long_titles_sharing_60char_prefix():
+    prefix = "Orders API deprecation notice for the BuyerInfo field in version "
+    a = ChangeEntry(techKey="api:sp", date="2026-07-03", changeType="breaking",
+                    title=prefix + "2024", summary="", sourceUrl="https://x", sourceTier=1)
+    b = ChangeEntry(techKey="api:sp", date="2026-07-03", changeType="breaking",
+                    title=prefix + "2025", summary="", sourceUrl="https://x", sourceTier=1)
+    assert a.id != b.id   # distinct despite identical 60-char slug prefix
 
 def test_change_entry_roundtrips_through_dict():
     e = ChangeEntry(

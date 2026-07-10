@@ -19,6 +19,13 @@ def test_append_is_idempotent_by_id(tmp_path):
     assert [e.title for e in written2] == ["C"]        # "A" already present, skipped
     assert len(kb_store.load_entries(root, "api:shopify")) == 2
 
+def test_append_dedupes_within_single_batch(tmp_path):
+    root = str(tmp_path)
+    dup = _entry("Same")
+    written = kb_store.append_entries(root, "api:shopify", [dup, _entry("Same"), _entry("Other")])
+    assert len(written) == 2      # one "Same" + "Other"
+    assert len(kb_store.load_entries(root, "api:shopify")) == 2
+
 def test_load_missing_returns_empty(tmp_path):
     assert kb_store.load_entries(str(tmp_path), "api:nope") == []
 

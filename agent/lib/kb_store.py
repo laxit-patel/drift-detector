@@ -32,8 +32,12 @@ def load_entries(root: str, techKey: str) -> list[ChangeEntry]:
 
 
 def append_entries(root: str, techKey: str, entries: list[ChangeEntry]) -> list[ChangeEntry]:
-    existing_ids = {e.id for e in load_entries(root, techKey)}
-    fresh = [e for e in entries if e.id not in existing_ids]
+    seen = {e.id for e in load_entries(root, techKey)}
+    fresh: list[ChangeEntry] = []
+    for e in entries:
+        if e.id not in seen:
+            seen.add(e.id)
+            fresh.append(e)
     if not fresh:
         return []
     p = changes_path(root, techKey)
