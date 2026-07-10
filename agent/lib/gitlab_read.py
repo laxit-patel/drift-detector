@@ -39,9 +39,9 @@ class HttpResponse:
         return json.loads(self.body_text or "null")
 
 
-def _default_request(method, url, headers, params, timeout):  # pragma: no cover - thin HTTP shim
+def _default_request(method, url, headers, params, timeout, body=None):  # pragma: no cover - thin HTTP shim
     import requests
-    resp = requests.request(method, url, headers=headers, params=params, timeout=timeout)
+    resp = requests.request(method, url, headers=headers, params=params, json=body, timeout=timeout)
     return HttpResponse(status=resp.status_code, headers=dict(resp.headers), body_text=resp.text)
 
 
@@ -140,3 +140,26 @@ class GitLabClient:
             f"/projects/{project_id}/search",
             {"scope": "blobs", "search": query},
         )
+
+    def _post(self, path: str, body: dict) -> HttpResponse:
+        url = self._base + path
+        headers = {"PRIVATE-TOKEN": self._token, "User-Agent": "change-monitor/1.0",
+                   "Content-Type": "application/json"}
+        try:
+            resp = self._request("POST", url, headers, {}, self._timeout, body=body)
+        except OSError as exc:
+            raise GitLabUnreachable(str(exc)) from exc
+        if resp.status == 401:
+            raise GitLabAuthError(f"401 on {path}")
+        if resp.status == 403:
+            raise GitLabForbidden(path)
+        if resp.status >= 400:
+            raise GitLabError(f"{resp.status} on {path}")
+        return resp
+
+    def create_commit(self, project_id: int, branch: str, message: str, actions: list) -> dict:
+        body = {"branch": branch, "commit_message": message, "actions": actions}
+        return self._post(f"/projects/{project_id}/repository/commits", body).json()
+
+    def file_exists(self, project_id: int, path: str, ref: str) -> bool:
+        return self.get_raw_file(project_id, path, ref) is not None
