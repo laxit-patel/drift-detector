@@ -1,0 +1,5 @@
+pytest>=7.4
+PyYAML>=6.0
+feedparser>=6.0
+requests>=2.31
+python-dateutil>=2.9

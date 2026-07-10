@@ -1,0 +1,9 @@
+# config.yaml  (seed — a runnable subset for Plan 01; full registry lands in Plan 02/03)
+kb:
+  root: kb/
+feeds:
+  - { techKey: api:shopify, label: Shopify Admin API, category: integration, adapter: rss, url: https://shopify.dev/changelog/feed.xml, tier: 1 }
+  - { techKey: api:twilio,  label: Twilio, category: integration, adapter: rss, url: https://www.twilio.com/en-us/changelog.feed.xml, tier: 1 }
+  - { techKey: runtime:node,   label: Node.js, category: runtime, adapter: endoflife, url: nodejs, tier: 1 }
+  - { techKey: runtime:php,    label: PHP,     category: runtime, adapter: endoflife, url: php,    tier: 1 }
+  - { techKey: runtime:python, label: Python,  category: runtime, adapter: endoflife, url: python, tier: 1 }

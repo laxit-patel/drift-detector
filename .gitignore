@@ -6,3 +6,6 @@ venv/
 .env
 .env.*
 *.local
+
+# SDD scratch
+.superpowers/
