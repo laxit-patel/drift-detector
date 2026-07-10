@@ -25,6 +25,9 @@ class GitLabForbidden(GitLabError):
         self.resource = resource
 
 
+MAX_PAGES = 1000
+
+
 @dataclass
 class HttpResponse:
     status: int
@@ -48,18 +51,30 @@ class GitLabClient:
         self._request = request
         self._timeout = timeout
 
+    def _do_get(self, url: str, headers: dict, params: dict | None) -> HttpResponse:
+        """Single guarded transport call: any OS/network error -> GitLabUnreachable.
+
+        Builtin ConnectionError/TimeoutError AND requests.exceptions.* (which
+        subclass OSError) are both caught here, so the client stays
+        transport-agnostic and never needs to import `requests` itself.
+        """
+        try:
+            return self._request("GET", url, headers, params or {}, self._timeout)
+        except OSError as exc:
+            raise GitLabUnreachable(str(exc)) from exc
+
     def get(self, path: str, params: dict | None = None) -> HttpResponse:
         url = self._base + path
         headers = {"PRIVATE-TOKEN": self._token, "User-Agent": "change-monitor/1.0"}
-        try:
-            resp = self._request("GET", url, headers, params or {}, self._timeout)
-        except (ConnectionError, TimeoutError) as exc:
-            raise GitLabUnreachable(str(exc)) from exc
+        resp = self._do_get(url, headers, params)
 
         if resp.status == 429:
-            wait = float(resp.headers.get("Retry-After", "1"))
+            try:
+                wait = float(resp.headers.get("Retry-After", "1"))
+            except ValueError:
+                wait = 1.0
             time.sleep(wait)
-            resp = self._request("GET", url, headers, params or {}, self._timeout)
+            resp = self._do_get(url, headers, params)
             if resp.status == 429:
                 raise GitLabUnreachable("rate limited (429) after retry")
 
@@ -76,7 +91,7 @@ class GitLabClient:
         params.setdefault("per_page", 100)
         out: list = []
         page = 1
-        while True:
+        while page <= MAX_PAGES:
             params["page"] = page
             resp = self.get(path, params)
             batch = resp.json() or []
