@@ -16,10 +16,35 @@ class ConfigError(ValueError):
 
 
 @dataclass
+class GitLabConfig:
+    base_url: str
+    token_env: str
+    expected_namespaces: list[str]
+
+
+@dataclass
+class ScanConfig:
+    active_window_days: int = 90
+    always_include: list[str] = None
+    allow: list[str] = None
+    deny: list[str] = None
+    branch_overrides: dict = None
+    max_repos: int = 50
+
+    def __post_init__(self):
+        self.always_include = self.always_include or []
+        self.allow = self.allow or []
+        self.deny = self.deny or []
+        self.branch_overrides = self.branch_overrides or {}
+
+
+@dataclass
 class Config:
     kb_root: str
     feeds: list[FeedSpec]
     raw: dict
+    gitlab: "GitLabConfig | None" = None
+    scan: "ScanConfig" = None
 
 
 def _feed_from(d: dict) -> FeedSpec:
@@ -37,6 +62,32 @@ def _feed_from(d: dict) -> FeedSpec:
     )
 
 
+def _gitlab_from(raw: dict) -> "GitLabConfig | None":
+    g = raw.get("gitlab")
+    if not g:
+        return None
+    for k in ("baseUrl", "tokenEnv"):
+        if not g.get(k):
+            raise ConfigError(f"gitlab section: missing required field '{k}'")
+    return GitLabConfig(
+        base_url=str(g["baseUrl"]).rstrip("/"),
+        token_env=g["tokenEnv"],
+        expected_namespaces=list(g.get("expectedNamespaces") or []),
+    )
+
+
+def _scan_from(raw: dict) -> "ScanConfig":
+    s = raw.get("scan") or {}
+    return ScanConfig(
+        active_window_days=int(s.get("activeWindowDays", 90)),
+        always_include=list(s.get("alwaysInclude") or []),
+        allow=list(s.get("allow") or []),
+        deny=list(s.get("deny") or []),
+        branch_overrides=dict(s.get("branchOverrides") or {}),
+        max_repos=int(s.get("maxRepos", 50)),
+    )
+
+
 def load_config(path: str) -> Config:
     with open(path, "r", encoding="utf-8") as fh:
         raw = yaml.safe_load(fh) or {}
@@ -45,4 +96,10 @@ def load_config(path: str) -> Config:
         raise ConfigError("config must declare at least one feed")
     feeds = [_feed_from(f) for f in feeds_raw]
     kb_root = (raw.get("kb") or {}).get("root", "kb/")
-    return Config(kb_root=kb_root, feeds=feeds, raw=raw)
+    return Config(
+        kb_root=kb_root,
+        feeds=feeds,
+        raw=raw,
+        gitlab=_gitlab_from(raw),
+        scan=_scan_from(raw),
+    )
