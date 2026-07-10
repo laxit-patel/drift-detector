@@ -1,7 +1,7 @@
 # tests/test_discover.py
 import json
 from agent.config import GitLabConfig, ScanConfig, Config
-from agent.lib.gitlab_read import GitLabClient, HttpResponse, GitLabForbidden
+from agent.lib.gitlab_read import GitLabForbidden
 from agent import discover
 
 def _cfg(**scan):
@@ -63,3 +63,24 @@ def test_write_active_repos(tmp_path):
     out = tmp_path / "active-repos.json"
     discover.write_active_repos(str(out), {"active": [], "excluded": []})
     assert json.loads(out.read_text())["active"] == []
+
+def test_allow_restricts_to_allow_and_always():
+    # allow set: only clients/a is allowed; clients/b is a real-commit repo but NOT in allow -> excluded.
+    # clients/c is in always_include (and not in allow) -> still kept (allow ∪ always_include).
+    client = FakeClient(
+        [_proj(1, "clients/a"), _proj(2, "clients/b"), _proj(3, "clients/c")],
+        {1: "2026-06-20T00:00:00Z", 2: "2026-06-20T00:00:00Z", 3: None},
+    )
+    res = discover.discover(_cfg(allow=["clients/a"], always_include=["clients/c"]), client, "2026-07-10")
+    paths = {r["path_with_namespace"] for r in res["active"]}
+    assert paths == {"clients/a", "clients/c"}
+    assert {"repo": "clients/b", "reason": "not_in_allow"} in res["excluded"]
+
+def test_max_repos_caps_and_excludes():
+    client = FakeClient(
+        [_proj(1, "clients/a"), _proj(2, "clients/b")],
+        {1: "2026-06-20T00:00:00Z", 2: "2026-06-20T00:00:00Z"},
+    )
+    res = discover.discover(_cfg(max_repos=1), client, "2026-07-10")
+    assert len(res["active"]) == 1
+    assert any(e["reason"] == "max_repos_cap" for e in res["excluded"])
