@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import json
 import os
 import sys
 
@@ -10,6 +11,8 @@ from agent.config import load_config
 from agent import kb_ingest, drift
 from agent.lib.gitlab_read import GitLabClient, GitLabError, GitLabUnreachable, GitLabAuthError
 from agent import discover as discover_mod
+from agent import inventory as inventory_mod
+from agent.lib.presence import load_patterns
 
 
 def _cmd_ingest(args) -> int:
@@ -67,6 +70,30 @@ def _cmd_discover(args, client=None) -> int:
     return 0
 
 
+def _cmd_inventory(args, client=None) -> int:
+    cfg = load_config(args.config)
+    if cfg.gitlab is None:
+        print("ERROR: config has no `gitlab` section; cannot build inventory.")
+        return 2
+    if client is None:
+        token = os.environ.get(cfg.gitlab.token_env)
+        if not token:
+            print(f"ERROR: env var {cfg.gitlab.token_env} is not set.")
+            return 2
+        client = GitLabClient(cfg.gitlab.base_url, token)
+    with open(args.active, "r", encoding="utf-8") as fh:
+        active = json.load(fh)
+    patterns = load_patterns(args.patterns)
+    inv = inventory_mod.build_inventory(client, active, patterns, args.now)
+    inventory_mod.write_inventory(args.out, inv)
+    cov = inv["coverage"]
+    print(f"Inventory: {len(inv['records'])} dep/runtime records, {len(inv['usedTechs'])} integrations "
+          f"across {cov['reposScanned']} repos.")
+    for repo in {r['repo'] for r in inv['records']} | {u['repo'] for u in inv['usedTechs']}:
+        print(f"  {repo}")
+    return 0
+
+
 def main(argv: list[str], *, client=None) -> int:
     p = argparse.ArgumentParser(prog="change-monitor")
     sub = p.add_subparsers(dest="cmd", required=True)
@@ -87,9 +114,17 @@ def main(argv: list[str], *, client=None) -> int:
     pv.add_argument("--out", required=True)
     pv.set_defaults(func=_cmd_discover)
 
+    pn = sub.add_parser("inventory")
+    pn.add_argument("--config", required=True)
+    pn.add_argument("--active", required=True)
+    pn.add_argument("--out", required=True)
+    pn.add_argument("--patterns", default="agent/patterns.yaml")
+    pn.add_argument("--now", default="")
+    pn.set_defaults(func=_cmd_inventory)
+
     args = p.parse_args(argv)
-    if args.func is _cmd_discover:
-        return _cmd_discover(args, client=client)
+    if args.func in (_cmd_discover, _cmd_inventory):
+        return args.func(args, client=client)
     return args.func(args)
 
 

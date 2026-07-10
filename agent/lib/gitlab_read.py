@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import time
 from dataclasses import dataclass
+from urllib.parse import quote
 
 
 class GitLabError(Exception):
@@ -63,7 +64,7 @@ class GitLabClient:
         except OSError as exc:
             raise GitLabUnreachable(str(exc)) from exc
 
-    def get(self, path: str, params: dict | None = None) -> HttpResponse:
+    def get(self, path: str, params: dict | None = None, *, allow_404: bool = False) -> HttpResponse:
         url = self._base + path
         headers = {"PRIVATE-TOKEN": self._token, "User-Agent": "change-monitor/1.0"}
         resp = self._do_get(url, headers, params)
@@ -82,6 +83,8 @@ class GitLabClient:
             raise GitLabAuthError(f"401 on {path}")
         if resp.status == 403:
             raise GitLabForbidden(path)
+        if resp.status == 404 and allow_404:
+            return resp
         if resp.status >= 400:
             raise GitLabError(f"{resp.status} on {path}")
         return resp
@@ -116,3 +119,24 @@ class GitLabClient:
             params["ref_name"] = ref
         commits = self.get(f"/projects/{project_id}/repository/commits", params).json() or []
         return commits[0]["committed_date"] if commits else None
+
+    def get_tree(self, project_id: int, ref: str) -> list:
+        items = self.get_paginated(
+            f"/projects/{project_id}/repository/tree",
+            {"recursive": "true", "ref": ref},
+        )
+        return [it["path"] for it in items if it.get("type") == "blob"]
+
+    def get_raw_file(self, project_id: int, path: str, ref: str) -> "str | None":
+        enc = quote(path, safe="")
+        resp = self.get(
+            f"/projects/{project_id}/repository/files/{enc}/raw",
+            {"ref": ref}, allow_404=True,
+        )
+        return resp.body_text if resp.status == 200 else None
+
+    def search_blobs(self, project_id: int, query: str) -> list:
+        return self.get_paginated(
+            f"/projects/{project_id}/search",
+            {"scope": "blobs", "search": query},
+        )
