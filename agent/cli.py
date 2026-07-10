@@ -13,6 +13,7 @@ from agent.lib.gitlab_read import GitLabClient, GitLabError, GitLabUnreachable, 
 from agent import discover as discover_mod
 from agent import inventory as inventory_mod
 from agent.lib.presence import load_patterns
+from agent import candidates as candidates_mod, classify_rules, delta as delta_mod, report as report_mod
 
 
 def _cmd_ingest(args) -> int:
@@ -94,6 +95,45 @@ def _cmd_inventory(args, client=None) -> int:
     return 0
 
 
+def _cmd_report(args) -> int:
+    cfg = load_config(args.config)
+    horizon = cfg.delivery.review_horizon_months if getattr(cfg, "delivery", None) else 6
+    with open(args.inventory, "r", encoding="utf-8") as fh:
+        inventory = json.load(fh)
+    with open(args.active, "r", encoding="utf-8") as fh:
+        active = json.load(fh)
+    repo_ids = {r["path_with_namespace"]: r["id"] for r in active.get("active", [])}
+    if args.prev and args.prev != "-":
+        try:
+            with open(args.prev, "r", encoding="utf-8") as fh:
+                prev_doc = json.load(fh)
+        except FileNotFoundError:
+            prev_doc = {}
+    else:
+        prev_doc = {}
+
+    watermarks = (prev_doc.get("reportedWatermarks") or {})
+    cands = candidates_mod.build_candidates(inventory, cfg.kb_root, watermarks, repo_ids=repo_ids)
+    findings = [classify_rules.candidate_to_finding(c, args.now, review_horizon_months=horizon) for c in cands]
+    delta, stamped = delta_mod.compute_delta(findings, prev_doc, args.now)
+    # persist per-tech reported watermark = latest change-entry date surfaced this run
+    new_wm = dict(watermarks)
+    for c in cands:
+        d = c["changeEntry"].get("date", "")
+        if d:
+            new_wm[c["techKey"]] = max(new_wm.get(c["techKey"], ""), d)
+    doc = report_mod.assemble_findings_doc(stamped, delta, inventory.get("coverage", {}), new_wm, args.now)
+    md = report_mod.render_report(doc)
+    with open(args.out_findings, "w", encoding="utf-8") as fh:
+        json.dump(doc, fh, ensure_ascii=False, indent=2)
+    with open(args.out_report, "w", encoding="utf-8") as fh:
+        fh.write(md)
+    c = doc["counts"]
+    print(f"Report {args.now}: {c['action']} ACTION / {c['review']} REVIEW / {c['watchlist']} watch. "
+          f"Delta: {len(doc['delta']['new'])} new, {len(doc['delta']['resolved'])} resolved.")
+    return 0
+
+
 def main(argv: list[str], *, client=None) -> int:
     p = argparse.ArgumentParser(prog="change-monitor")
     sub = p.add_subparsers(dest="cmd", required=True)
@@ -121,6 +161,12 @@ def main(argv: list[str], *, client=None) -> int:
     pn.add_argument("--patterns", default="agent/patterns.yaml")
     pn.add_argument("--now", default="")
     pn.set_defaults(func=_cmd_inventory)
+
+    pr = sub.add_parser("report")
+    for a in ("--config", "--inventory", "--active", "--out-report", "--out-findings", "--now"):
+        pr.add_argument(a, required=True)
+    pr.add_argument("--prev", default="-")
+    pr.set_defaults(func=_cmd_report)
 
     args = p.parse_args(argv)
     if args.func in (_cmd_discover, _cmd_inventory):
