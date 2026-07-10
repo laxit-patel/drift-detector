@@ -31,3 +31,15 @@ def test_watermark_roundtrip(tmp_path):
 def test_path_is_filesystem_safe(tmp_path):
     p = kb_store.changes_path(str(tmp_path), "lib:npm/aws-sdk")
     assert "lib_npm_aws-sdk" in str(p)
+
+def test_append_load_roundtrips_unicode_line_separators(tmp_path):
+    # U+2028 (LINE SEPARATOR) inside a field is written literally by json.dumps(ensure_ascii=False)
+    # (it is not a JSON-required-escape control char) and must NOT split the JSONL record on read.
+    root = str(tmp_path)
+    tricky = ChangeEntry(techKey="api:shopify", date="2026-07-03", changeType="additive",
+                         title="Bulk Operations endpoint", summary="line sep",
+                         sourceUrl="https://x", sourceTier=1)
+    kb_store.append_entries(root, "api:shopify", [tricky])
+    loaded = kb_store.load_entries(root, "api:shopify")
+    assert len(loaded) == 1
+    assert loaded[0] == tricky

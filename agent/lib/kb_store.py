@@ -24,7 +24,7 @@ def load_entries(root: str, techKey: str) -> list[ChangeEntry]:
     if not p.exists():
         return []
     out: list[ChangeEntry] = []
-    for line in p.read_text(encoding="utf-8").splitlines():
+    for line in p.read_text(encoding="utf-8").split("\n"):
         line = line.strip()
         if line:
             out.append(ChangeEntry.from_dict(json.loads(line)))
