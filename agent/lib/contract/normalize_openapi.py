@@ -31,8 +31,11 @@ def _flatten(schema: dict, components: dict, prefix: str = "", seen: frozenset =
     required = set(schema.get("required", []))
     for name, sub in props.items():
         path = f"{prefix}.{name}" if prefix else name
-        sub_d, sub_seen, _c = _deref(sub or {}, components, seen)
+        sub_d, sub_seen, circular = _deref(sub or {}, components, seen)
         nullable = (name not in required) or bool(sub_d.get("nullable"))
+        if circular:                                  # circular ref via an object property
+            fields.append(Field(path=path, type="ref", nullable=True))
+            continue
         if "enum" in sub_d:
             enums[path] = sorted(str(v) for v in sub_d["enum"])
             fields.append(Field(path=path, type="enum", nullable=nullable))

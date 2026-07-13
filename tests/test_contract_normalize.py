@@ -53,5 +53,5 @@ def test_flatten_survives_circular_ref():
     components = {"Node": {"type": "object", "properties": {
         "child": {"$ref": "#/components/schemas/Node"}}}}
     fields, _ = _flatten({"$ref": "#/components/schemas/Node"}, components)
-    # must terminate; the cycle point is emitted as a leaf, not infinite recursion
-    assert any(f.type == "ref" for f in fields) or any(f.path == "child" for f in fields)
+    child = [f for f in fields if f.path == "child"]
+    assert child and child[0].type == "ref"        # object-property cycle tagged 'ref', terminates
