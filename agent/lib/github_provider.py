@@ -70,3 +70,28 @@ class GitHubProvider:
             url = m.group(1) if m else None
             pages += 1
         return out
+
+    def _full_name(self, project_id):
+        return self._by_id[project_id]
+
+    def list_candidate_projects(self, since_iso: str) -> list:
+        repos = self._get_paginated("/user/repos", {"affiliation": "owner", "sort": "pushed"})
+        out = []
+        prefix = f"{self.owner}/"
+        for r in repos:
+            if r.get("archived") or not r.get("full_name", "").startswith(prefix):
+                continue
+            self._by_id[r["id"]] = r["full_name"]
+            out.append({"id": r["id"], "path_with_namespace": r["full_name"],
+                        "default_branch": r.get("default_branch") or "main",
+                        "last_activity_at": r.get("pushed_at", "")})
+        return out
+
+    def has_commit_since(self, project_id, since_iso, ref=None) -> "str | None":
+        params = {"per_page": 1, "since": since_iso}
+        if ref:
+            params["sha"] = ref
+        commits = self._get(f"/repos/{self._full_name(project_id)}/commits", params).json() or []
+        if not commits:
+            return None
+        return commits[0].get("commit", {}).get("committer", {}).get("date")
