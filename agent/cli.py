@@ -14,6 +14,7 @@ from agent import discover as discover_mod
 from agent import inventory as inventory_mod
 from agent.lib.presence import load_patterns
 from agent import candidates as candidates_mod, classify_rules, delta as delta_mod, report as report_mod
+from agent import run as run_mod
 
 
 def _cmd_ingest(args) -> int:
@@ -127,6 +128,46 @@ def _cmd_report(args) -> int:
     return 0
 
 
+def _cmd_classify_report(args) -> int:
+    cfg = load_config(args.config)
+    horizon = cfg.delivery.review_horizon_months if getattr(cfg, "delivery", None) else 6
+    with open(args.inventory, "r", encoding="utf-8") as fh:
+        inventory = json.load(fh)
+    with open(args.active, "r", encoding="utf-8") as fh:
+        active = json.load(fh)
+    prev_doc = {}
+    if args.prev and args.prev != "-":
+        try:
+            with open(args.prev, "r", encoding="utf-8") as fh:
+                prev_doc = json.load(fh)
+        except FileNotFoundError:
+            prev_doc = {}
+
+    if args.dry_classify:
+        with open(args.dry_classify, "r", encoding="utf-8") as fh:
+            canned = json.load(fh)
+        classify_fn = lambda items: canned
+    else:
+        classify_fn = lambda items: []      # deterministic-only: needsReview -> coverage gap
+
+    # Structured/lifecycle/registry entries self-cite URLs fetched at ingest; trust those.
+    repo_ids = {r["path_with_namespace"]: r["id"] for r in active.get("active", [])}
+    fetched = {c["changeEntry"].get("sourceUrl", "")
+               for c in candidates_mod.build_candidates(inventory, cfg.kb_root, repo_ids=repo_ids)}
+
+    out = run_mod.run_pipeline(inventory=inventory, active=active, kb_root=cfg.kb_root,
+                               prev_doc=prev_doc, config=cfg, now=args.now,
+                               classify_fn=classify_fn, fetched_urls=fetched,
+                               review_horizon_months=horizon)
+    with open(args.out_findings, "w", encoding="utf-8") as fh:
+        json.dump(out["doc"], fh, ensure_ascii=False, indent=2)
+    with open(args.out_report, "w", encoding="utf-8") as fh:
+        fh.write(out["report_md"])
+    c = out["doc"]["counts"]
+    print(f"Report {args.now}: {c['action']} ACTION / {c['review']} REVIEW / {c['watchlist']} watch.")
+    return 0
+
+
 def main(argv: list[str], *, client=None) -> int:
     p = argparse.ArgumentParser(prog="change-monitor")
     sub = p.add_subparsers(dest="cmd", required=True)
@@ -160,6 +201,13 @@ def main(argv: list[str], *, client=None) -> int:
         pr.add_argument(a, required=True)
     pr.add_argument("--prev", default="-")
     pr.set_defaults(func=_cmd_report)
+
+    pc = sub.add_parser("classify-report")
+    for a in ("--config", "--inventory", "--active", "--out-report", "--out-findings", "--now"):
+        pc.add_argument(a, required=True)
+    pc.add_argument("--prev", default="-")
+    pc.add_argument("--dry-classify", default="")
+    pc.set_defaults(func=_cmd_classify_report)
 
     args = p.parse_args(argv)
     if args.func in (_cmd_discover, _cmd_inventory):
