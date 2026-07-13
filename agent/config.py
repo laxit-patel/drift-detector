@@ -10,6 +10,19 @@ ALLOWED_ADAPTERS = {"rss", "endoflife", "github-releases", "registry", "html-cha
 ALLOWED_CATEGORIES = {"integration", "framework", "library", "runtime"}
 _REQUIRED = ("techKey", "label", "category", "adapter", "url", "tier")
 
+# Adapters that exist in code but are not usable as a feed yet — kept in ALLOWED_ADAPTERS
+# so config load gives the specific "not yet wired" reason instead of "unknown adapter".
+NOT_YET_WIRED = {
+    "html-changelog": (
+        "adapter 'html-changelog' is implemented but not yet wired into ingest "
+        "(needs page-hash threading) — not usable as a feed yet"
+    ),
+    "registry": (
+        "adapter 'registry' is not a feed adapter — registry deprecation checks run via "
+        "the `registry-scan` command (see docs), not as a feed"
+    ),
+}
+
 
 class ConfigError(ValueError):
     pass
@@ -69,6 +82,8 @@ def _feed_from(d: dict) -> FeedSpec:
             raise ConfigError(f"feed {d.get('techKey', '?')}: missing required field '{k}'")
     if d["adapter"] not in ALLOWED_ADAPTERS:
         raise ConfigError(f"feed {d['techKey']}: unknown adapter '{d['adapter']}'")
+    if d["adapter"] in NOT_YET_WIRED:
+        raise ConfigError(f"feed {d['techKey']}: {NOT_YET_WIRED[d['adapter']]}")
     if d["category"] not in ALLOWED_CATEGORIES:
         raise ConfigError(f"feed {d['techKey']}: unknown category '{d['category']}'")
     return FeedSpec(

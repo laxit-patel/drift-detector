@@ -6,6 +6,7 @@ import argparse
 import json
 import os
 import sys
+import urllib.parse
 
 from agent.config import load_config
 from agent import kb_ingest, drift
@@ -14,6 +15,10 @@ from agent import discover as discover_mod
 from agent import inventory as inventory_mod
 from agent.lib.presence import load_patterns
 from agent import candidates as candidates_mod, classify_rules, delta as delta_mod, report as report_mod
+from agent import run as run_mod
+from agent import commit_report as commit_report_mod
+from agent import registry_scan as registry_scan_mod
+from agent.lib.chat import build_summary_text, post_chat
 
 
 def _cmd_ingest(args) -> int:
@@ -95,6 +100,17 @@ def _cmd_inventory(args, client=None) -> int:
     return 0
 
 
+def _cmd_registry_scan(args) -> int:
+    cfg = load_config(args.config)
+    with open(args.inventory, "r", encoding="utf-8") as fh:
+        inventory = json.load(fh)
+    checked = registry_scan_mod.scan_inventory_packages(
+        inventory, cfg.kb_root, fetch_json=registry_scan_mod._http_json, now=args.now)
+    print(f"registry-scan: checked {len(checked)} techKey(s)"
+          + (f": {', '.join(checked)}" if checked else ""))
+    return 0
+
+
 def _cmd_report(args) -> int:
     cfg = load_config(args.config)
     horizon = cfg.delivery.review_horizon_months if getattr(cfg, "delivery", None) else 6
@@ -127,7 +143,86 @@ def _cmd_report(args) -> int:
     return 0
 
 
-def main(argv: list[str], *, client=None) -> int:
+def _cmd_classify_report(args) -> int:
+    cfg = load_config(args.config)
+    horizon = cfg.delivery.review_horizon_months if getattr(cfg, "delivery", None) else 6
+    with open(args.inventory, "r", encoding="utf-8") as fh:
+        inventory = json.load(fh)
+    with open(args.active, "r", encoding="utf-8") as fh:
+        active = json.load(fh)
+    prev_doc = {}
+    if args.prev and args.prev != "-":
+        try:
+            with open(args.prev, "r", encoding="utf-8") as fh:
+                prev_doc = json.load(fh)
+        except FileNotFoundError:
+            prev_doc = {}
+
+    if args.dry_classify:
+        with open(args.dry_classify, "r", encoding="utf-8") as fh:
+            canned = json.load(fh)
+        classify_fn = lambda items: canned
+    else:
+        classify_fn = lambda items: []      # deterministic-only: needsReview -> coverage gap
+
+    # Structured/lifecycle/registry entries self-cite URLs fetched at ingest; trust those.
+    repo_ids = {r["path_with_namespace"]: r["id"] for r in active.get("active", [])}
+    fetched = {c["changeEntry"].get("sourceUrl", "")
+               for c in candidates_mod.build_candidates(inventory, cfg.kb_root, repo_ids=repo_ids)}
+
+    out = run_mod.run_pipeline(inventory=inventory, active=active, kb_root=cfg.kb_root,
+                               prev_doc=prev_doc, config=cfg, now=args.now,
+                               classify_fn=classify_fn, fetched_urls=fetched,
+                               review_horizon_months=horizon)
+    with open(args.out_findings, "w", encoding="utf-8") as fh:
+        json.dump(out["doc"], fh, ensure_ascii=False, indent=2)
+    with open(args.out_report, "w", encoding="utf-8") as fh:
+        fh.write(out["report_md"])
+    c = out["doc"]["counts"]
+    print(f"Report {args.now}: {c['action']} ACTION / {c['review']} REVIEW / {c['watchlist']} watch.")
+    return 0
+
+
+def _cmd_deliver(args, *, client=None, post=None) -> int:
+    cfg = load_config(args.config)
+    if getattr(cfg, "delivery", None) is None:
+        print("ERROR: config has no `delivery` section; cannot deliver.")
+        return 2
+    d = cfg.delivery
+    with open(args.findings, "r", encoding="utf-8") as fh:
+        doc = json.load(fh)
+    with open(args.report, "r", encoding="utf-8") as fh:
+        report_md = fh.read()
+
+    # GitLab write client (reports repo only). The reports project is addressed by URL-encoded path.
+    proj_id = urllib.parse.quote(d.reports_project, safe="")
+    if client is None:
+        token = os.environ.get(d.report_token_env)
+        if not token:
+            print(f"ERROR: env var {d.report_token_env} is not set.")
+            return 2
+        client = GitLabClient(cfg.gitlab.base_url, token)
+    webhook = os.environ.get(d.chat_webhook_env, "")
+
+    def commit(ctx):
+        files = {f"reports/report-{args.now}.md": report_md,
+                 "state/findings.json": json.dumps(doc, ensure_ascii=False, indent=2)}
+        return commit_report_mod.commit_files(client, proj_id, d.reports_branch,
+                                              f"Change report {args.now}", files, d.reports_branch,
+                                              expected_project_id=proj_id)
+
+    def chat(ctx):
+        text = build_summary_text(doc, args.report_url)
+        return post_chat(webhook, text) if post is None else post_chat(webhook, text, post=post)
+
+    results = run_mod.deliver(doc, report_md, cfg, commit=commit, chat=chat)
+    for r in results:
+        print(f"  {r['name']}: {'ok' if r.get('ok') else 'FAILED'}"
+              + (f" ({r.get('error')})" if not r.get('ok') else ""))
+    return 0 if all(r.get("ok") for r in results) else 1
+
+
+def main(argv: list[str], *, client=None, post=None) -> int:
     p = argparse.ArgumentParser(prog="change-monitor")
     sub = p.add_subparsers(dest="cmd", required=True)
 
@@ -155,13 +250,33 @@ def main(argv: list[str], *, client=None) -> int:
     pn.add_argument("--now", default="")
     pn.set_defaults(func=_cmd_inventory)
 
+    prs = sub.add_parser("registry-scan")
+    prs.add_argument("--config", required=True)
+    prs.add_argument("--inventory", required=True)
+    prs.add_argument("--now", required=True)
+    prs.set_defaults(func=_cmd_registry_scan)
+
     pr = sub.add_parser("report")
     for a in ("--config", "--inventory", "--active", "--out-report", "--out-findings", "--now"):
         pr.add_argument(a, required=True)
     pr.add_argument("--prev", default="-")
     pr.set_defaults(func=_cmd_report)
 
+    pc = sub.add_parser("classify-report")
+    for a in ("--config", "--inventory", "--active", "--out-report", "--out-findings", "--now"):
+        pc.add_argument(a, required=True)
+    pc.add_argument("--prev", default="-")
+    pc.add_argument("--dry-classify", default="")
+    pc.set_defaults(func=_cmd_classify_report)
+
+    pdl = sub.add_parser("deliver")
+    for a in ("--config", "--findings", "--report", "--report-url", "--now"):
+        pdl.add_argument(a, required=True)
+    pdl.set_defaults(func=_cmd_deliver)
+
     args = p.parse_args(argv)
+    if args.func is _cmd_deliver:
+        return _cmd_deliver(args, client=client, post=post)
     if args.func in (_cmd_discover, _cmd_inventory):
         return args.func(args, client=client)
     return args.func(args)
