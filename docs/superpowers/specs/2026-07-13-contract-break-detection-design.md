@@ -1,8 +1,25 @@
 # Contract-Break Detection (Layer 2) — Design Spec
 
 **Date:** 2026-07-13
-**Status:** Approved design, ready for implementation planning
+**Status:** Approved design. Plan B (engine core) built + merged (Plan 09, 236 tests). Plan C next.
 **Parent project:** Integration & Dependency Change-Monitoring Agent (`docs/superpowers/specs/2026-07-10-api-deprecation-agent-design.md`)
+
+## Plan C prerequisites (surfaced by the Plan 09 engine-core final review — do NOT skip)
+
+The deterministic engine (`agent/lib/contract/`) is sound, but before Plan C wires
+it to real SP-API specs these must be handled or it will *silently* miss breaks:
+1. **Confirm the SP-API model format is OpenAPI 3.0, not Swagger 2.0.** `normalize_openapi`
+   keys off `responses.2xx.content.application/json.schema` + `components.schemas`.
+   Swagger 2.0 uses `responses.2xx.schema` + `definitions` → `normalize_openapi` returns
+   empty operations with NO error (silent total miss). The adapter must detect/convert.
+2. **`oneOf`/`anyOf` composition** is not yet flattened (`allOf` + top-level arrays ARE,
+   as of Plan 09's final fix). Decide conservative handling; SP-API uses them less than
+   `allOf` but they exist. A property/response using only oneOf/anyOf flattens to nothing.
+3. **Diff output ordering** is now deterministic (`sorted` by opKey/kind/verdict/before/after),
+   so report rendering is stable — keep it that way when Plan C maps ContractChange→Finding.
+4. **Spec §4 nullability wording** ("nullable→non-null = BREAKING") is misleading vs the
+   correct impl (a *response* field going non-null→nullable is the risky direction, flagged
+   AMBIGUOUS). Reconcile the table wording; the code direction is right.
 
 ## Problem
 
