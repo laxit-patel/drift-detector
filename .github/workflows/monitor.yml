@@ -1,0 +1,82 @@
+name: monitor
+
+# Weekly ephemeral run. No server, no dedicated runner: GitHub spins up a runner,
+# restores state from the `monitor-state` branch, runs the container, commits the
+# new state (kb + findings + report) back, and exits. State lives in git — the
+# compute is throwaway.
+on:
+  schedule:
+    - cron: '0 7 * * 0'          # Sundays 07:00 UTC
+  workflow_dispatch:             # the manual "run now" button (Actions tab)
+    inputs:
+      run_date:
+        description: 'Override run date (YYYY-MM-DD); blank = today (UTC)'
+        required: false
+        default: ''
+
+concurrency:                     # never let two runs mutate the state branch at once
+  group: monitor-run
+  cancel-in-progress: false
+
+env:
+  IMAGE: ghcr.io/${{ github.repository }}:latest
+  STATE_BRANCH: monitor-state
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write            # push the state branch
+      packages: read             # pull the image from GHCR
+    steps:
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Restore state branch (or initialize on first run)
+        env:
+          REPO_URL: https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git
+        run: |
+          set -e
+          if git clone --depth 1 --branch "$STATE_BRANCH" "$REPO_URL" _state 2>/dev/null; then
+            echo "restored existing $STATE_BRANCH"
+          else
+            echo "no $STATE_BRANCH yet — initializing an empty orphan branch"
+            mkdir -p _state && cd _state
+            git init -q -b "$STATE_BRANCH"
+            git remote add origin "$REPO_URL"
+          fi
+          mkdir -p _state/kb _state/reports
+
+      - name: Run the monitor (ephemeral container, state mounted)
+        run: |
+          RUN_DATE="${{ github.event.inputs.run_date }}"
+          [ -z "$RUN_DATE" ] && RUN_DATE="$(date -u +%F)"
+          docker pull "$IMAGE"
+          docker run --rm \
+            --user "$(id -u):$(id -g)" \
+            -e HOME=/tmp \
+            -e RUN_DATE="$RUN_DATE" \
+            -e GITHUB_TOKEN="${{ secrets.GH_SCAN_TOKEN }}" \
+            -e GCHAT_WEBHOOK_URL="${{ secrets.GCHAT_WEBHOOK_URL }}" \
+            -e HEALTHCHECK_URL="${{ secrets.HEALTHCHECK_URL }}" \
+            -e ANTHROPIC_API_KEY="${{ secrets.ANTHROPIC_API_KEY }}" \
+            -e REPORT_URL_BASE="https://github.com/${{ github.repository }}/blob/${STATE_BRANCH}/reports/" \
+            -v "$PWD/_state:/work/state" \
+            "$IMAGE"
+
+      - name: Commit new state back to the branch
+        working-directory: _state
+        run: |
+          git add -A
+          if git diff --cached --quiet; then
+            echo "no state changes this run — nothing to commit"
+            exit 0
+          fi
+          git -c user.name='change-monitor[bot]' \
+              -c user.email='change-monitor@users.noreply.github.com' \
+              commit -q -m "monitor run $(date -u +%F)"
+          git push origin "$STATE_BRANCH"
