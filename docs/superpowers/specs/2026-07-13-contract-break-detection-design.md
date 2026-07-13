@@ -200,13 +200,32 @@ findings      = to_findings(all_changes, ai_results, now)
   existing GitHub read path and read token.
 - **eBay / Shopify / Walmart — adapter slots, implemented as access allows.** Each
   config-gated with an explicit "needs credential/access" error (like the existing
-  `html-changelog` gating) so nothing misconfigures silently:
+  `html-changelog` gating) so nothing misconfigures silently. Source availability
+  validated 2026-07-13:
   - **Shopify**: GraphQL Admin schema via **introspection** — needs a (dev-)store
-    access token + API version.
-  - **eBay**: OpenAPI contracts exist but direct hot-linking returns 403 — needs
-    proper request headers or a mirror/download step.
-  - **Walmart**: no clean public machine-readable spec confirmed — may defer to
-    Layer 1 (release-notes feed) / Layer 3 until a spec source is secured.
+    access token + API version. (Layer 1 changelog RSS already wired.)
+  - **Walmart**: Layer 2 source = the **item-spec version table** (reachable HTML,
+    diffable); Layer 1 = the What's New / release-notes pages (HTTP 200, pollable
+    via `html-changelog`). No OpenAPI, but the item-spec table is a real schema
+    source. Feasible without credentials.
+  - **eBay**: **hard bot-blocked** — both the OpenAPI contracts and the per-API
+    release-notes HTML return 403 even with a browser User-Agent (edge WAF / JS
+    challenge, not UA sniffing). Requires a headless-browser render or an
+    authenticated download via the eBay developer program, or defers to a manual
+    source. **eBay is the one marketplace that needs a heavier fetch path**;
+    treat as an explicit follow-on, not a same-effort adapter.
+
+## Relationship to Layer 1 (changelog feeds)
+
+Layer 2 (this spec) catches *uncited* breaks via spec-diff. It complements the
+existing Layer 1 changelog capability, whose per-marketplace sources were also
+validated 2026-07-13 and should be completed in parallel where cheap:
+- **SP-API**: official changelog **RSS** at `developer-docs.amazon.com/sp-api/changelog.rss`
+  (validated real) — replace the interim GitHub-commits feed with this.
+- **Shopify**: official Atom feed `shopify.dev/changelog/feed.xml` — already wired.
+- **Walmart**: What's New / release-notes HTML — needs the `html-changelog` adapter
+  wired into ingest (currently built but not wired).
+- **eBay**: scattered per-API release-notes HTML — same bot-block as above.
 
 ## Decomposition hint for planning
 
