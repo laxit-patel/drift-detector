@@ -6,6 +6,7 @@ import argparse
 import json
 import os
 import sys
+import urllib.parse
 
 from agent.config import load_config
 from agent import kb_ingest, drift
@@ -15,6 +16,8 @@ from agent import inventory as inventory_mod
 from agent.lib.presence import load_patterns
 from agent import candidates as candidates_mod, classify_rules, delta as delta_mod, report as report_mod
 from agent import run as run_mod
+from agent import commit_report as commit_report_mod
+from agent.lib.chat import build_summary_text, post_chat
 
 
 def _cmd_ingest(args) -> int:
@@ -168,7 +171,46 @@ def _cmd_classify_report(args) -> int:
     return 0
 
 
-def main(argv: list[str], *, client=None) -> int:
+def _cmd_deliver(args, *, client=None, post=None) -> int:
+    cfg = load_config(args.config)
+    if getattr(cfg, "delivery", None) is None:
+        print("ERROR: config has no `delivery` section; cannot deliver.")
+        return 2
+    d = cfg.delivery
+    with open(args.findings, "r", encoding="utf-8") as fh:
+        doc = json.load(fh)
+    with open(args.report, "r", encoding="utf-8") as fh:
+        report_md = fh.read()
+
+    # GitLab write client (reports repo only). The reports project is addressed by URL-encoded path.
+    proj_id = urllib.parse.quote(d.reports_project, safe="")
+    if client is None:
+        token = os.environ.get(d.report_token_env)
+        if not token:
+            print(f"ERROR: env var {d.report_token_env} is not set.")
+            return 2
+        client = GitLabClient(cfg.gitlab.base_url, token)
+    webhook = os.environ.get(d.chat_webhook_env, "")
+
+    def commit(ctx):
+        files = {f"reports/report-{args.now}.md": report_md,
+                 "state/findings.json": json.dumps(doc, ensure_ascii=False, indent=2)}
+        return commit_report_mod.commit_files(client, proj_id, d.reports_branch,
+                                              f"Change report {args.now}", files, d.reports_branch,
+                                              expected_project_id=proj_id)
+
+    def chat(ctx):
+        text = build_summary_text(doc, args.report_url)
+        return post_chat(webhook, text) if post is None else post_chat(webhook, text, post=post)
+
+    results = run_mod.deliver(doc, report_md, cfg, commit=commit, chat=chat)
+    for r in results:
+        print(f"  {r['name']}: {'ok' if r.get('ok') else 'FAILED'}"
+              + (f" ({r.get('error')})" if not r.get('ok') else ""))
+    return 0 if all(r.get("ok") for r in results) else 1
+
+
+def main(argv: list[str], *, client=None, post=None) -> int:
     p = argparse.ArgumentParser(prog="change-monitor")
     sub = p.add_subparsers(dest="cmd", required=True)
 
@@ -209,7 +251,14 @@ def main(argv: list[str], *, client=None) -> int:
     pc.add_argument("--dry-classify", default="")
     pc.set_defaults(func=_cmd_classify_report)
 
+    pdl = sub.add_parser("deliver")
+    for a in ("--config", "--findings", "--report", "--report-url", "--now"):
+        pdl.add_argument(a, required=True)
+    pdl.set_defaults(func=_cmd_deliver)
+
     args = p.parse_args(argv)
+    if args.func is _cmd_deliver:
+        return _cmd_deliver(args, client=client, post=post)
     if args.func in (_cmd_discover, _cmd_inventory):
         return args.func(args, client=client)
     return args.func(args)

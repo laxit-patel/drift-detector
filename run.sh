@@ -15,5 +15,13 @@ python -m agent.cli inventory --config "$CFG" --active active-repos.json --out i
 env -u GITLAB_READ_TOKEN -u REPORTS_TOKEN \
   python -m agent.cli classify-report --config "$CFG" --inventory inventory.json --active active-repos.json \
   --prev state/findings.json --out-report "reports/report-$NOW.md" --out-findings state/findings.json --now "$NOW" || fail classify
+
+if [ -n "${REPORTS_TOKEN:-}" ] && [ -n "${GCHAT_WEBHOOK_URL:-}" ]; then
+  python -m agent.cli deliver --config "$CFG" --findings state/findings.json \
+    --report "reports/report-$NOW.md" --report-url "${REPORT_URL_BASE:-}reports/report-$NOW.md" --now "$NOW" || fail deliver
+else
+  echo "delivery skipped: REPORTS_TOKEN/GCHAT_WEBHOOK_URL not set — report written locally only"
+fi
+
 python -c "from agent.liveness import ping_healthcheck;import os;ping_healthcheck(os.environ.get('HEALTHCHECK_URL',''))"
 echo "run complete: $NOW"

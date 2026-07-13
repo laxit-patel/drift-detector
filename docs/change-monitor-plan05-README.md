@@ -13,6 +13,10 @@ GCHAT_WEBHOOK_URL, HEALTHCHECK_URL.
 
 ## Run (host cron)
 `run.sh` is the weekly entrypoint (Sun 07:00 via crontab). It runs ingest -> discover -> inventory ->
-classify-report, then commit + Chat, then pings the healthcheck; any failure posts a Chat notice + exit 1.
-A separate Monday cron runs `liveness.check_report_fresh` and alerts if no report landed (the out-of-band
-dead-man's switch, since a dead host cannot report itself).
+classify-report, writing `report.md` and `state/findings.json` locally. If both `REPORTS_TOKEN` and
+`GCHAT_WEBHOOK_URL` are set in the environment, it then runs the `deliver` CLI command (wiring
+`run_mod.deliver`), which commits the report + findings to the reports repo and posts the Chat summary;
+if either env var is missing, delivery is skipped and the run stays local-only (this is logged, not
+silent). It then pings the healthcheck regardless; any failure earlier in the pipeline posts a Chat
+notice + exit 1. A separate Monday cron runs `liveness.check_report_fresh` and alerts if no report
+landed (the out-of-band dead-man's switch, since a dead host cannot report itself).
