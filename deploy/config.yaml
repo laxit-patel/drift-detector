@@ -22,10 +22,11 @@ delivery:
 # agent/patterns.yaml so a repo's usage joins to the change.
 #   - SP-API: Amazon's official changelog RSS (prose release posts).
 #   - Walmart: What's New / release-notes HTML via the html-changelog adapter. This
-#     adapter structures the page with an LLM seam (structure_fn); in an environment
-#     without that seam wired (no `claude` CLI / ANTHROPIC_API_KEY) it fetches +
-#     hashes the page but structures no entries — a fail-soft coverage gap, not a
-#     crash. Wiring the live structure_fn is a documented follow-up.
+#     adapter structures the page with an LLM seam (structure_fn). It degrades
+#     fail-soft either way, never crashing the run: with the `claude` CLI present but
+#     no key it fetches+hashes and structures no entries; with no CLI at all the
+#     structurer raises and the feed becomes an error-status coverage gap (retried
+#     next run). Wiring the live structure_fn is a documented follow-up.
 #   - eBay is deferred: it is bot-blocked (403 even with a browser UA) and needs a
 #     headless-render or authenticated-download fetch path.
 feeds:
