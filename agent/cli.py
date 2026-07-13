@@ -11,6 +11,7 @@ import urllib.parse
 from agent.config import load_config
 from agent import kb_ingest, drift
 from agent.lib.gitlab_read import GitLabClient, GitLabError, GitLabUnreachable, GitLabAuthError
+from agent.lib.source import make_provider, SourceError
 from agent import discover as discover_mod
 from agent import inventory as inventory_mod
 from agent.lib.presence import load_patterns
@@ -52,15 +53,12 @@ def _cmd_drift(args) -> int:
 
 def _cmd_discover(args, client=None) -> int:
     cfg = load_config(args.config)
-    if cfg.gitlab is None:
-        print("ERROR: config has no `gitlab` section; cannot discover.")
-        return 2
     if client is None:
-        token = os.environ.get(cfg.gitlab.token_env)
-        if not token:
-            print(f"ERROR: env var {cfg.gitlab.token_env} is not set.")
+        try:
+            client = make_provider(cfg)
+        except SourceError as exc:
+            print(f"ERROR: {exc}")
             return 2
-        client = GitLabClient(cfg.gitlab.base_url, token)
     try:
         result = discover_mod.discover(cfg, client, args.now)
     except (GitLabUnreachable, GitLabAuthError, GitLabError) as exc:
@@ -70,7 +68,8 @@ def _cmd_discover(args, client=None) -> int:
     print(f"Discovered {len(result['active'])} active repos "
           f"({len(result['excluded'])} excluded). Namespaces: {result['namespacesCovered']}")
     covered = set(result["namespacesCovered"])
-    for ns in cfg.gitlab.expected_namespaces:
+    expected = cfg.gitlab.expected_namespaces if cfg.gitlab else []
+    for ns in expected:
         if ns not in covered:
             print(f"WARNING: expected namespace '{ns}' not present in scan — token may not see it.")
     return 0
@@ -78,15 +77,12 @@ def _cmd_discover(args, client=None) -> int:
 
 def _cmd_inventory(args, client=None) -> int:
     cfg = load_config(args.config)
-    if cfg.gitlab is None:
-        print("ERROR: config has no `gitlab` section; cannot build inventory.")
-        return 2
     if client is None:
-        token = os.environ.get(cfg.gitlab.token_env)
-        if not token:
-            print(f"ERROR: env var {cfg.gitlab.token_env} is not set.")
+        try:
+            client = make_provider(cfg)
+        except SourceError as exc:
+            print(f"ERROR: {exc}")
             return 2
-        client = GitLabClient(cfg.gitlab.base_url, token)
     with open(args.active, "r", encoding="utf-8") as fh:
         active = json.load(fh)
     patterns = load_patterns(args.patterns)

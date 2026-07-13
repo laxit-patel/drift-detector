@@ -15,9 +15,11 @@ def _default_run(args: list) -> str:  # pragma: no cover - real git subprocess
 
 
 class LocalProvider:
-    def __init__(self, root: str, *, run=_default_run):
+    def __init__(self, root: str, *, run=None):
         self.root = Path(root)
-        self._run = run                     # git runner, wired in Task 2
+        # Resolved dynamically (not a bound default) so tests can monkeypatch
+        # `local_provider._default_run` and have it take effect.
+        self._run = run if run is not None else _default_run
         repos = sorted(d for d in self.root.iterdir()
                        if d.is_dir() and (d / ".git").exists())
         self.projects = [(i + 1, d.name, d) for i, d in enumerate(repos)]
