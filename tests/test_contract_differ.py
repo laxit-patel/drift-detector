@@ -89,3 +89,14 @@ def test_prune_orders_model_flags_buyeremail_removal_breaking():
     assert len(breaking) == 1
     assert breaking[0].kind == "response_field"
     assert "buyerEmail" in breaking[0].before and "buyerEmail" in breaking[0].detail
+
+
+def test_removing_enum_typed_field_is_not_double_counted():
+    # A field that is BOTH a responseField (type "enum") AND in the enums map — as
+    # normalize_openapi produces. Removing it must yield exactly ONE change, not two.
+    prev = _spec(_op(fields=[Field("payload.status", "enum", False)],
+                     enums={"payload.status": ["A", "B"]}))
+    curr = _spec(_op(fields=[], enums={}))
+    changes = diff(prev, curr)
+    assert len(changes) == 1
+    assert changes[0].kind == "response_field" and changes[0].verdict == "BREAKING"

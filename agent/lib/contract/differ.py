@@ -69,7 +69,8 @@ def _diff_op(key: str, pop: Operation, cop: Operation) -> list:
                                      detail=f"request param type changed: {name}"))
 
     # --- enums ---
-    for path in set(pop.enums) | set(cop.enums):
+    for path in set(pop.enums) & set(cop.enums):     # only fields enum-typed on BOTH sides;
+                                                     # enum-typed field add/remove is the response-field loop's job
         pv, cv = set(pop.enums.get(path, [])), set(cop.enums.get(path, []))
         before, after = ",".join(sorted(pv)), ",".join(sorted(cv))
         if pv - cv:
