@@ -18,17 +18,22 @@ delivery:
   reportsProject: state/reports        # required by config; the container writes reports here (git, not the GitLab API)
   reviewHorizonMonths: 6
 
-# Marketplace/integration changelogs (rss) + runtime EOL (endoflife) are proven live.
-# Add framework/marketplace html_changelog feeds as you expand; marketplace contract-drift
-# detection needs the live Claude classify stage wired (see docs/DEPLOY.md).
+# Marketplace change signals (Layer 1 — announced changes). techKey MUST match
+# agent/patterns.yaml so a repo's usage joins to the change.
+#   - SP-API: Amazon's official changelog RSS (prose release posts).
+#   - Walmart: What's New / release-notes HTML via the html-changelog adapter. This
+#     adapter structures the page with an LLM seam (structure_fn); in an environment
+#     without that seam wired (no `claude` CLI / ANTHROPIC_API_KEY) it fetches +
+#     hashes the page but structures no entries — a fail-soft coverage gap, not a
+#     crash. Wiring the live structure_fn is a documented follow-up.
+#   - eBay is deferred: it is bot-blocked (403 even with a browser UA) and needs a
+#     headless-render or authenticated-download fetch path.
 feeds:
-  # Marketplace change signals. techKey MUST match agent/patterns.yaml so a repo's
-  # usage joins to the change. SP-API has no changelog RSS — the official models
-  # repo's commit feed is the live signal that an API model (contract) changed.
-  - { techKey: api:amazon-sp-api, label: Amazon SP-API (models), category: integration, adapter: rss, url: https://github.com/amzn/selling-partner-api-models/commits/main.atom, tier: 1 }
-  - { techKey: api:shopify,       label: Shopify Admin API, category: integration, adapter: rss, url: https://shopify.dev/changelog/feed.xml, tier: 1 }
-  - { techKey: api:twilio,        label: Twilio,  category: integration, adapter: rss, url: https://www.twilio.com/en-us/changelog.feed.xml, tier: 1 }
-  - { techKey: runtime:php,    label: PHP,     category: runtime,  adapter: endoflife, url: php,     tier: 1 }
-  - { techKey: runtime:node,   label: Node.js, category: runtime,  adapter: endoflife, url: nodejs,  tier: 1 }
-  - { techKey: runtime:python, label: Python,  category: runtime,  adapter: endoflife, url: python,  tier: 1 }
+  - { techKey: api:amazon-sp-api,       label: Amazon SP-API,       category: integration, adapter: rss,            url: https://developer-docs.amazon.com/sp-api/changelog.rss, tier: 1 }
+  - { techKey: api:shopify,             label: Shopify Admin API,   category: integration, adapter: rss,            url: https://shopify.dev/changelog/feed.xml, tier: 1 }
+  - { techKey: api:walmart-marketplace, label: Walmart Marketplace, category: integration, adapter: html-changelog, url: https://developer.walmart.com/us-marketplace/page/whats-new, tier: 1 }
+  - { techKey: api:twilio,              label: Twilio,              category: integration, adapter: rss,            url: https://www.twilio.com/en-us/changelog.feed.xml, tier: 1 }
+  - { techKey: runtime:php,     label: PHP,     category: runtime,   adapter: endoflife, url: php,     tier: 1 }
+  - { techKey: runtime:node,    label: Node.js, category: runtime,   adapter: endoflife, url: nodejs,  tier: 1 }
+  - { techKey: runtime:python,  label: Python,  category: runtime,   adapter: endoflife, url: python,  tier: 1 }
   - { techKey: runtime:laravel, label: Laravel, category: framework, adapter: endoflife, url: laravel, tier: 1 }
