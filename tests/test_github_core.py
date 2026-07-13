@@ -1,4 +1,6 @@
 import pytest
+import requests
+from agent.lib import github_provider
 from agent.lib.github_provider import GitHubProvider, GitHubAuthError, GitHubUnreachable, GitHubError
 from agent.lib.gitlab_read import HttpResponse
 
@@ -45,3 +47,26 @@ def test_paginated_follows_link_next():
     fr.script["https://api.github.com/repos?page=2"] = _r(200, "[3]", {})
     got = p._get_paginated("/repos")
     assert got == [1, 2, 3]
+
+def test_get_translates_requests_connection_error_to_unreachable():
+    p, _ = _p({"https://api.github.com/x": requests.exceptions.ConnectionError("boom")})
+    with pytest.raises(GitHubUnreachable):
+        p._get("/x")
+
+def test_paginated_respects_max_pages(monkeypatch):
+    monkeypatch.setattr(github_provider, "_MAX_PAGES", 3)
+
+    class InfiniteLinkReq:
+        def __init__(self):
+            self.calls = []
+
+        def __call__(self, method, url, headers, params, timeout):
+            self.calls.append(url)
+            nxt_url = url + "&next=1" if "?" in url else url + "?next=1"
+            nxt = f'<{nxt_url}>; rel="next"'
+            return HttpResponse(200, {"Link": nxt}, "[1]")
+
+    fr = InfiniteLinkReq()
+    p = GitHubProvider("acme", "tok", request=fr)
+    got = p._get_paginated("/repos")
+    assert got == [1, 1, 1]

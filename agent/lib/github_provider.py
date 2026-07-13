@@ -8,6 +8,7 @@ from agent.lib.gitlab_read import HttpResponse
 
 _API = "https://api.github.com"
 _LINK_NEXT = re.compile(r'<([^>]+)>;\s*rel="next"')
+_MAX_PAGES = 1000
 
 
 class GitHubError(Exception):
@@ -46,7 +47,7 @@ class GitHubProvider:
         url = path if path.startswith("http") else _API + path
         try:
             resp = self._request("GET", url, self._headers(accept), params or {}, self._timeout)
-        except (ConnectionError, TimeoutError) as exc:
+        except OSError as exc:
             raise GitHubUnreachable(str(exc)) from exc
         if resp.status == 401:
             raise GitHubAuthError(f"401 on {path}")
@@ -61,9 +62,11 @@ class GitHubProvider:
         params = dict(params or {})
         params.setdefault("per_page", 100)
         out, url = [], path
-        while url:
+        pages = 0
+        while url and pages < _MAX_PAGES:
             resp = self._get(url, params if url == path else None)
             out.extend(resp.json() or [])
             m = _LINK_NEXT.search(resp.headers.get("Link", ""))
             url = m.group(1) if m else None
+            pages += 1
         return out
