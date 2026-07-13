@@ -4,6 +4,24 @@
 **Status:** Approved design. Plan B (engine core) built + merged (Plan 09, 236 tests). Plan C next.
 **Parent project:** Integration & Dependency Change-Monitoring Agent (`docs/superpowers/specs/2026-07-10-api-deprecation-agent-design.md`)
 
+## Plan 11 (findings/report integration) design notes — from Plan 10 final review
+
+Plan 10 (contract-scan) emits change dicts `{marketplace, api, opKey, kind, verdict,
+before, after, detail}`. When Plan 11 maps these to `Finding`s, mind:
+1. **Changes are ONE-SHOT.** A `ContractChange` fires only on the run where the diff
+   happens; the next run's snapshot already reflects it, so it will NOT re-fire.
+   Plan 11 must therefore PERSIST findings through the existing delta engine
+   (NEW→ONGOING→RESOLVED), not rely on the differ re-detecting them each week.
+2. **Snapshot key = the file-path-derived `api` name.** If Amazon renames/moves a
+   model file, the old snapshot is orphaned and the new path starts a fresh baseline,
+   so a *file rename* masks an "operation removed". Acceptable for v1; document it.
+3. **Finding id** should key on `projectId | techKey | (opKey + detail)` so it is
+   stable across runs for the delta engine. Diff output is already sorted (Plan 09).
+4. **v1 detection scope** (proven live 2026-07-13 on 63 real SP-API models, 0 false
+   positives): RESPONSE fields + query/path/header params + enums. Request BODIES are
+   deferred — a change to a request-body-only definition is NOT flagged (confirmed by
+   a live test that pruned a request-body field and correctly saw 0 changes).
+
 ## Plan C prerequisites (surfaced by the Plan 09 engine-core final review — do NOT skip)
 
 The deterministic engine (`agent/lib/contract/`) is sound, but before Plan C wires
