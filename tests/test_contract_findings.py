@@ -42,6 +42,16 @@ def test_carry_forward_persists_prior_contract_findings():
     assert len(carried) == 1 and carried[0].id == prev_finding.id  # persisted, not dropped
 
 
+def test_carry_forward_persists_prior_watchlist_finding():
+    # A prior BREAKING+unused finding lives in prev_doc["watchlist"] (severity OK, watchlist True).
+    prev_wl = changes_to_findings([_scoped(used=False, repo="")], {}, "2026-07-01")[0]
+    assert prev_wl.watchlist is True                      # sanity: it IS a watchlist finding
+    prev_doc = {"findings": [], "watchlist": [prev_wl.to_dict()]}
+    carried = carry_forward([], prev_doc, "2026-07-13")   # nothing new this run
+    assert len(carried) == 1
+    assert carried[0].id == prev_wl.id and carried[0].watchlist is True   # persisted from watchlist
+
+
 def test_carry_forward_ignores_non_contract_findings_and_dedups():
     prev_finding = changes_to_findings([_scoped()], {"repoA": 7}, "2026-07-01")[0]
     prev_doc = {"findings": [prev_finding.to_dict(),

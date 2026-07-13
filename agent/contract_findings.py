@@ -2,6 +2,8 @@
 one-shot contract changes stay ONGOING across weekly runs instead of aging out."""
 from __future__ import annotations
 
+from dataclasses import replace
+
 from agent.lib.finding import Finding, finding_id
 
 _VERDICT_CHANGETYPE = {"BREAKING": "breaking", "AMBIGUOUS": "behavioral", "ADDITIVE": "additive"}
@@ -53,7 +55,7 @@ def carry_forward(new_findings: list, prev_doc: dict, now: str) -> list:
     by_id: dict = {}
     for d in (prev_doc.get("findings", []) + prev_doc.get("watchlist", [])):
         if d.get("findingType") == "contract-drift":
-            by_id[d["id"]] = Finding.from_dict(d)
+            by_id[d["id"]] = replace(Finding.from_dict(d), lastSeen=now)   # still present this run
     for f in new_findings:
         by_id[f.id] = f                                        # new supersedes stale prior of same id
     return list(by_id.values())
