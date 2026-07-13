@@ -16,7 +16,7 @@ def diff(prev: NormalizedSpec, curr: NormalizedSpec) -> list:
                                       before="", after=key, detail=f"operation added: {key}"))
     for key in prev_ops.keys() & curr_ops.keys():
         changes += _diff_op(key, prev_ops[key], curr_ops[key])
-    return changes
+    return sorted(changes, key=lambda c: (c.opKey, c.kind, c.verdict, c.before, c.after, c.detail))
 
 
 def _diff_op(key: str, pop: Operation, cop: Operation) -> list:

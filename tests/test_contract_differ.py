@@ -100,3 +100,10 @@ def test_removing_enum_typed_field_is_not_double_counted():
     changes = diff(prev, curr)
     assert len(changes) == 1
     assert changes[0].kind == "response_field" and changes[0].verdict == "BREAKING"
+
+
+def test_diff_output_order_is_deterministic():
+    prev = NormalizedSpec(operations={"GET /a": _op(), "GET /b": _op(), "GET /c": _op()})
+    curr = NormalizedSpec(operations={})
+    out = [(c.opKey, c.verdict) for c in diff(prev, curr)]
+    assert out == sorted(out)          # stable, sorted order regardless of dict/set iteration

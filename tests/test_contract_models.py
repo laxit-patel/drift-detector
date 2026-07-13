@@ -29,11 +29,10 @@ def test_to_dict_is_json_stable():
 
 
 def test_contractchange_is_frozen_value():
+    import dataclasses
+    import pytest
     c = ContractChange(opKey="GET /orders", kind="response_field", verdict="BREAKING",
                        before="payload.Orders[].BuyerInfo.buyerEmail", after="", detail="removed")
     assert c.verdict == "BREAKING"
-    try:
-        c.verdict = "ADDITIVE"                    # frozen -> must raise
-        assert False, "expected FrozenInstanceError"
-    except Exception:
-        pass
+    with pytest.raises(dataclasses.FrozenInstanceError):
+        c.verdict = "ADDITIVE"          # frozen -> must raise

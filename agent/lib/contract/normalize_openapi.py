@@ -19,27 +19,44 @@ def _deref(schema: dict, components: dict, seen: frozenset):
 
 
 def _flatten(schema: dict, components: dict, prefix: str = "", seen: frozenset = frozenset()):
-    """Walk an object/array/leaf schema. Returns (list[Field], enums: dict[path -> values])."""
+    """Walk an object/array/allOf/leaf schema. Returns (list[Field], enums: dict[path -> values])."""
     schema, seen, circular = _deref(schema or {}, components, seen)
     if circular:
         return [Field(path=prefix or "?", type="ref", nullable=True)], {}
     fields: list = []
     enums: dict = {}
+
+    # Composition: an allOf schema is the merge of ALL its members (all apply).
+    for member in schema.get("allOf") or []:
+        f2, e2 = _flatten(member, components, prefix, seen)
+        for f in f2:
+            if all(f.path != existing.path for existing in fields):
+                fields.append(f)
+        enums.update(e2)
+
+    # Top-level array response: flatten the item schema under a "[]" path segment.
+    if schema.get("type") == "array" and schema.get("items") and "properties" not in schema:
+        f2, e2 = _flatten(schema["items"], components, prefix + "[]", seen)
+        for f in f2:
+            if all(f.path != existing.path for existing in fields):
+                fields.append(f)
+        enums.update(e2)
+
     props = schema.get("properties")
     if not props:
         return fields, enums
     required = set(schema.get("required", []))
     for name, sub in props.items():
         path = f"{prefix}.{name}" if prefix else name
-        sub_d, sub_seen, circular = _deref(sub or {}, components, seen)
-        nullable = (name not in required) or bool(sub_d.get("nullable"))
-        if circular:                                  # circular ref via an object property
+        sub_d, sub_seen, circular2 = _deref(sub or {}, components, seen)
+        if circular2:                                   # circular ref via an object property
             fields.append(Field(path=path, type="ref", nullable=True))
             continue
+        nullable = (name not in required) or bool(sub_d.get("nullable"))
         if "enum" in sub_d:
             enums[path] = sorted(str(v) for v in sub_d["enum"])
             fields.append(Field(path=path, type="enum", nullable=nullable))
-        elif sub_d.get("properties") or sub_d.get("type") == "object":
+        elif sub_d.get("properties") or sub_d.get("type") == "object" or sub_d.get("allOf"):
             fields.append(Field(path=path, type="object", nullable=nullable))
             f2, e2 = _flatten(sub, components, path, seen)
             fields += f2

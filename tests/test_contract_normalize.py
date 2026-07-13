@@ -111,3 +111,23 @@ def test_normalize_openapi_builds_operation_with_params_fields_enums():
 def test_normalize_openapi_ignores_paths_without_operations():
     doc = {"paths": {"/x": {"parameters": [], "description": "no methods here"}}}
     assert normalize_openapi(doc).operations == {}
+
+
+def test_flatten_allof_merges_all_members():
+    components = {
+        "Base": {"type": "object", "required": ["id"], "properties": {"id": {"type": "string"}}},
+        "Extra": {"type": "object", "properties": {"note": {"type": "string"}}},
+    }
+    schema = {"allOf": [{"$ref": "#/components/schemas/Base"},
+                        {"$ref": "#/components/schemas/Extra"}]}
+    fields, _ = _flatten(schema, components)
+    paths = {f.path for f in fields}
+    assert "id" in paths and "note" in paths        # both members merged, not zero fields
+
+
+def test_flatten_top_level_array_response():
+    components = {}
+    schema = {"type": "array", "items": {"type": "object",
+              "properties": {"orderId": {"type": "string"}}}}
+    fields, _ = _flatten(schema, components)
+    assert any(f.path == "[].orderId" for f in fields)   # array items flattened, not dropped
