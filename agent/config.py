@@ -70,6 +70,8 @@ class DeliveryConfig:
 class SourceConfig:
     type: str = "gitlab"
     local_root: str = ""
+    github_owner: str = ""
+    github_token_env: str = "GITHUB_TOKEN"
 
 
 @dataclass
@@ -146,11 +148,15 @@ def _delivery_from(raw: dict) -> "DeliveryConfig | None":
 def _source_from(raw: dict) -> "SourceConfig":
     s = raw.get("source") or {}
     t = s.get("type", "gitlab")
-    if t not in ("gitlab", "local"):
-        raise ConfigError(f"source.type must be gitlab or local, got '{t}'")
+    if t not in ("gitlab", "local", "github"):
+        raise ConfigError(f"source.type must be gitlab|local|github, got '{t}'")
     if t == "local" and not s.get("root"):
         raise ConfigError("source.type=local requires 'root'")
-    return SourceConfig(type=t, local_root=str(s.get("root", "")))
+    if t == "github" and not s.get("owner"):
+        raise ConfigError("source.type=github requires 'owner'")
+    return SourceConfig(type=t, local_root=str(s.get("root", "")),
+                        github_owner=str(s.get("owner", "")),
+                        github_token_env=s.get("tokenEnv", "GITHUB_TOKEN"))
 
 
 def load_config(path: str) -> Config:
