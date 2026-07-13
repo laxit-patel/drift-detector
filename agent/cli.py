@@ -17,6 +17,7 @@ from agent.lib.presence import load_patterns
 from agent import candidates as candidates_mod, classify_rules, delta as delta_mod, report as report_mod
 from agent import run as run_mod
 from agent import commit_report as commit_report_mod
+from agent import registry_scan as registry_scan_mod
 from agent.lib.chat import build_summary_text, post_chat
 
 
@@ -96,6 +97,17 @@ def _cmd_inventory(args, client=None) -> int:
           f"across {cov['reposScanned']} repos.")
     for repo in {r['repo'] for r in inv['records']} | {u['repo'] for u in inv['usedTechs']}:
         print(f"  {repo}")
+    return 0
+
+
+def _cmd_registry_scan(args) -> int:
+    cfg = load_config(args.config)
+    with open(args.inventory, "r", encoding="utf-8") as fh:
+        inventory = json.load(fh)
+    checked = registry_scan_mod.scan_inventory_packages(
+        inventory, cfg.kb_root, fetch_json=registry_scan_mod._http_json, now=args.now)
+    print(f"registry-scan: checked {len(checked)} techKey(s)"
+          + (f": {', '.join(checked)}" if checked else ""))
     return 0
 
 
@@ -237,6 +249,12 @@ def main(argv: list[str], *, client=None, post=None) -> int:
     pn.add_argument("--patterns", default="agent/patterns.yaml")
     pn.add_argument("--now", default="")
     pn.set_defaults(func=_cmd_inventory)
+
+    prs = sub.add_parser("registry-scan")
+    prs.add_argument("--config", required=True)
+    prs.add_argument("--inventory", required=True)
+    prs.add_argument("--now", required=True)
+    prs.set_defaults(func=_cmd_registry_scan)
 
     pr = sub.add_parser("report")
     for a in ("--config", "--inventory", "--active", "--out-report", "--out-findings", "--now"):

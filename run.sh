@@ -3,13 +3,15 @@
 set -euo pipefail
 cd "$(dirname "$0")"
 source .venv/bin/activate
+mkdir -p reports state
 NOW="$(date +%F)"
 CFG=config.yaml
-fail() { python -c "from agent.lib.chat import build_failure_text,post_chat;import os;post_chat(os.environ['GCHAT_WEBHOOK_URL'], build_failure_text('$1','see logs','$NOW','n/a'))"; exit 1; }
+fail() { python -c "from agent.lib.chat import build_failure_text,post_chat;import os;post_chat(os.environ.get('GCHAT_WEBHOOK_URL',''), build_failure_text('$1','see logs','$NOW','n/a'))"; exit 1; }
 
 python -m agent.cli ingest    --config "$CFG" --now "$NOW"                                   || fail ingest
 python -m agent.cli discover  --config "$CFG" --now "$NOW" --out active-repos.json           || fail discover
 python -m agent.cli inventory --config "$CFG" --active active-repos.json --out inventory.json --now "$NOW" || fail inventory
+python -m agent.cli registry-scan --config "$CFG" --inventory inventory.json --now "$NOW"    || echo "registry-scan skipped"
 # LLM classify runs inside classify-report only when --dry-classify is omitted AND the real claude_classify_fn is wired;
 # for the cron we invoke the deterministic path here and let a follow-up wire the live seam (see README).
 env -u GITLAB_READ_TOKEN -u REPORTS_TOKEN \
