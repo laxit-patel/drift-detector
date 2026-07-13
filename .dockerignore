@@ -1,0 +1,14 @@
+.git
+.venv
+.superpowers
+tests
+demo
+docs
+**/__pycache__
+*.pyc
+.pytest_cache
+active-repos.json
+inventory.json
+state
+reports
+kb
