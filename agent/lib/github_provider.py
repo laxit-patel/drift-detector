@@ -108,3 +108,13 @@ class GitHubProvider:
         except GitHubError:
             return None                     # too-large / transient -> treat as unreadable
         return resp.body_text if resp.status == 200 else None
+
+    def search_blobs(self, project_id, query) -> list:
+        # GitHub code search is best-effort (rate-limited, default-branch, index-dependent):
+        # on any error return [] so presence detection degrades gracefully.
+        try:
+            data = self._get("/search/code",
+                             {"q": f"{query} repo:{self._full_name(project_id)}", "per_page": 10}).json() or {}
+        except GitHubError:
+            return []
+        return [{"path": it["path"]} for it in (data.get("items") or []) if it.get("path")]
