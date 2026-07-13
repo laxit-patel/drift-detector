@@ -38,7 +38,6 @@ def test_unchanged_second_run_yields_no_changes(tmp_path):
 
 
 import json
-import sys
 from agent import cli
 
 
