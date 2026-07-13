@@ -7,7 +7,7 @@
 #   Optional env : GCHAT_WEBHOOK_URL, HEALTHCHECK_URL, REPORT_URL_BASE, RUN_DATE, CONFIG_FILE, STATE_DIR
 set -euo pipefail
 
-CFG="${CONFIG_FILE:-/work/config.yaml}"
+RAW_CFG="${CONFIG_FILE:-/work/config.yaml}"    # baked default, or a mounted/overridden file
 STATE_DIR="${STATE_DIR:-/work/state}"          # persisted in git: kb/, findings.json, reports/
 SCRATCH="${SCRATCH_DIR:-/tmp/cm-scratch}"      # derived intermediates — NOT persisted
 NOW="${RUN_DATE:-$(date +%F)}"                 # RUN_DATE lets CI pin a reproducible date
@@ -16,6 +16,16 @@ FINDINGS="$STATE_DIR/findings.json"
 REPORT="$REPORTS_DIR/report-$NOW.md"
 
 mkdir -p "$STATE_DIR/kb" "$REPORTS_DIR" "$SCRATCH"
+
+# Effective config: a writable copy of the provided config (RAW_CFG may be a
+# read-only mount). If MONITOR_OWNER is set, inject it as source.owner so a fork
+# can run with zero file edits — the CI workflow defaults it to the fork's account.
+CFG="$SCRATCH/config.yaml"
+cp "$RAW_CFG" "$CFG"
+if [ -n "${MONITOR_OWNER:-}" ]; then
+  python -c "import yaml,os,sys;p=sys.argv[1];d=yaml.safe_load(open(p)) or {};d.setdefault('source',{})['owner']=os.environ['MONITOR_OWNER'];yaml.safe_dump(d,open(p,'w'),sort_keys=False)" "$CFG"
+  echo "config: source.owner set from MONITOR_OWNER=$MONITOR_OWNER"
+fi
 
 fail() {   # $1 = stage. Post a failure card to Chat (best-effort) then exit non-zero.
   python -c "import os,sys;from agent.lib.chat import build_failure_text,post_chat;\

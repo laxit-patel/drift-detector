@@ -6,8 +6,8 @@ on:
   push:
     branches: [master, main]
     paths:
+      # config is mounted at run time (not baked), so editing it needs no rebuild
       - 'agent/**'
-      - 'deploy/config.yaml'
       - 'docker/run-monitor.sh'
       - 'requirements.txt'
       - 'Dockerfile'

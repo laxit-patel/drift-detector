@@ -7,7 +7,8 @@ kb: { root: state/kb }                 # change knowledge base (append-only JSON
 
 source:
   type: github
-  owner: laxit-patel                   # the authenticated GitHub user (own repos via /user/repos?affiliation=owner)
+  owner: your-github-username          # your GitHub account. In CI this is auto-set from the fork owner
+                                       # (MONITOR_OWNER env), so you usually don't need to edit it.
   tokenEnv: GITHUB_TOKEN               # PAT with repo read scope; falls back to `gh auth token` if unset
 
 scan:

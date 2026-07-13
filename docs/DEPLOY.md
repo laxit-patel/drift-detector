@@ -25,7 +25,33 @@ The `monitor-state` branch is created automatically on the first run. Browse it
 to read every past report; each week's `findings.json` is the baseline the next
 run diffs against for NEW / RESOLVED / ONGOING.
 
-## One-time setup
+## Hand-off: run it in *your own* GitHub (3 steps)
+
+Anyone can adopt this without touching code. Settings live in three tiers —
+**secrets** (env, never committed), **config** (a file in your fork), **code**
+(the shared image). To stand up your own copy:
+
+1. **Copy the repo** — click **Use this template** → *Create a new repository*
+   (or fork it) into your account. `build-image.yml` builds the image into
+   *your* `ghcr.io/<you>/<repo>` on the first push.
+2. **Add one secret** — your repo → **Settings → Secrets and variables →
+   Actions → New repository secret** → **`GH_SCAN_TOKEN`** = a GitHub PAT with
+   read access to the repos you want scanned. (Optional: `GCHAT_WEBHOOK_URL`,
+   `HEALTHCHECK_URL`, `ANTHROPIC_API_KEY`.) **The token lives only here — never
+   in a file.**
+3. **Run it** — Actions → **monitor** → **Run workflow**. That's it: the owner
+   defaults to *your* account automatically, so it scans your own repos with no
+   config editing. The run creates the `monitor-state` branch; the weekly cron
+   takes over after.
+
+To customize *what* it watches (feeds, scan window, a different owner), edit
+[`deploy/config.yaml`](../deploy/config.yaml) in your fork — it's **mounted at
+run time, not baked into the image**, so a config edit takes effect on the next
+run with **no rebuild**. The `owner:` placeholder is overridden in CI by the
+`MONITOR_OWNER` env (set to your fork's account); set it explicitly in the file
+only if the token belongs to a *different* account (e.g. scanning an org).
+
+## One-time setup (reference)
 
 ### 1. Secrets  (repo → Settings → Secrets and variables → Actions)
 
@@ -40,9 +66,11 @@ run diffs against for NEW / RESOLVED / ONGOING.
 the state branch — don't confuse it with `GH_SCAN_TOKEN`.
 
 ### 2. Point it at your repos
-Edit [`deploy/config.yaml`](../deploy/config.yaml): set `source.owner` to your
-GitHub username, tune `scan.activeWindowDays`, and add/remove `feeds`. Commit —
-`build-image.yml` rebuilds the image automatically.
+The owner defaults to your fork's account (via `MONITOR_OWNER`), so the common
+case needs no edit. To change *what* is watched, edit
+[`deploy/config.yaml`](../deploy/config.yaml) — `scan.activeWindowDays`, the
+`feeds` list, or an explicit `source.owner` — and commit. The file is mounted at
+run time, so the change applies on the next run **without an image rebuild**.
 
 ### 3. First run
 Actions tab → **monitor** → **Run workflow** (the manual button). This also
@@ -62,6 +90,7 @@ docker build -t change-monitor .
 mkdir -p _state
 docker run --rm \
   -e RUN_DATE="$(date -u +%F)" \
+  -e MONITOR_OWNER="your-github-username" \
   -e GITHUB_TOKEN="$(gh auth token)" \
   -e GCHAT_WEBHOOK_URL="$GCHAT_WEBHOOK_URL" \
   -v "$PWD/_state:/work/state" \
