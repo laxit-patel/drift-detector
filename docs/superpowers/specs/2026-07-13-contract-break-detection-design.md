@@ -227,14 +227,26 @@ validated 2026-07-13 and should be completed in parallel where cheap:
   wired into ingest (currently built but not wired).
 - **eBay**: scattered per-API release-notes HTML — same bot-block as above.
 
-## Decomposition hint for planning
+## Implementation sequencing (confirmed 2026-07-13)
 
-Natural plan boundaries (each independently testable/shippable):
-1. **Engine core**: `NormalizedSpec` model + OpenAPI normalizer + semantic differ +
-   snapshot store. (Deterministic, no network, no LLM — the highest-value,
-   highest-coverage core.)
-2. **SP-API adapter + usage scoper + findings adapter + report/delta integration**:
-   end-to-end deterministic detection producing real ACTION findings.
-3. **AI blast-radius stage** (LLM + trust gate) — the impact narration.
-4. **Additional spec sources**: Shopify (GraphQL normalizer + introspection
-   adapter), eBay, Walmart — as access permits.
+Build order chosen: **Layer 1 completion first (fast win), then the Layer 2
+engine. eBay deferred to a follow-on** (bot-blocked; needs a headless/auth fetch).
+
+- **Plan A — Layer 1 completion (announced changes, all reachable marketplaces).**
+  Fast, reuses built adapters: (1) replace the interim SP-API GitHub-commits feed
+  with the official changelog **RSS**; (2) **wire the `html-changelog` adapter into
+  ingest** (built + tested, currently gated as "not wired" — thread its
+  `(entries, page_hash)` return through `kb_ingest`); (3) add the **Walmart** What's
+  New / release-notes feed via `html-changelog`. Shopify RSS already wired. eBay
+  deferred. Deliverable: announced-change coverage for SP-API + Shopify + Walmart.
+- **Plan B — Layer 2 engine core (deterministic heart).** `NormalizedSpec` model +
+  OpenAPI normalizer + semantic differ + snapshot store. No network, no LLM —
+  highest unit-test coverage.
+- **Plan C — SP-API spec-diff end-to-end.** SP-API SpecSource adapter + usage
+  scoper + findings adapter + report/delta integration → real ACTION `contract-drift`
+  findings (the "Prune Orders model" integration test).
+- **Plan D — AI blast-radius stage.** LLM impact narration behind the trust gate;
+  deterministic fallback when the key/model is absent.
+- **Plan E — additional spec sources (follow-on).** Shopify (GraphQL normalizer +
+  introspection adapter, needs store token); Walmart item-spec-version table
+  adapter; **eBay** via headless render or authenticated eBay-developer download.
