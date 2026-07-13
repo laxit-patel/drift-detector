@@ -2,14 +2,20 @@
 Implements the same five read methods as GitLabClient (the SourceProvider seam)."""
 from __future__ import annotations
 
+import subprocess
 from pathlib import Path
 
 _SKIP_DIRS = {".git", "node_modules", "vendor", ".venv", "dist", "build", "target", "__pycache__"}
 _MAX_BYTES = 1_000_000
 
 
+def _default_run(args: list) -> str:  # pragma: no cover - real git subprocess
+    proc = subprocess.run(["git"] + args, capture_output=True, text=True, timeout=30)
+    return proc.stdout.strip() if proc.returncode == 0 else ""
+
+
 class LocalProvider:
-    def __init__(self, root: str, *, run=None):
+    def __init__(self, root: str, *, run=_default_run):
         self.root = Path(root)
         self._run = run                     # git runner, wired in Task 2
         repos = sorted(d for d in self.root.iterdir()
@@ -51,3 +57,20 @@ class LocalProvider:
             except (UnicodeDecodeError, OSError):
                 continue
         return hits
+
+    def list_candidate_projects(self, since_iso: str) -> list:
+        out = []
+        for pid, rel, abs_ in self.projects:
+            branch = self._run(["-C", str(abs_), "rev-parse", "--abbrev-ref", "HEAD"]) or "main"
+            last = self._run(["-C", str(abs_), "log", "-1", "--format=%cI"])
+            out.append({"id": pid, "path_with_namespace": rel,
+                        "default_branch": branch, "last_activity_at": last})
+        return out
+
+    def has_commit_since(self, project_id: int, since_iso: str, ref=None) -> "str | None":
+        abs_ = self._repo_path(project_id)
+        args = ["-C", str(abs_), "log", "-1", f"--since={since_iso}", "--format=%cI"]
+        if ref:
+            args.append(ref)
+        out = self._run(args)
+        return out or None
