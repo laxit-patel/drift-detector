@@ -3,23 +3,30 @@ Implements the same five read methods as GitLabClient/LocalProvider. HTTP is inj
 from __future__ import annotations
 
 import re
+from urllib.parse import quote
 
-from agent.lib.gitlab_read import HttpResponse
+from agent.lib.gitlab_read import (
+    HttpResponse, GitLabError, GitLabUnreachable, GitLabAuthError,
+)
 
 _API = "https://api.github.com"
 _LINK_NEXT = re.compile(r'<([^>]+)>;\s*rel="next"')
 _MAX_PAGES = 1000
 
 
-class GitHubError(Exception):
+# The GitLab* family is the de-facto provider-error seam that all downstream
+# code (discover/inventory/cli/presence) catches. GitHub errors subclass it so
+# a provider-agnostic caller degrades gracefully (coverage gap) instead of
+# crashing on a raising provider — GitLabClient/LocalProvider behaviour parity.
+class GitHubError(GitLabError):
     pass
 
 
-class GitHubUnreachable(GitHubError):
+class GitHubUnreachable(GitHubError, GitLabUnreachable):
     pass
 
 
-class GitHubAuthError(GitHubError):
+class GitHubAuthError(GitHubError, GitLabAuthError):
     pass
 
 
@@ -72,7 +79,16 @@ class GitHubProvider:
         return out
 
     def _full_name(self, project_id):
-        return self._by_id[project_id]
+        # `inventory` runs in a separate process from `discover`, so _by_id may
+        # be empty here (list_candidate_projects populates it only in-process).
+        # Resolve the id -> full_name lazily via the by-id repo endpoint and cache.
+        fn = self._by_id.get(project_id)
+        if fn is None:
+            fn = (self._get(f"/repositories/{project_id}").json() or {}).get("full_name")
+            if not fn:
+                raise GitHubError(f"cannot resolve repo id {project_id}")
+            self._by_id[project_id] = fn
+        return fn
 
     def list_candidate_projects(self, since_iso: str) -> list:
         repos = self._get_paginated("/user/repos", {"affiliation": "owner", "sort": "pushed"})
@@ -103,7 +119,7 @@ class GitHubProvider:
 
     def get_raw_file(self, project_id, path, ref) -> "str | None":
         try:
-            resp = self._get(f"/repos/{self._full_name(project_id)}/contents/{path}",
+            resp = self._get(f"/repos/{self._full_name(project_id)}/contents/{quote(path, safe='/')}",
                              {"ref": ref}, allow_404=True, accept="application/vnd.github.raw")
         except GitHubError:
             return None                     # too-large / transient -> treat as unreadable

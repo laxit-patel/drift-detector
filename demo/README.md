@@ -55,7 +55,7 @@ python -m agent.cli inventory     --config demo/github-config.yaml --active demo
 python -m agent.cli registry-scan --config demo/github-config.yaml --inventory demo/out/inventory.json --now 2026-07-13
 python -m agent.cli classify-report --config demo/github-config.yaml --inventory demo/out/inventory.json --active demo/out/active-repos.json --prev - --out-report demo/out/report.md --out-findings demo/out/findings.json --now 2026-07-13
 ```
-If you've run `gh auth login`, no PAT is needed — the token is read from `gh auth token`; otherwise set `GITHUB_TOKEN`. Edit `demo/github-config.yaml`'s `source.owner` to your GitHub user or org first. Scans repos without cloning; GitHub **code search** (integration presence) is best-effort/rate-limited; set `scan.maxRepos` to stay within rate limits.
+If you've run `gh auth login`, no PAT is needed — the token is read from `gh auth token`; otherwise set `GITHUB_TOKEN`. Edit `demo/github-config.yaml`'s `source.owner` to the authenticated GitHub user first (scans that user's own repos via `/user/repos?affiliation=owner`; scanning an org you don't own is a follow-up). Scans repos without cloning; GitHub **code search** (integration presence) is best-effort/rate-limited; set `scan.maxRepos` to stay within rate limits.
 
 ## Tier 4/5 — Live LLM + delivery
 - LLM: pass canned verdicts now via `classify-report --dry-classify verdicts.json`; wire the real `claude_classify_fn` (needs `agent/classify.schema.json` + a pinned model id) for live judging of changelog entries.

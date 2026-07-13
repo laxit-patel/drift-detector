@@ -3,7 +3,7 @@
 kb: { root: demo/out/kb }
 source:
   type: github
-  owner: laxit-patel            # your GitHub user or org
+  owner: laxit-patel            # the authenticated GitHub user (own repos; org repos need a follow-up)
   tokenEnv: GITHUB_TOKEN        # optional; falls back to `gh auth token`
 scan:
   activeWindowDays: 365         # repos with a commit in the last year
