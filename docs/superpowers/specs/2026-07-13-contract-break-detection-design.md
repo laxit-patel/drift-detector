@@ -4,6 +4,28 @@
 **Status:** Approved design. Plan B (engine core) built + merged (Plan 09, 236 tests). Plan C next.
 **Parent project:** Integration & Dependency Change-Monitoring Agent (`docs/superpowers/specs/2026-07-10-api-deprecation-agent-design.md`)
 
+## Plan 12 wiring constraints — from Plan 11 final review (SHARP EDGE, do NOT miss)
+
+Plan 11 (`contract-report`) is built + validated. When Plan 12 wires it into the
+weekly `run.sh`:
+1. **Separate state files — the contract and KB findings streams must NOT share
+   `state/findings.json`.** `contract-report`'s `carry_forward` only re-injects
+   `findingType=="contract-drift"` findings; if it read the KB stream as `--prev`,
+   every KB ACTION/REVIEW would be absent from its `current` set → go pending →
+   wrongly RESOLVED, and `--out-findings` would overwrite the file with contract-only
+   findings, DESTROYING the KB stream. Use `state/contract-findings.json` for both
+   `--prev` and `--out-findings`; have `deliver` MERGE the two docs for one report.
+2. **Contract findings never auto-RESOLVE** (carry_forward re-injects every prior
+   contract-drift finding forever). Correct for a genuinely-removed field, but a false
+   positive or a repo that migrated off the API also never clears without manual state
+   editing. Plan 12 should add a manual-resolve/acknowledge path.
+3. **Minor cosmetics** (Plan 12 or a polish pass): `render_report`'s "Repos scanned:
+   {reposScanned}" line reads 0 for contract reports (coverage key is
+   `contractApisChanged`); unused-break watchlist lines render with an empty repo
+   (`- — amazon-sp-api …`). `finding_id` omits `repo`, so two repos both resolving to
+   `projectId=0` (only on a desynced inventory/active pair, impossible in the normal
+   pipeline) would collide — harden by skipping/warning on `pid==0` if ever needed.
+
 ## Plan 11 (findings/report integration) design notes — from Plan 10 final review
 
 Plan 10 (contract-scan) emits change dicts `{marketplace, api, opKey, kind, verdict,
