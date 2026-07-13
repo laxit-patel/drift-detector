@@ -21,6 +21,7 @@ from agent import commit_report as commit_report_mod
 from agent import registry_scan as registry_scan_mod
 from agent.lib.chat import build_summary_text, post_chat
 from agent.lib.contract import scan as contract_scan_mod
+from agent import contract_report as contract_report_mod
 
 
 def _cmd_ingest(args) -> int:
@@ -232,6 +233,31 @@ def _cmd_contract_scan(args) -> int:
     return 0
 
 
+def _cmd_contract_report(args) -> int:
+    with open(args.changes, "r", encoding="utf-8") as fh:
+        changes = json.load(fh).get("changes", [])
+    with open(args.inventory, "r", encoding="utf-8") as fh:
+        inventory = json.load(fh)
+    with open(args.active, "r", encoding="utf-8") as fh:
+        active = json.load(fh)
+    prev_doc = {}
+    if args.prev and args.prev != "-":
+        try:
+            with open(args.prev, "r", encoding="utf-8") as fh:
+                prev_doc = json.load(fh)
+        except FileNotFoundError:
+            prev_doc = {}
+    out = contract_report_mod.build_contract_report(changes, inventory, active, prev_doc, args.now)
+    with open(args.out_findings, "w", encoding="utf-8") as fh:
+        json.dump(out["doc"], fh, ensure_ascii=False, indent=2)
+    with open(args.out_report, "w", encoding="utf-8") as fh:
+        fh.write(out["report_md"])
+    c = out["doc"]["counts"]
+    print(f"Contract report {args.now}: {c['action']} ACTION / {c['review']} REVIEW / "
+          f"{c['watchlist']} watch.")
+    return 0
+
+
 def main(argv: list[str], *, client=None, post=None) -> int:
     p = argparse.ArgumentParser(prog="change-monitor")
     sub = p.add_subparsers(dest="cmd", required=True)
@@ -290,6 +316,12 @@ def main(argv: list[str], *, client=None, post=None) -> int:
     pcs.add_argument("--out", required=True)
     pcs.add_argument("--now", required=True)
     pcs.set_defaults(func=_cmd_contract_scan)
+
+    pcr = sub.add_parser("contract-report")
+    for a in ("--changes", "--inventory", "--active", "--out-report", "--out-findings", "--now"):
+        pcr.add_argument(a, required=True)
+    pcr.add_argument("--prev", default="-")
+    pcr.set_defaults(func=_cmd_contract_report)
 
     args = p.parse_args(argv)
     if args.func is _cmd_deliver:
