@@ -9,3 +9,4 @@ venv/
 
 # SDD scratch
 .superpowers/
+demo/out/
