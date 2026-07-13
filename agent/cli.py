@@ -20,6 +20,7 @@ from agent import run as run_mod
 from agent import commit_report as commit_report_mod
 from agent import registry_scan as registry_scan_mod
 from agent.lib.chat import build_summary_text, post_chat
+from agent.lib.contract import scan as contract_scan_mod
 
 
 def _cmd_ingest(args) -> int:
@@ -218,6 +219,19 @@ def _cmd_deliver(args, *, client=None, post=None) -> int:
     return 0 if all(r.get("ok") for r in results) else 1
 
 
+def _cmd_contract_scan(args) -> int:
+    models, skipped = contract_scan_mod.fetch_spapi_models()
+    changes = contract_scan_mod.contract_scan(models, args.snapshots, args.marketplace)
+    doc = {"marketplace": args.marketplace, "runDate": args.now,
+           "apisScanned": len(models), "skipped": skipped, "changes": changes}
+    with open(args.out, "w", encoding="utf-8") as fh:
+        json.dump(doc, fh, indent=2, ensure_ascii=False)
+    breaking = sum(1 for c in changes if c["verdict"] == "BREAKING")
+    print(f"contract-scan {args.marketplace}: {len(changes)} change(s) across "
+          f"{len(models)} api(s) ({breaking} breaking); {len(skipped)} skipped")
+    return 0
+
+
 def main(argv: list[str], *, client=None, post=None) -> int:
     p = argparse.ArgumentParser(prog="change-monitor")
     sub = p.add_subparsers(dest="cmd", required=True)
@@ -269,6 +283,13 @@ def main(argv: list[str], *, client=None, post=None) -> int:
     for a in ("--config", "--findings", "--report", "--report-url", "--now"):
         pdl.add_argument(a, required=True)
     pdl.set_defaults(func=_cmd_deliver)
+
+    pcs = sub.add_parser("contract-scan")
+    pcs.add_argument("--marketplace", default="sp-api")
+    pcs.add_argument("--snapshots", required=True)
+    pcs.add_argument("--out", required=True)
+    pcs.add_argument("--now", required=True)
+    pcs.set_defaults(func=_cmd_contract_scan)
 
     args = p.parse_args(argv)
     if args.func is _cmd_deliver:
