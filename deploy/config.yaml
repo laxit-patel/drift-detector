@@ -22,8 +22,12 @@ delivery:
 # Add framework/marketplace html_changelog feeds as you expand; marketplace contract-drift
 # detection needs the live Claude classify stage wired (see docs/DEPLOY.md).
 feeds:
-  - { techKey: api:shopify,    label: Shopify Admin API, category: integration, adapter: rss, url: https://shopify.dev/changelog/feed.xml, tier: 1 }
-  - { techKey: api:twilio,     label: Twilio,  category: integration, adapter: rss, url: https://www.twilio.com/en-us/changelog.feed.xml, tier: 1 }
+  # Marketplace change signals. techKey MUST match agent/patterns.yaml so a repo's
+  # usage joins to the change. SP-API has no changelog RSS — the official models
+  # repo's commit feed is the live signal that an API model (contract) changed.
+  - { techKey: api:amazon-sp-api, label: Amazon SP-API (models), category: integration, adapter: rss, url: https://github.com/amzn/selling-partner-api-models/commits/main.atom, tier: 1 }
+  - { techKey: api:shopify,       label: Shopify Admin API, category: integration, adapter: rss, url: https://shopify.dev/changelog/feed.xml, tier: 1 }
+  - { techKey: api:twilio,        label: Twilio,  category: integration, adapter: rss, url: https://www.twilio.com/en-us/changelog.feed.xml, tier: 1 }
   - { techKey: runtime:php,    label: PHP,     category: runtime,  adapter: endoflife, url: php,     tier: 1 }
   - { techKey: runtime:node,   label: Node.js, category: runtime,  adapter: endoflife, url: nodejs,  tier: 1 }
   - { techKey: runtime:python, label: Python,  category: runtime,  adapter: endoflife, url: python,  tier: 1 }
