@@ -40,6 +40,22 @@ def test_run_pipeline_hallucinated_url_becomes_gap(tmp_path):
     assert out["doc"]["counts"]["action"] == 0
     assert out["doc"]["coverage"]["classifyGaps"]      # rejected -> coverage gap, not silently kept
 
+def test_run_pipeline_unresolved_llm_becomes_gap(tmp_path):
+    root = str(tmp_path)
+    # An 'additive' changelog entry on a USED integration -> needsReview=True.
+    kb_store.append_entries(root, "api:shopify", [ChangeEntry(
+        techKey="api:shopify", date="2026-07-01", changeType="additive", title="New endpoint",
+        summary="", sourceUrl="https://shopify.dev/changelog", sourceTier=1, evidence="added an endpoint")])
+    inv = {"records": [], "usedTechs": [{"repo": "c/a", "tech_key": "api:shopify", "evidence": "x"}],
+           "coverage": {"reposScanned": 1}}
+    active = {"active": [{"id": 7, "path_with_namespace": "c/a"}]}
+    out = run_mod.run_pipeline(inventory=inv, active=active, kb_root=root, prev_doc={},
+                               config=_cfg(root), now="2026-07-13",
+                               classify_fn=lambda items: [],                 # LLM resolves nothing
+                               fetched_urls={"https://shopify.dev/changelog"})
+    gaps = out["doc"]["coverage"].get("classifyGaps", [])
+    assert any("unresolved" in g["reason"] for g in gaps)                    # unresolved id surfaced as a gap
+
 def test_deliver_runs_only_configured_actions():
     posted = []
     res = run_mod.deliver({"x": 1}, "md", _cfg("x"),
