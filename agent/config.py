@@ -13,10 +13,6 @@ _REQUIRED = ("techKey", "label", "category", "adapter", "url", "tier")
 # Adapters that exist in code but are not usable as a feed yet — kept in ALLOWED_ADAPTERS
 # so config load gives the specific "not yet wired" reason instead of "unknown adapter".
 NOT_YET_WIRED = {
-    "html-changelog": (
-        "adapter 'html-changelog' is implemented but not yet wired into ingest "
-        "(needs page-hash threading) — not usable as a feed yet"
-    ),
     "registry": (
         "adapter 'registry' is not a feed adapter — registry deprecation checks run via "
         "the `registry-scan` command (see docs), not as a feed"
