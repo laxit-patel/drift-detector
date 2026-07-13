@@ -16,7 +16,7 @@ def _default_run(args: list) -> str:  # pragma: no cover - real git subprocess
 
 class LocalProvider:
     def __init__(self, root: str, *, run=None):
-        self.root = Path(root)
+        self.root = Path(root).resolve()   # absolute, so `git -C` works from any CWD
         # Resolved dynamically (not a bound default) so tests can monkeypatch
         # `local_provider._default_run` and have it take effect.
         self._run = run if run is not None else _default_run

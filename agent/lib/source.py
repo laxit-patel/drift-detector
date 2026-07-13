@@ -15,6 +15,8 @@ class SourceError(Exception):
 def make_provider(config, *, env=None):
     env = os.environ if env is None else env
     src = config.source
+    if src is None:
+        raise SourceError("config has no `source` (build it via load_config)")
     if src.type == "local":
         return LocalProvider(src.local_root)
     # gitlab
