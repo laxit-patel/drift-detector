@@ -52,3 +52,45 @@ def _flatten(schema: dict, components: dict, prefix: str = "", seen: frozenset =
         else:
             fields.append(Field(path=path, type=sub_d.get("type") or "unknown", nullable=nullable))
     return fields, enums
+
+
+def _request_params(op: dict, components: dict) -> list:
+    out: list = []
+    for p in op.get("parameters") or []:
+        p, _s, _c = _deref(p or {}, components, frozenset())
+        name = p.get("name")
+        if not name:
+            continue
+        schema = p.get("schema") or {}
+        out.append(Param(name=name, type=schema.get("type") or "unknown",
+                         required=bool(p.get("required"))))
+    return out
+
+
+def _response_fields(op: dict, components: dict):
+    for code, resp in (op.get("responses") or {}).items():
+        if not str(code).startswith("2"):
+            continue
+        content = (resp or {}).get("content") or {}
+        schema = (content.get("application/json") or {}).get("schema")
+        if schema:
+            return _flatten(schema, components)
+    return [], {}
+
+
+def normalize_openapi(doc: dict) -> NormalizedSpec:
+    components = ((doc.get("components") or {}).get("schemas") or {})
+    operations: dict = {}
+    for path, item in (doc.get("paths") or {}).items():
+        if not isinstance(item, dict):
+            continue
+        for method in _METHODS:
+            op = item.get(method)
+            if not isinstance(op, dict):
+                continue
+            key = f"{method.upper()} {path}"
+            fields, enums = _response_fields(op, components)
+            operations[key] = Operation(key=key,
+                                        requestParams=_request_params(op, components),
+                                        responseFields=fields, enums=enums)
+    return NormalizedSpec(operations=operations)
