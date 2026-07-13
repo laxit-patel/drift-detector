@@ -33,6 +33,20 @@ Now the KB holds *real, current* Shopify/Twilio/endoflife/npm data; the inventor
 ## Tier 3 — Real GitLab (needs a read-only token)
 Add `gitlab:`/`scan:` sections to the config, `export GITLAB_READ_TOKEN=...`, then run `discover` + `inventory` (instead of the sample inventory) to scan your actual repos.
 
+## Local source — scan a folder of git repos (no token, no GitLab)
+```bash
+bash demo/run_local_demo.sh
+```
+This creates a couple of throwaway git repos under `demo/out/repos/` and runs the **real** pipeline (`discover → inventory → registry-scan → classify-report`) against them using `source: { type: local, root: ... }` instead of GitLab — no `GITLAB_READ_TOKEN`, no network beyond the optional `ingest`/`registry-scan` steps (which are skipped gracefully offline). It prints the resulting report at the end.
+
+To scan **your own** real cloned repos instead of the sample ones, point `source.root` in `demo/demo-config-local.yaml` (or a copy of it) at any local directory containing your cloned git repos, e.g.:
+```yaml
+source:
+  type: local
+  root: /home/you/code            # any folder of git-cloned repos
+```
+Then run the same four commands (`discover`/`inventory`/`registry-scan`/`classify-report`) shown in `demo/run_local_demo.sh` against that config — the pipeline is identical to the GitLab path, it just reads the working tree and `git log` on disk instead of calling the GitLab API.
+
 ## Tier 4/5 — Live LLM + delivery
 - LLM: pass canned verdicts now via `classify-report --dry-classify verdicts.json`; wire the real `claude_classify_fn` (needs `agent/classify.schema.json` + a pinned model id) for live judging of changelog entries.
 - Delivery: `deliver` (or `run.sh`) commits to the reports repo + posts to Google Chat once `REPORTS_TOKEN` + `GCHAT_WEBHOOK_URL` are set.

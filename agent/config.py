@@ -67,6 +67,12 @@ class DeliveryConfig:
 
 
 @dataclass
+class SourceConfig:
+    type: str = "gitlab"
+    local_root: str = ""
+
+
+@dataclass
 class Config:
     kb_root: str
     feeds: list[FeedSpec]
@@ -74,6 +80,7 @@ class Config:
     gitlab: "GitLabConfig | None" = None
     scan: "ScanConfig" = None
     delivery: "DeliveryConfig | None" = None
+    source: "SourceConfig" = None
 
 
 def _feed_from(d: dict) -> FeedSpec:
@@ -136,6 +143,16 @@ def _delivery_from(raw: dict) -> "DeliveryConfig | None":
     )
 
 
+def _source_from(raw: dict) -> "SourceConfig":
+    s = raw.get("source") or {}
+    t = s.get("type", "gitlab")
+    if t not in ("gitlab", "local"):
+        raise ConfigError(f"source.type must be gitlab or local, got '{t}'")
+    if t == "local" and not s.get("root"):
+        raise ConfigError("source.type=local requires 'root'")
+    return SourceConfig(type=t, local_root=str(s.get("root", "")))
+
+
 def load_config(path: str) -> Config:
     with open(path, "r", encoding="utf-8") as fh:
         raw = yaml.safe_load(fh) or {}
@@ -151,4 +168,5 @@ def load_config(path: str) -> Config:
         gitlab=_gitlab_from(raw),
         scan=_scan_from(raw),
         delivery=_delivery_from(raw),
+        source=_source_from(raw),
     )
