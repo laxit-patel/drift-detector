@@ -1,0 +1,15 @@
+# Scan your GitHub repos via the API (no cloning). If `gh auth login` is done,
+# no PAT needed — the token is read from `gh auth token`. Or set GITHUB_TOKEN.
+kb: { root: demo/out/kb }
+source:
+  type: github
+  owner: laxit-patel            # the authenticated GitHub user (own repos; org repos need a follow-up)
+  tokenEnv: GITHUB_TOKEN        # optional; falls back to `gh auth token`
+scan:
+  activeWindowDays: 365         # repos with a commit in the last year
+  maxRepos: 40                  # cap the scan (GitHub API is rate-limited)
+delivery: { reportsProject: demo/reports, reviewHorizonMonths: 6 }
+feeds:
+  - { techKey: runtime:php,    label: PHP,     category: runtime, adapter: endoflife, url: php,    tier: 1 }
+  - { techKey: runtime:node,   label: Node.js, category: runtime, adapter: endoflife, url: nodejs, tier: 1 }
+  - { techKey: runtime:python, label: Python,  category: runtime, adapter: endoflife, url: python, tier: 1 }
