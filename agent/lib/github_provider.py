@@ -95,3 +95,16 @@ class GitHubProvider:
         if not commits:
             return None
         return commits[0].get("commit", {}).get("committer", {}).get("date")
+
+    def get_tree(self, project_id, ref) -> list:
+        data = self._get(f"/repos/{self._full_name(project_id)}/git/trees/{ref}",
+                         {"recursive": "1"}).json() or {}
+        return [t["path"] for t in (data.get("tree") or []) if t.get("type") == "blob"]
+
+    def get_raw_file(self, project_id, path, ref) -> "str | None":
+        try:
+            resp = self._get(f"/repos/{self._full_name(project_id)}/contents/{path}",
+                             {"ref": ref}, allow_404=True, accept="application/vnd.github.raw")
+        except GitHubError:
+            return None                     # too-large / transient -> treat as unreadable
+        return resp.body_text if resp.status == 200 else None
