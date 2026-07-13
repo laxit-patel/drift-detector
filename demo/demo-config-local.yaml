@@ -1,0 +1,11 @@
+kb: { root: demo/out/kb }
+source:
+  type: local
+  root: demo/out/repos          # run_local_demo.sh creates sample repos here
+scan:
+  activeWindowDays: 3650
+delivery: { reportsProject: demo/reports, reviewHorizonMonths: 6 }
+feeds:
+  - { techKey: runtime:php,    label: PHP,     category: runtime, adapter: endoflife, url: php,    tier: 1 }
+  - { techKey: runtime:node,   label: Node.js, category: runtime, adapter: endoflife, url: nodejs, tier: 1 }
+  - { techKey: api:shopify,    label: Shopify, category: integration, adapter: rss, url: https://shopify.dev/changelog/feed.xml, tier: 1 }
