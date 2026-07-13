@@ -50,7 +50,7 @@ def candidate_to_finding(candidate, now, *, review_horizon_months=6) -> Finding:
     ctype = ce.get("changeType", "additive")
     deadline = ce.get("date", "") if ctype in _LIFECYCLE_TYPES else ""
     severity, needs_review = map_severity(ctype, deadline, now, review_horizon_months)
-    finding_type = "lifecycle" if ctype == "eol" else "drift"
+    finding_type = "lifecycle" if ctype in ("eol", "deprecation") else "drift"
     change_ref = ce.get("id", "")
     return Finding(
         id=finding_id(candidate["projectId"], candidate["techKey"], change_ref),

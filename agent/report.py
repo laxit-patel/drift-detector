@@ -1,6 +1,8 @@
 """Deterministic findings.json assembly + markdown rendering (business-logic-risk lead)."""
 from __future__ import annotations
 
+from itertools import groupby
+
 
 def assemble_findings_doc(stamped, delta, coverage, watermarks, now):
     delta = dict(delta)
@@ -27,13 +29,19 @@ def _line(f):
 
 def render_report(doc: dict) -> str:
     findings = doc["findings"]
-    action = [f for f in findings if f["severity"] == "ACTION"]
+    action = sorted([f for f in findings if f["severity"] == "ACTION"], key=lambda x: (x["techKey"], x["repo"]))
     review = [f for f in findings if f["severity"] == "REVIEW"]
     d = doc["delta"]
     out = [f"# API/Integration Change Report — {doc['runDate']}", ""]
 
     out += ["## ⚠️ Business-logic risk (ACTION)", ""]
-    out += ([_line(f) for f in action] or ["_none_"]) + [""]
+    if action:
+        for tk, grp in groupby(action, key=lambda x: x["techKey"]):
+            out.append(f"**{tk}**")
+            out += [_line(f) for f in grp]
+            out.append("")
+    else:
+        out += ["_none_", ""]
 
     out += ["## Delta", "",
             f"🆕 {len(d.get('new',[]))} new · ✅ {len(d.get('resolved',[]))} resolved · ⏳ {len(d.get('ongoing',[]))} ongoing", ""]

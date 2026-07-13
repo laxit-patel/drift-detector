@@ -29,3 +29,17 @@ def test_empty_sections_show_none():
     doc = report.assemble_findings_doc([], {"new": [], "resolved": [], "ongoing": []}, {"reposScanned": 0}, {}, "2026-07-12")
     md = report.render_report(doc)
     assert "_none_" in md    # empty ACTION section is explicit, not omitted
+
+def test_action_section_groups_by_techkey():
+    from agent.lib.finding import Finding
+    from agent import report
+    def f(fid, tk, repo):
+        return Finding(id=fid, projectId=1, repo=repo, findingType="drift", category="library",
+                       tech=tk.split("/")[-1], techKey=tk, changeType="breaking", severity="ACTION",
+                       sourceUrl="https://s", sourceTier=1, evidence="x", deltaState="NEW")
+    doc = report.assemble_findings_doc([f("1", "api:sp", "c/a"), f("2", "api:sp", "c/b"), f("3", "lib:npm/z", "c/a")],
+                                       {"new": [], "resolved": [], "ongoing": []}, {}, {}, "2026-07-13")
+    md = report.render_report(doc)
+    # the two api:sp lines are adjacent (grouped), z is separate
+    assert md.index("c/a") < md.index("c/b")
+    assert "api:sp" in md and "lib:npm/z" in md

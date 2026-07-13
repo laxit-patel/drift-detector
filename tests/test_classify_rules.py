@@ -34,3 +34,10 @@ def test_candidate_to_finding_additive_needs_review():
     f = candidate_to_finding(cand, "2026-07-10")
     assert f.severity == "OK" and f.needsReview is True and f.findingType == "drift"
     assert f.changeEntryId == "shopify|2026-07-01|x"
+
+def test_deprecation_is_lifecycle_findingtype():
+    from agent.classify_rules import candidate_to_finding
+    cand = {"repo": "c/a", "projectId": 1, "techKey": "runtime:php", "category": "runtime",
+            "versionInUse": "8.0", "changeEntry": {"id": "e1", "changeType": "deprecation",
+            "date": "2023-11-26", "sourceUrl": "https://x", "sourceTier": 1, "evidence": "EOL"}}
+    assert candidate_to_finding(cand, "2026-07-13").findingType == "lifecycle"
