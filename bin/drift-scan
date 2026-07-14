@@ -8,8 +8,9 @@
 # package-relative, and relative --root/--out paths still resolve against the
 # caller's cwd because we do NOT chdir.
 #
-# All arguments are passed straight through to `inventory-scan`
-# (e.g. --root, --state, --out-json, --out-md, --out-diff, --now).
+# Usage:
+#   drift-scan doctor              # check prerequisites, print exact fixes
+#   drift-scan [inventory-scan flags]   # e.g. --root --state --out-json --now
 set -euo pipefail
 
 # Plugin root: prefer the injected var; else derive from this script's location
@@ -24,20 +25,71 @@ MARKER="$VENV/.drift-deps-ok"
 REQ="$PLUGIN_ROOT/requirements-plugin.txt"
 PYVER="3.12"   # semgrep has well-supported wheels here; tomllib needs >=3.11
 
-# Provision the venv once (idempotent via the marker file). Prefer uv: it
-# creates a venv without the system python3-venv/ensurepip package and can fetch
-# a suitable Python itself. Fall back to system python3 (must be >=3.11 with venv).
+_UV_HINT='  • uv (recommended — also provides Python, no system packages needed):
+      curl -LsSf https://astral.sh/uv/install.sh | sh
+      # then restart your shell (or: source ~/.bashrc / ~/.zshrc)
+
+  • or Python 3.11+ with venv support, e.g. on Debian/Ubuntu:
+      sudo apt install python3.12-venv'
+
+# ---------- doctor: environment health check (does NOT provision) ----------
+if [ "${1:-}" = "doctor" ]; then
+  set +e
+  echo "drift-detector · doctor"
+  echo "  plugin root : $PLUGIN_ROOT"
+  ready=0
+  if command -v uv >/dev/null 2>&1; then
+    echo "  uv          : $(uv --version 2>/dev/null) — ok (provisions Python + engine)"
+    ready=1
+  else
+    echo "  uv          : not found"
+  fi
+  PY="${DRIFT_PYTHON:-python3}"
+  if command -v "$PY" >/dev/null 2>&1; then
+    pv="$("$PY" -c 'import sys;print("%d.%d"%sys.version_info[:2])' 2>/dev/null)"
+    if "$PY" -c 'import sys;raise SystemExit(0 if sys.version_info[:2]>=(3,11) else 1)' 2>/dev/null; then
+      if "$PY" -c 'import ensurepip, venv' 2>/dev/null; then
+        echo "  python3     : $pv (+venv) — ok"
+        [ "$ready" = "0" ] && ready=1
+      else
+        echo "  python3     : $pv — missing venv/ensurepip module"
+      fi
+    else
+      echo "  python3     : $pv — too old (need >=3.11)"
+    fi
+  else
+    echo "  python3     : not found"
+  fi
+  if [ -f "$MARKER" ]; then
+    ev="$("$VENV/bin/python" -c 'import importlib.metadata as m; print(m.version("semgrep"))' 2>/dev/null)"
+    echo "  engine venv : provisioned (semgrep ${ev:-?}) — ok"
+  else
+    echo "  engine venv : not yet — created on first scan"
+  fi
+  echo
+  if [ "$ready" = "1" ]; then
+    echo "Ready ✓   run:  /drift-detector <folder>"
+    exit 0
+  fi
+  printf 'Not ready ✗   install ONE of these, then retry:\n\n%s\n' "$_UV_HINT" >&2
+  exit 3
+fi
+
+# ---------- provision the venv once (idempotent via the marker file) ----------
+# Prefer uv: it creates a venv without the system python3-venv/ensurepip package
+# and can fetch a suitable Python itself. Fall back to system python3.
 if [ ! -f "$MARKER" ]; then
   echo "drift-detector: first-run setup — creating venv + installing the scan engine (one-time, may take a minute)…" >&2
   if command -v uv >/dev/null 2>&1; then
     uv venv --python "$PYVER" "$VENV" 1>&2
     VIRTUAL_ENV="$VENV" uv pip install -q -r "$REQ" 1>&2
-  elif command -v "${DRIFT_PYTHON:-python3}" >/dev/null 2>&1; then
+  elif command -v "${DRIFT_PYTHON:-python3}" >/dev/null 2>&1 \
+       && "${DRIFT_PYTHON:-python3}" -c 'import ensurepip, venv' 2>/dev/null; then
     "${DRIFT_PYTHON:-python3}" -m venv "$VENV"
     "$VENV/bin/python" -m pip install -q --upgrade pip 1>&2
     "$VENV/bin/python" -m pip install -q -r "$REQ" 1>&2
   else
-    echo "drift-detector: need 'uv' (recommended: https://docs.astral.sh/uv/) or python3>=3.11 with venv support." >&2
+    printf 'drift-detector: cannot provision the scanner — no usable uv/python found.\n\n%s\n\nRun  /drift-detector doctor  for a full check.\n' "$_UV_HINT" >&2
     exit 3
   fi
   touch "$MARKER"

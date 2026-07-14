@@ -30,6 +30,12 @@ def test_bootstrap_runner_present_and_executable():
     assert (_ROOT / "requirements-plugin.txt").exists()
 
 
+def test_runner_has_doctor_with_actionable_hint():
+    body = (_ROOT / "bin" / "drift-scan").read_text()
+    assert '"${1:-}" = "doctor"' in body                        # doctor health-check mode
+    assert "astral.sh/uv/install.sh" in body                    # exact uv install remediation
+
+
 def test_catalog_defaults_are_package_relative():
     # loaders must resolve their catalog regardless of the caller's cwd
     from agent.lib.vendors import _DEFAULT_VENDORS

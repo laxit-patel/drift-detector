@@ -13,9 +13,14 @@ from agent.lib.inventory_render import render_inventory_md
 from agent.lib.inventory_diff import diff_inventories
 
 
-def scan_folder(root, state_dir, now, *, engine=None, run=None, git=None) -> dict:
+def scan_folder(root, state_dir, now, *, engine=None, run=None, git=None, progress=None) -> dict:
     # `root` may be a single path or a list of roots; discovery is recursive.
     roots = [root] if isinstance(root, (str, os.PathLike)) else list(root)
+
+    def _p(msg):                            # informative phase log (optional)
+        if progress:
+            progress(msg)
+
     run = run if run is not None else opengrep._default_run
     git = git if git is not None else scan_util._default_git
     engine = engine or scan_util.resolve_engine()      # fail-loud if absent
@@ -24,18 +29,24 @@ def scan_folder(root, state_dir, now, *, engine=None, run=None, git=None) -> dic
     rules_path = os.path.join(state_dir, "rules.generated.yaml")
     write_ruleset(vendors, rules_path)
 
+    _p("discovering git repos under " + ", ".join(str(r) for r in roots) + " …")
     discovered = discover_repos(roots)     # [(abs_path, identity)], sorted, deduped
+    n = len(discovered)
+    _p(f"  {n} repo(s) found")
     repos: list = []
     coverage = {"reposScanned": 0, "reposErrored": [], "manifestsUnparsed": []}
     for i, (abs_, name) in enumerate(discovered):
         coverage["reposScanned"] += 1
+        tag = f"[{i + 1:>2}/{n}] {name}"
         try:
             sha = scan_util.git_meta(abs_, run=git)["head_sha"]
             cached = ir_store.load_repo_cache(state_dir, name, sha) if sha else None
             if cached is not None:
+                _p(f"{tag}  cached (HEAD unchanged)")
                 cached = {**cached, "id": i + 1}
                 repos.append(cached)
                 continue
+            _p(f"{tag}  scan: git · manifests · AST endpoints")
             record, note = scan_repo(abs_, name, i + 1, vendors, rules_path,
                                      engine=engine, run=run, git=git)
             repos.append(record)
@@ -43,8 +54,10 @@ def scan_folder(root, state_dir, now, *, engine=None, run=None, git=None) -> dic
                 ir_store.save_repo_cache(state_dir, name, sha, record)
             coverage["manifestsUnparsed"] += [{"repo": name, **u} for u in note["unparsed"]]
         except Exception as exc:            # no single repo aborts the scan
+            _p(f"{tag}  ⚠ error: {exc}")
             coverage["reposErrored"].append({"repo": name, "reason": str(exc)})
 
+    _p("aggregating inventory + drift delta …")
     prior = ir_store.load_ir(state_dir)                # BEFORE save_ir overwrites it
     root_count = len({os.path.realpath(r) for r in roots})   # distinct, not raw
     doc = {"generated": now,

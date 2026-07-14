@@ -67,6 +67,18 @@ def test_scan_folder_discovers_nested_repos(tmp_path):
     assert [r["path"] for r in out["doc"]["repos"]] == ["group/deep/web"]
 
 
+def test_scan_folder_progress_callback(tmp_path):
+    root = tmp_path / "repos"
+    _git_init(root / "web", {"composer.json": '{"require": {"php": "^8.2"}}'})
+    msgs = []
+    scan_folder(str(root), str(tmp_path / "state"), "2026-07-14",
+                engine="semgrep", run=_empty_run, progress=msgs.append)
+    assert any("discovering" in m for m in msgs)
+    assert any("1 repo(s) found" in m for m in msgs)
+    assert any("web" in m and "scan:" in m for m in msgs)       # per-repo phase line
+    assert any("aggregating" in m for m in msgs)
+
+
 def test_scan_folder_multiple_roots(tmp_path):
     r1, r2 = tmp_path / "a", tmp_path / "b"
     _git_init(r1 / "web", {"composer.json": '{"require": {"php": "^8.2"}}'})
@@ -114,3 +126,19 @@ def test_cli_inventory_scan_repeatable_root(tmp_path, monkeypatch):
     assert rc == 0
     doc = json.loads(out_json.read_text())
     assert sorted(r["path"] for r in doc["repos"]) == ["api", "web"]
+
+
+def test_cli_inventory_scan_progress_to_stderr(tmp_path, monkeypatch, capsys):
+    root = tmp_path / "repos"
+    _git_init(root / "web", {"composer.json": '{"require": {"php": "^8.2"}}'})
+    import agent.inventory_scan as inv
+    monkeypatch.setattr(inv.scan_util, "resolve_engine", lambda engine="opengrep": "semgrep")
+    monkeypatch.setattr(inv.opengrep, "_default_run", _empty_run, raising=False)
+    rc = cli.main(["inventory-scan", "--root", str(root), "--progress",
+                   "--state", str(tmp_path / "state"), "--out-json", str(tmp_path / "i.json"),
+                   "--out-md", str(tmp_path / "I.md"), "--now", "2026-07-14"])
+    assert rc == 0
+    captured = capsys.readouterr()
+    assert "deterministic static-analysis" in captured.err     # expectation-setting banner
+    assert "⚙" in captured.err                                 # per-phase log on stderr
+    assert "✓" in captured.out                                 # timed summary on stdout

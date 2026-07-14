@@ -261,11 +261,22 @@ def _cmd_contract_report(args) -> int:
 
 
 def _cmd_inventory_scan(args) -> int:
+    import time
+    progress = None
+    if getattr(args, "progress", False):
+        print("drift-detector · deterministic static-analysis (local · 0 LLM tokens)",
+              file=sys.stderr, flush=True)
+
+        def progress(msg):
+            print(f"⚙ {msg}", file=sys.stderr, flush=True)
+
+    t0 = time.perf_counter()
     try:
-        out = inventory_scan_mod.scan_folder(args.root, args.state, args.now)
+        out = inventory_scan_mod.scan_folder(args.root, args.state, args.now, progress=progress)
     except RuntimeError as exc:
         print(f"inventory-scan failed: {exc}", file=sys.stderr)
         return 2
+    dt = time.perf_counter() - t0
     with open(args.out_json, "w", encoding="utf-8") as fh:
         json.dump(out["doc"], fh, ensure_ascii=False, indent=2, sort_keys=True)
     with open(args.out_md, "w", encoding="utf-8") as fh:
@@ -274,9 +285,9 @@ def _cmd_inventory_scan(args) -> int:
         with open(args.out_diff, "w", encoding="utf-8") as fh:
             fh.write(render_diff_md(out["diff"]))
     d = out["doc"]
-    print(f"inventory-scan {args.now}: {len(d['repos'])} repos · "
-          f"{len(d.get('unique_apis', []))} APIs · {len(d.get('unique_packages', []))} packages · "
-          f"{len(d['coverage']['reposErrored'])} errored")
+    print(f"✓ {len(d['repos'])} repos · {len(d.get('unique_apis', []))} APIs · "
+          f"{len(d.get('unique_packages', []))} packages · "
+          f"{len(d['coverage']['reposErrored'])} errors · {dt:.1f}s")
     return 0
 
 
@@ -351,6 +362,8 @@ def main(argv: list[str], *, client=None, post=None) -> int:
     for a in ("--state", "--out-json", "--out-md", "--now"):
         pis.add_argument(a, required=True)
     pis.add_argument("--out-diff", required=False)
+    pis.add_argument("--progress", action="store_true",
+                     help="emit an informative per-phase log to stderr")
     pis.set_defaults(func=_cmd_inventory_scan)
 
     args = p.parse_args(argv)
