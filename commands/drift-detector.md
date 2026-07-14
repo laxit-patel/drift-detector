@@ -40,10 +40,11 @@ If `$ARGUMENTS` is exactly `doctor`, run `"$SCAN" doctor` (see runner discovery 
 
    The per-phase log (`⚙ discovering…`, `⚙ [n/N] repo scan…`) and the final `✓ … · Xs` line stream to stderr — surface a short version to the user so they see it worked. If it prints a first-run setup line, that's the one-time venv/engine install — let it finish. If it exits saying `uv`/python is missing (or points to `doctor`), run `"$SCAN" doctor`, relay the fix, and STOP (never fabricate a result).
 
-2. **Read** `DRIFT.md` and `INVENTORY.md` from `<first-folder>/.drift-detector/`.
+2. **Point the user at the report — don't paste it.** The scan writes a comprehensive, drift-first Markdown report to `<first-folder>/.drift-detector/INVENTORY.md` (it leads with what changed, then the inventory, then per-repo endpoints at `file:line`). Tell the user the report is ready and give its path, and offer to open it in their Markdown preview (e.g. `code "<path>/INVENTORY.md"` in VS Code, or `xdg-open`/`open`). Do **not** dump the full report into chat.
 
-3. **Report — lead with drift.**
-   - If `DRIFT.md` shows changes (there was a prior scan): **lead with what drifted** — new/removed third-party APIs, API version bumps (e.g. SP-API v0→v2), SDK version changes, runtime changes — grouped by repo, most notable first. Flag anything risky by name (retired APIs like Amazon **MWS**; a jump onto/off a deprecated version; ancient Node/PHP pins).
-   - If it's the first scan (baseline, no prior): say so, then give the **current inventory** — repos scanned, top third-party APIs by repo count (with versions where known), notable runtimes/frameworks, and any coverage gaps.
+3. **Give a short chat headline (2–4 lines), not the whole report.** Read `INVENTORY.md`/`DRIFT.md` yourself to write it:
+   - If there was a prior scan and things drifted: **lead with the drift** — e.g. "⚠ svc-orders moved SP-API v0→v2; 2 repos added." Flag anything risky by name (retired APIs like Amazon **MWS**; a deprecated version; ancient Node/PHP pins). Then: "full report → `<path>/INVENTORY.md`".
+   - If it's the first scan (baseline): one line — e.g. "Baseline: 12 repos · 5 APIs (SP-API×4, Shopify×2, …) · 0 errors" — then point to the report.
+   Keep it tight; the report holds the detail.
 
 4. **Follow-ups** — answer questions like *"which repos use Amazon SP-API?"*, *"who drifted onto an old runtime?"*, *"what Stripe versions are in use?"* by reading `inventory.json` (the queryable shape-map). **Do NOT re-scan for a question** — filter the JSON. Only re-scan when the user wants a fresh check or the code changed.

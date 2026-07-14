@@ -65,5 +65,8 @@ def scan_folder(root, state_dir, now, *, engine=None, run=None, git=None, progre
            "repos": repos, "coverage": coverage}
     doc.update(build_rollups(repos))
     ir_store.save_ir(state_dir, doc)
-    return {"doc": doc, "report_md": render_inventory_md(doc),
-            "diff": diff_inventories(prior or {}, doc)}
+    diff = diff_inventories(prior or {}, doc)
+    # On the very first scan (no prior IR) everything is "added" — that's a
+    # baseline, not drift, so the report omits the drift section.
+    report_md = render_inventory_md(doc, diff if prior else None)
+    return {"doc": doc, "report_md": report_md, "diff": diff}

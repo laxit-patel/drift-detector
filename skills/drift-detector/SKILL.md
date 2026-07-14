@@ -23,10 +23,13 @@ On first use `drift-scan` creates a plugin-local venv and installs the engine (s
 
 (For local development from the repo with the dev venv active, you can still run `python -m agent.cli inventory-scan …` directly.)
 
+## The report is `INVENTORY.md` — point the user to it, don't paste it
+`INVENTORY.md` (`--out-md`) is the human report: a comprehensive, **drift-first** Markdown doc — what changed (on a re-scan), then the summary, the APIs/frameworks/runtimes/SDKs tables, and a **per-repo section with each endpoint at `file:line`**. It's meant to be opened in a Markdown viewer (VS Code preview, GitHub). Tell the user where it is and offer to open it; give only a short 2–4 line headline in chat — never dump the whole report.
+
 ## Drift = the diff since last scan
-`DRIFT.md` (`--out-diff`) is the drift report: **new/removed third-party APIs, API version bumps (SP-API v0→v2), SDK version changes, runtime changes**, per repo. It is computed against the *previous* scan's `inventory.json`, so:
-- **First run** = a baseline (everything is "added"; no drift yet).
-- **Later runs** = only the actual changes. Lead your chat summary with these.
+`DRIFT.md` (`--out-diff`) is the standalone diff (also folded into the top of `INVENTORY.md`): **new/removed third-party APIs, API version bumps (SP-API v0→v2), SDK version changes, runtime changes**, per repo. Computed against the *previous* scan's `inventory.json`:
+- **First run** = a baseline (no drift section — everything is new).
+- **Later runs** = the actual changes. Lead your chat headline with these.
 
 ## The IR is the queryable shape-map
 The scan writes `inventory.json` — the intermediate representation (IR). **Answer follow-up questions by reading the IR, never by re-scanning or re-reading source.** Shape:

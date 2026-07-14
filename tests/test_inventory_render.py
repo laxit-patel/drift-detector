@@ -38,3 +38,36 @@ def test_render_empty_doc_does_not_crash():
 def test_render_includes_frameworks_section():
     md = render_inventory_md(_DOC)
     assert "Frameworks" in md and "laravel/framework" in md
+
+
+def test_render_has_summary_and_per_repo_with_file_line():
+    doc = {**_DOC, "repos": [
+        {"path": "acme/orders", "ref": "main", "head_sha": "abcdef1234567",
+         "sdks": [{"eco": "npm", "pkg": "axios", "ver": "^1.6"}],
+         "endpoints": [{"vendor": "Amazon SP-API", "version": "v0",
+                        "domain": "sellingpartnerapi-na.amazon.com",
+                        "files": ["src/orders.js:17", "src/sync.js:4"]}]},
+    ]}
+    md = render_inventory_md(doc)
+    assert "1 repos ·" in md and "third-party APIs" in md    # one-line summary
+    assert "## Per repo" in md and "### acme/orders" in md
+    assert "src/orders.js:17" in md                          # code-level file:line surfaced
+
+
+def test_render_leads_with_drift_when_diff_present():
+    diff = {"reposAdded": ["acme/new"], "reposRemoved": [],
+            "changes": [{"repo": "acme/web",
+                         "endpointsAdded": [], "endpointsRemoved": [],
+                         "sdksAdded": [], "sdksRemoved": [],
+                         "sdkVersionChanges": [{"eco": "npm", "pkg": "axios", "from": "^1.5", "to": "^1.6"}],
+                         "runtimeChanges": []}]}
+    md = render_inventory_md(_DOC, diff)
+    assert "Drift since last scan" in md and "Repos added" in md
+    assert "axios: ^1.5 → ^1.6" in md
+    # drift appears before the APIs table
+    assert md.index("Drift since last scan") < md.index("Third-party APIs")
+
+
+def test_render_no_drift_section_without_changes():
+    md = render_inventory_md(_DOC, {"reposAdded": [], "reposRemoved": [], "changes": []})
+    assert "Drift since last scan" not in md

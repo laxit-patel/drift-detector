@@ -43,8 +43,8 @@ Check your machine any time:
 | File | What |
 |---|---|
 | `inventory.json` | The IR — per-repo `{runtimes, frameworks, sdks, endpoints[{vendor, domain, version, file_count, files:[path:line]}]}` + rollups + coverage. The queryable shape-map. |
-| `INVENTORY.md` | Human report: third-party APIs, frameworks, runtimes, SDKs, coverage. |
-| `DRIFT.md` | What changed vs the previous scan. |
+| `INVENTORY.md` | The report to read — a comprehensive, **drift-first** Markdown doc (open in a Markdown preview): what changed, then the summary, the APIs/frameworks/runtimes/SDKs tables, and a per-repo section with each endpoint at `file:line`. |
+| `DRIFT.md` | Just the diff vs the previous scan (standalone). |
 
 Re-runs are cheap: only repos whose git `HEAD` changed are re-analyzed (per-repo
 commit-SHA cache).
