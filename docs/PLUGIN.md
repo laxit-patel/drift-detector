@@ -46,14 +46,25 @@ Git repos under `<folder>` are discovered **recursively** (at any depth). Pass m
 5. answers follow-ups (*"which repos use SP-API?"*, *"who's on an old Node?"*) from
    `inventory.json` — the queryable shape-map — without re-scanning.
 
+## Audit — `/drift-detector audit <folder>`
+
+Runs on the folder's existing `inventory.json` and checks it against **OSV.dev** (CVEs per
+package) + **endoflife.date** (EOL runtimes/frameworks), classifying findings **DEPRECATED /
+REVIEW** with cited sources. Deterministic (stdlib HTTP, no extra dependency, zero LLM tokens),
+graceful offline. Checks the **declared manifest floor** version — verify against lockfiles.
+
 ## Outputs
 
 - **`inventory.json`** — the IR: per-repo `{runtimes, frameworks, sdks, endpoints[{vendor,domain,
   version,file_count,files:[path:line]}]}` + rollups (`unique_apis`, `unique_api_versions`,
   `unique_packages`, `runtimes`) + coverage.
-- **`INVENTORY.md`** — the human report (third-party APIs, frameworks, runtimes, SDKs, coverage).
+- **`INVENTORY.md`** — the human report (drift-first: what changed, then APIs/frameworks/runtimes/SDKs,
+  per-repo endpoints at `file:line`, coverage).
 - **`DRIFT.md`** — what changed vs the previous scan (new/removed APIs, SDK version bumps, runtime
   changes).
+- **`AUDIT.md`** *(audit)* — vulnerability + EOL findings, ranked, per repo, each with a source + fix.
+- **`bom.json`** *(audit)* — CycloneDX 1.6 SBOM (components + vulnerabilities).
+- **`findings.sarif`** *(audit)* — SARIF 2.1.0 for GitHub's Security tab.
 
 ## Notes & limits (v1)
 
@@ -63,5 +74,6 @@ Git repos under `<folder>` are discovered **recursively** (at any depth). Pass m
 - Detects hard-coded endpoints + manifest-declared SDKs; an SDK used only via its client library
   (no hard-coded URL) shows via the manifest, not as a call-site.
 - Extend `agent/vendors.yaml` (vendors) and `agent/frameworks.yaml` (frameworks) as your stack grows.
-- Deferred: weekly-cron / Google-Chat delivery (the same CLI is schedulable), and Opengrep **taint**
-  rules for drift/vulnerability detection (the engine choice already supports it).
+- The audit uses Tier-1 sources (OSV + endoflife.date). Deferred: Tier 2 (registry abandoned/deprecated,
+  e.g. `fzaninotto/faker`) + Tier 3 (community/early-warning) signals; lockfile-precise versions;
+  weekly-cron + delivery (SARIF upload / committed report); fleet auto-clone.
