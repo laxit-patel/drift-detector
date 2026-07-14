@@ -9,7 +9,9 @@ venv/
 
 # SDD scratch
 .superpowers/
-demo/out/
 
-# containerized-run local state (git-persisted in CI via monitor-state branch)
-_state/
+# scan state written next to scanned folders
+.drift-detector/
+
+# local-only internal data (never publish)
+docs/results/
