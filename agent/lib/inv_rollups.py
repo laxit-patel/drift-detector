@@ -29,7 +29,8 @@ def build_rollups(repos: list) -> dict:
             packages.add((eco, name))
             package_versions.add((eco, name, fw.get("ver", "")))
         for product, rt in repo.get("runtimes", {}).items():
-            runtimes.setdefault(product, set()).add(rt.get("range", ""))
+            if rt.get("range"):
+                runtimes.setdefault(product, set()).add(rt["range"])
 
     return {
         "unique_apis": sorted(apis),

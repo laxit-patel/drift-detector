@@ -20,3 +20,11 @@ def test_repo_path_with_slashes_is_file_safe(tmp_path):
     rec = {"path": "group/sub/proj"}
     ir_store.save_repo_cache(str(tmp_path), "group/sub/proj", "s1", rec)
     assert ir_store.load_repo_cache(str(tmp_path), "group/sub/proj", "s1") == rec
+
+
+def test_colliding_paths_do_not_share_cache(tmp_path):
+    # "group_a/proj" and "group/a_proj" would collide under a naive "/"->"_" scheme
+    ir_store.save_repo_cache(str(tmp_path), "group_a/proj", "s", {"which": "A"})
+    ir_store.save_repo_cache(str(tmp_path), "group/a_proj", "s", {"which": "B"})
+    assert ir_store.load_repo_cache(str(tmp_path), "group_a/proj", "s") == {"which": "A"}
+    assert ir_store.load_repo_cache(str(tmp_path), "group/a_proj", "s") == {"which": "B"}

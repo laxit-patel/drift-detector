@@ -9,7 +9,8 @@ _DOC = {
          "endpoints": [{"vendor": "Amazon SP-API", "version": "v0"}]},
         {"path": "acme/web", "sdks": [{"eco": "npm", "pkg": "axios", "ver": "^1.6"}],
          "endpoints": [{"vendor": "Amazon SP-API", "version": "v0"},
-                       {"vendor": "Stripe", "version": "v1"}]},
+                       {"vendor": "Stripe", "version": "v1"}],
+         "frameworks": {"laravel/framework": {"ver": "^12.0"}}},
     ],
     "unique_api_versions": [{"vendor": "Amazon SP-API", "version": "v0"}, {"vendor": "Stripe", "version": "v1"}],
     "runtimes": {"php": ["^8.2", "^8.3"]},
@@ -32,3 +33,8 @@ def test_render_has_key_sections_and_counts():
 def test_render_empty_doc_does_not_crash():
     md = render_inventory_md({"repos": [], "coverage": {}})
     assert isinstance(md, str) and "Third-party APIs" in md
+
+
+def test_render_includes_frameworks_section():
+    md = render_inventory_md(_DOC)
+    assert "Frameworks" in md and "laravel/framework" in md

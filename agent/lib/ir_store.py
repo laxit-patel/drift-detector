@@ -2,6 +2,7 @@
 A cache hit (same sha) lets the scanner reuse a repo's record; a changed sha misses -> re-scan."""
 from __future__ import annotations
 
+import hashlib
 import json
 from pathlib import Path
 
@@ -11,8 +12,8 @@ def _ir_path(state_dir: str) -> Path:
 
 
 def _repo_path(state_dir: str, path: str, head_sha: str) -> Path:
-    safe = path.replace("/", "_")
-    return Path(state_dir) / "repos" / f"{safe}@{head_sha}.json"
+    key = hashlib.sha256(path.encode("utf-8")).hexdigest()[:16]
+    return Path(state_dir) / "repos" / f"{key}@{head_sha}.json"
 
 
 def _write(p: Path, doc: dict) -> None:
