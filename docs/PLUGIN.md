@@ -1,4 +1,4 @@
-# Integration Inventory — Claude Code Plugin
+# Drift Detector — Claude Code Plugin
 
 A Claude Code plugin that scans a folder of cloned repos for **code-level third-party
 integration usage** (which APIs/SDKs each project uses, `file:line`, versions) and reports it
@@ -7,8 +7,8 @@ expensive autonomous LLM agent.
 
 ## What it is
 
-- **Slash command** `/integration-inventory <folder>` — runs a scan and summarizes it in chat.
-- **Skill** `integration-inventory` — teaches Claude to run/interpret the scan and answer
+- **Slash command** `/drift-detector <folder>` — runs a scan and summarizes it in chat.
+- **Skill** `drift-detector` — teaches Claude to run/interpret the scan and answer
   follow-up questions by querying the produced inventory (the "IR"), never by re-scanning.
 
 The cost model: the scan is a deterministic static-analysis run (**zero LLM tokens**); Claude
@@ -27,14 +27,14 @@ whole scan itself.
 ## Use
 
 ```
-/integration-inventory /path/to/folder-of-cloned-repos
+/drift-detector /path/to/folder-of-cloned-repos
 ```
 
 `<folder>`'s immediate subdirectories must be git clones. The command:
 1. checks the engine,
 2. runs the scan (only repos whose git `HEAD` changed since last time are re-analyzed — a
    per-repo commit-SHA cache makes re-runs fast),
-3. writes `<folder>/.integration-inventory/{inventory.json, INVENTORY.md, DIFF.md}`,
+3. writes `<folder>/.drift-detector/{inventory.json, INVENTORY.md, DRIFT.md}`,
 4. narrates a summary (top APIs by repo count, runtimes/frameworks, what changed since last scan),
 5. answers follow-ups (*"which repos use SP-API?"*, *"who's on an old Node?"*) from
    `inventory.json` — the queryable shape-map — without re-scanning.
@@ -45,7 +45,7 @@ whole scan itself.
   version,file_count,files:[path:line]}]}` + rollups (`unique_apis`, `unique_api_versions`,
   `unique_packages`, `runtimes`) + coverage.
 - **`INVENTORY.md`** — the human report (third-party APIs, frameworks, runtimes, SDKs, coverage).
-- **`DIFF.md`** — what changed vs the previous scan (new/removed APIs, SDK version bumps, runtime
+- **`DRIFT.md`** — what changed vs the previous scan (new/removed APIs, SDK version bumps, runtime
   changes).
 
 ## Notes & limits (v1)
