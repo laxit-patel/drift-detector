@@ -4,20 +4,41 @@ Pure filesystem discovery (pathlib only, no git subprocess): a directory "is a r
 iff it contains a `.git` entry. Discovery does not descend into a found repo (its
 submodules/vendored `.git` dirs are not separate repos to scan) nor into common
 noise directories (`_SKIP_DIRS`).
+
+Repo *identity* (the diff/tracking key) is derived deterministically and
+independently of the order of `roots`:
+- each repo's "home root" is the nearest ancestor root (longest path prefix);
+- the base identity is the repo's path relative to that home root (or the home
+  root's basename when the repo *is* the root);
+- if two *different* repos would collide on the same identity (e.g. two roots
+  that share a basename), each is disambiguated by prefixing with its home
+  root's path relative to the common ancestor of all roots — unique by
+  construction, since distinct absolute paths stay distinct relative to a shared
+  prefix.
 """
 from __future__ import annotations
 
+import os
 from pathlib import Path
 
 _SKIP_DIRS = {".git", "node_modules", "vendor", ".venv", "dist", "build", "target", "__pycache__"}
 
 
-def _find_git_repos(root: Path):
+def _find_git_repos(root: Path, visited: set | None = None):
     """Yield each dir under (and including) root that is a git repo, recursively.
 
     A repo is a dir containing a `.git` entry. Once found, its subtree is not
     descended into. Dirs named in `_SKIP_DIRS` are never descended into.
+    Symlinks are followed, but a `visited` set of resolved paths guards against
+    symlink cycles causing unbounded recursion.
     """
+    if visited is None:
+        visited = set()
+    resolved = root.resolve()
+    if resolved in visited:
+        return
+    visited.add(resolved)
+
     if (root / ".git").exists():
         yield root
         return
@@ -28,43 +49,55 @@ def _find_git_repos(root: Path):
     for child in children:
         if child.name in _SKIP_DIRS:
             continue
-        yield from _find_git_repos(child)
+        yield from _find_git_repos(child, visited)
 
 
 def discover_repos(roots: list) -> list:
     """Find all git repos recursively beneath each of `roots`.
 
     Returns a sorted list of (abs_repo_path, identity) tuples, deduped by
-    resolved absolute repo path. `identity` is the repo's path relative to
-    the root it was discovered under (or the root's basename, if the repo
-    IS that root). If two different repos would otherwise share the same
-    identity string, both are disambiguated by prefixing with their own
-    root's basename: `<root_basename>/<identity>`.
+    resolved absolute repo path. Identity is order-independent and
+    collision-free — see the module docstring for the scheme.
     """
-    # seen: resolved abs path -> identity (first root that reaches it wins the entry)
-    seen: dict = {}
+    resolved_roots = [Path(r).resolve() for r in roots]
 
-    for raw_root in roots:
-        root = Path(raw_root).resolve()
+    # Collect distinct repos by resolved absolute path.
+    repos: set = set()
+    for root in resolved_roots:
         for repo in _find_git_repos(root):
-            repo_resolved = repo.resolve()
-            if repo_resolved in seen:
-                continue
-            if repo_resolved == root:
-                identity = root.name
-            else:
-                identity = repo_resolved.relative_to(root).as_posix()
-            seen[repo_resolved] = (root.name, identity)
+            repos.add(repo.resolve())
 
-    # Detect identity collisions across different resolved paths.
-    identity_owners: dict = {}
-    for repo_resolved, (root_name, identity) in seen.items():
-        identity_owners.setdefault(identity, set()).add(repo_resolved)
+    # Home root = nearest ancestor root (longest path); deterministic, and
+    # independent of the order of `roots`. Every discovered repo has at least
+    # one ancestor (or equal) root, so `candidates` is never empty.
+    def _home_root(repo: Path) -> Path:
+        candidates = [r for r in resolved_roots if r == repo or r in repo.parents]
+        return max(candidates, key=lambda r: (len(r.parts), str(r)))
+
+    base: dict = {}
+    for repo in repos:
+        hr = _home_root(repo)
+        identity = hr.name if repo == hr else repo.relative_to(hr).as_posix()
+        base[repo] = (hr, identity)
+
+    # Identity collisions can only occur across *different* home roots (distinct
+    # repos under one root have distinct relative paths). Prefix colliding repos
+    # with their home root's path relative to the common ancestor of all roots.
+    owners: dict = {}
+    for repo, (hr, identity) in base.items():
+        owners.setdefault(identity, []).append(repo)
+
+    def _disambig_prefix(hr: Path) -> str:
+        try:
+            common = Path(os.path.commonpath([str(r) for r in resolved_roots]))
+            return hr.relative_to(common).as_posix()
+        except ValueError:  # no common path (e.g. different drives) -> full path
+            return hr.relative_to(hr.anchor).as_posix()
 
     result = []
-    for repo_resolved, (root_name, identity) in seen.items():
-        if len(identity_owners[identity]) > 1:
-            identity = f"{root_name}/{identity}"
-        result.append((str(repo_resolved), identity))
+    for repo, (hr, identity) in base.items():
+        if len(owners[identity]) > 1:
+            identity = f"{_disambig_prefix(hr)}/{identity}"
+        result.append((str(repo), identity))
 
     return sorted(result)

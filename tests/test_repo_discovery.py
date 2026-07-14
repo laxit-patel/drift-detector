@@ -1,3 +1,5 @@
+import os
+
 from pathlib import Path
 
 from agent.lib.repo_discovery import discover_repos
@@ -84,3 +86,45 @@ def test_root_itself_is_a_repo(tmp_path):
     abs_path, identity = found[0]
     assert identity == "myrepo"
     assert Path(abs_path) == root.resolve()
+
+
+def test_same_basename_roots_disambiguated(tmp_path):
+    # Two roots that share a basename ("project"); each has an "app" repo.
+    # Basename-only disambiguation would collapse both to "project/app" —
+    # the fix prefixes relative to the common ancestor, keeping them distinct.
+    parent = tmp_path / "parent"
+    root1 = parent / "g1" / "project"
+    root2 = parent / "g2" / "project"
+    _mkrepo(root1 / "app")
+    _mkrepo(root2 / "app")
+
+    found = discover_repos([str(root1), str(root2)])
+    identities = sorted(identity for _, identity in found)
+    assert identities == ["g1/project/app", "g2/project/app"]
+
+
+def test_identity_is_order_independent(tmp_path):
+    # Overlapping roots (one is an ancestor of the other). The repo's identity
+    # must not depend on which root appears first in the list.
+    team = tmp_path / "team"
+    _mkrepo(team / "legacy" / "api")
+    _mkrepo(team / "svc")
+    legacy = team / "legacy"
+
+    found_ab = discover_repos([str(team), str(legacy)])
+    found_ba = discover_repos([str(legacy), str(team)])
+    assert found_ab == found_ba
+
+    identities = sorted(identity for _, identity in found_ab)
+    # nearest-ancestor root for the api repo is `legacy` -> identity "api"
+    assert identities == ["api", "svc"]
+
+
+def test_symlink_cycle_terminates(tmp_path):
+    root = tmp_path / "root"
+    _mkrepo(root / "real")
+    os.symlink(root, root / "loop", target_is_directory=True)  # cycle back to root
+
+    found = discover_repos([str(root)])
+    identities = sorted(identity for _, identity in found)
+    assert identities == ["real"]
