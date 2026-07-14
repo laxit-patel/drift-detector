@@ -2,18 +2,20 @@
 from __future__ import annotations
 
 import os
-from pathlib import Path
 
 from agent.lib import ir_store, opengrep, scan_util
 from agent.lib.vendors import load_vendors
 from agent.lib.vendor_rules import write_ruleset
 from agent.lib.repo_scan import scan_repo
+from agent.lib.repo_discovery import discover_repos
 from agent.lib.inv_rollups import build_rollups
 from agent.lib.inventory_render import render_inventory_md
 from agent.lib.inventory_diff import diff_inventories
 
 
 def scan_folder(root, state_dir, now, *, engine=None, run=None, git=None) -> dict:
+    # `root` may be a single path or a list of roots; discovery is recursive.
+    roots = [root] if isinstance(root, (str, os.PathLike)) else list(root)
     run = run if run is not None else opengrep._default_run
     git = git if git is not None else scan_util._default_git
     engine = engine or scan_util.resolve_engine()      # fail-loud if absent
@@ -22,12 +24,10 @@ def scan_folder(root, state_dir, now, *, engine=None, run=None, git=None) -> dic
     rules_path = os.path.join(state_dir, "rules.generated.yaml")
     write_ruleset(vendors, rules_path)
 
-    repo_dirs = sorted(d for d in Path(root).iterdir() if d.is_dir() and (d / ".git").exists())
+    discovered = discover_repos(roots)     # [(abs_path, identity)], sorted, deduped
     repos: list = []
     coverage = {"reposScanned": 0, "reposErrored": [], "manifestsUnparsed": []}
-    for i, d in enumerate(repo_dirs):
-        name = d.name
-        abs_ = str(d.resolve())
+    for i, (abs_, name) in enumerate(discovered):
         coverage["reposScanned"] += 1
         try:
             sha = scan_util.git_meta(abs_, run=git)["head_sha"]
@@ -46,7 +46,8 @@ def scan_folder(root, state_dir, now, *, engine=None, run=None, git=None) -> dic
             coverage["reposErrored"].append({"repo": name, "reason": str(exc)})
 
     prior = ir_store.load_ir(state_dir)                # BEFORE save_ir overwrites it
-    doc = {"generated": now, "scope": {"reposScanned": coverage["reposScanned"]},
+    doc = {"generated": now,
+           "scope": {"rootCount": len(roots), "reposScanned": coverage["reposScanned"]},
            "repos": repos, "coverage": coverage}
     doc.update(build_rollups(repos))
     ir_store.save_ir(state_dir, doc)

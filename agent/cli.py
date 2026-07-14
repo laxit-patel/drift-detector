@@ -346,7 +346,9 @@ def main(argv: list[str], *, client=None, post=None) -> int:
     pcr.set_defaults(func=_cmd_contract_report)
 
     pis = sub.add_parser("inventory-scan")
-    for a in ("--root", "--state", "--out-json", "--out-md", "--now"):
+    pis.add_argument("--root", action="append", required=True,
+                     help="folder to scan for git repos (recursive); repeat for multiple roots")
+    for a in ("--state", "--out-json", "--out-md", "--now"):
         pis.add_argument(a, required=True)
     pis.add_argument("--out-diff", required=False)
     pis.set_defaults(func=_cmd_inventory_scan)
