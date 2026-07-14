@@ -1,0 +1,32 @@
+# Framework catalog — packages classified as frameworks (vs generic SDKs) in the inventory.
+# Names match the extractors' lowercased ecosystem + package name. Reflects the PM's
+# Frameworks table (laravel/framework, react, next, express, vue, @nestjs/core, celery).
+composer:
+  - laravel/framework
+  - symfony/symfony
+  - symfony/framework-bundle
+  - cakephp/cakephp
+  - yiisoft/yii2
+  - codeigniter4/framework
+  - laminas/laminas-mvc
+npm:
+  - react
+  - next
+  - vue
+  - nuxt
+  - "@angular/core"
+  - "@nestjs/core"
+  - express
+  - koa
+  - fastify
+  - svelte
+  - "@remix-run/react"
+  - gatsby
+python:
+  - django
+  - flask
+  - fastapi
+  - celery
+  - tornado
+  - pyramid
+  - sanic
