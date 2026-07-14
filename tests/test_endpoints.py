@@ -78,3 +78,16 @@ def test_two_unrelated_vendors_on_same_line_both_kept(tmp_path):
     assert by["api:stripe"]["version"] == "v1"          # each version from its OWN url, not the neighbor's
     assert by["api:amazon-sp-api"]["version"] == "v0"
     assert "stripe" in by["api:stripe"]["example"] and "sellingpartner" in by["api:amazon-sp-api"]["example"]
+
+
+def test_endpoint_files_are_repo_relative(tmp_path):
+    # the engine returns ABSOLUTE paths when scanning an absolute dir; files[] must be repo-relative
+    from agent.lib.vendors import Vendor
+    (tmp_path / "lib").mkdir()
+    (tmp_path / "lib" / "req.php").write_text('"https://api.stripe.com/v1/x";\n')
+    abs_path = str(tmp_path / "lib" / "req.php")
+    v = [Vendor("Stripe", "api:stripe", ("api.stripe.com",), r'/(v\d+)')]
+    eps = build_endpoints([{"kind": "endpoint", "techKey": "api:stripe", "vendor": "Stripe",
+                            "path": abs_path, "line": 1}], str(tmp_path), v)
+    assert eps[0]["files"] == ["lib/req.php:1"]          # relative, not the absolute /tmp/... path
+    assert eps[0]["version"] == "v1"                      # still reads the line + extracts version

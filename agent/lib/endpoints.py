@@ -29,6 +29,18 @@ def _read_line(repo_root: str, path: str, line: int, cache: dict) -> str:
     return lines[line - 1] if 1 <= line <= len(lines) else ""
 
 
+def _relpath(path: str, repo_root: str) -> str:
+    """Repo-relative form of a match path, so the persisted IR is portable/diff-stable
+    (the engine returns absolute paths when scanning an absolute dir). Relative paths pass through."""
+    p = Path(path)
+    if not p.is_absolute():
+        return path
+    try:
+        return str(p.resolve().relative_to(Path(repo_root).resolve()))
+    except ValueError:
+        return path
+
+
 def _domain_in(line: str, domains) -> str:
     for d in domains:
         if d in line:
@@ -61,14 +73,15 @@ def build_endpoints(matches: list, repo_root: str, vendors: list, *, max_files: 
         if m.get("kind") != "endpoint":
             continue
         v = by_key.get(m.get("techKey", ""))
-        line = _read_line(repo_root, m.get("path", ""), int(m.get("line", 0) or 0), line_cache)
+        rel = _relpath(m.get("path", ""), repo_root)          # repo-relative for portable IR
+        line = _read_line(repo_root, rel, int(m.get("line", 0) or 0), line_cache)
         domain = _domain_in(line, v.domains) if v else ""
         # Anchor version/example to THIS vendor's own URL segment so a second vendor URL on the
         # same line (realistic in minified/bundled JS) can't contaminate the version we report.
         seg = _segment(line, domain) if domain else line
         version = _version(seg, v.version_regex) if v else None
-        loc = (m.get("path", ""), int(m.get("line", 0) or 0))
-        computed.append({"loc": loc, "domain": domain, "version": version, "seg": seg, "match": m})
+        loc = (rel, int(m.get("line", 0) or 0))
+        computed.append({"loc": loc, "rel": rel, "domain": domain, "version": version, "seg": seg, "match": m})
 
     # Nesting-only dedup: group matches by (path, line), then within each group drop a match
     # only when its resolved domain is a proper substring (strictly shorter, and `in`) of some
@@ -100,7 +113,7 @@ def build_endpoints(matches: list, repo_root: str, vendors: list, *, max_files: 
                    "techKey": m.get("techKey", ""), "example": c["seg"].strip(),
                    "file_count": 0, "files": []}
             groups[key] = rec
-        loc_str = f"{m.get('path','')}:{m.get('line',0)}"
+        loc_str = f"{c['rel']}:{m.get('line',0)}"
         rec["file_count"] += 1
         if len(rec["files"]) < max_files and loc_str not in rec["files"]:
             rec["files"].append(loc_str)
