@@ -20,7 +20,7 @@ whole scan itself.
 The plugin is distributed as a Claude Code **marketplace** (this git repo). To install:
 
 ```
-/plugin marketplace add <git-url-of-this-repo>
+/plugin marketplace add https://github.com/laxit-patel/drift-detector
 /plugin install drift-detector@tops-tools
 ```
 
