@@ -22,6 +22,7 @@ from agent import registry_scan as registry_scan_mod
 from agent.lib.chat import build_summary_text, post_chat
 from agent.lib.contract import scan as contract_scan_mod
 from agent import contract_report as contract_report_mod
+from agent import inventory_scan as inventory_scan_mod
 
 
 def _cmd_ingest(args) -> int:
@@ -258,6 +259,19 @@ def _cmd_contract_report(args) -> int:
     return 0
 
 
+def _cmd_inventory_scan(args) -> int:
+    out = inventory_scan_mod.scan_folder(args.root, args.state, args.now)
+    with open(args.out_json, "w", encoding="utf-8") as fh:
+        json.dump(out["doc"], fh, ensure_ascii=False, indent=2, sort_keys=True)
+    with open(args.out_md, "w", encoding="utf-8") as fh:
+        fh.write(out["report_md"])
+    d = out["doc"]
+    print(f"inventory-scan {args.now}: {len(d['repos'])} repos · "
+          f"{len(d.get('unique_apis', []))} APIs · {len(d.get('unique_packages', []))} packages · "
+          f"{len(d['coverage']['reposErrored'])} errored")
+    return 0
+
+
 def main(argv: list[str], *, client=None, post=None) -> int:
     p = argparse.ArgumentParser(prog="change-monitor")
     sub = p.add_subparsers(dest="cmd", required=True)
@@ -322,6 +336,11 @@ def main(argv: list[str], *, client=None, post=None) -> int:
         pcr.add_argument(a, required=True)
     pcr.add_argument("--prev", default="-")
     pcr.set_defaults(func=_cmd_contract_report)
+
+    pis = sub.add_parser("inventory-scan")
+    for a in ("--root", "--state", "--out-json", "--out-md", "--now"):
+        pis.add_argument(a, required=True)
+    pis.set_defaults(func=_cmd_inventory_scan)
 
     args = p.parse_args(argv)
     if args.func is _cmd_deliver:
