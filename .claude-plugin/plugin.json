@@ -1,0 +1,17 @@
+{
+  "name": "integration-inventory",
+  "description": "Scan a folder of cloned repos for code-level third-party API/SDK usage (via Opengrep) and report it in chat — cheap, deterministic, incremental.",
+  "version": "0.1.0",
+  "author": {
+    "name": "TOPS"
+  },
+  "keywords": [
+    "inventory",
+    "api",
+    "integration",
+    "sast",
+    "opengrep",
+    "dependencies",
+    "deprecation"
+  ]
+}
