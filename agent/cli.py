@@ -260,7 +260,11 @@ def _cmd_contract_report(args) -> int:
 
 
 def _cmd_inventory_scan(args) -> int:
-    out = inventory_scan_mod.scan_folder(args.root, args.state, args.now)
+    try:
+        out = inventory_scan_mod.scan_folder(args.root, args.state, args.now)
+    except RuntimeError as exc:
+        print(f"inventory-scan failed: {exc}", file=sys.stderr)
+        return 2
     with open(args.out_json, "w", encoding="utf-8") as fh:
         json.dump(out["doc"], fh, ensure_ascii=False, indent=2, sort_keys=True)
     with open(args.out_md, "w", encoding="utf-8") as fh:

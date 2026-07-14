@@ -12,8 +12,9 @@ from agent.lib.inv_rollups import build_rollups
 from agent.lib.inventory_render import render_inventory_md
 
 
-def scan_folder(root, state_dir, now, *, engine=None,
-                run=opengrep._default_run, git=scan_util._default_git) -> dict:
+def scan_folder(root, state_dir, now, *, engine=None, run=None, git=None) -> dict:
+    run = run if run is not None else opengrep._default_run
+    git = git if git is not None else scan_util._default_git
     engine = engine or scan_util.resolve_engine()      # fail-loud if absent
     os.makedirs(state_dir, exist_ok=True)
     vendors = load_vendors()
@@ -31,6 +32,7 @@ def scan_folder(root, state_dir, now, *, engine=None,
             sha = scan_util.git_meta(abs_, run=git)["head_sha"]
             cached = ir_store.load_repo_cache(state_dir, name, sha) if sha else None
             if cached is not None:
+                cached = {**cached, "id": i + 1}
                 repos.append(cached)
                 continue
             record, note = scan_repo(abs_, name, i + 1, vendors, rules_path,
