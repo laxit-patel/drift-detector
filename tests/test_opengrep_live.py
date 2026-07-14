@@ -1,3 +1,5 @@
+import os
+import sys
 import shutil
 import pytest
 
@@ -6,7 +8,16 @@ from agent.lib.vendor_rules import write_ruleset
 from agent.lib.opengrep import run_scan
 from agent.lib.endpoints import build_endpoints
 
-_ENGINE = shutil.which("opengrep") or shutil.which("semgrep")
+
+def _find_engine():
+    for name in ("opengrep", "semgrep"):
+        p = shutil.which(name) or os.path.join(os.path.dirname(sys.executable), name)
+        if os.path.exists(p):
+            return p
+    return None
+
+
+_ENGINE = _find_engine()
 
 
 @pytest.mark.skipif(_ENGINE is None, reason="no opengrep/semgrep engine installed")
@@ -25,8 +36,7 @@ def test_live_endpoint_extraction_skips_comments(tmp_path):
     rules = tmp_path / "rules.yaml"
     write_ruleset(vendors, str(rules))
 
-    engine = "opengrep" if shutil.which("opengrep") else "semgrep"
-    res = run_scan(str(tmp_path), str(rules), engine=engine)
+    res = run_scan(str(tmp_path), str(rules), engine=_ENGINE)
     eps = build_endpoints(res["matches"], str(tmp_path), vendors)
 
     by_key = {e["techKey"]: e for e in eps}

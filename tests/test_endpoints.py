@@ -73,5 +73,8 @@ def test_two_unrelated_vendors_on_same_line_both_kept(tmp_path):
     matches=[{"kind":"endpoint","techKey":"api:stripe","vendor":"Stripe","path":"m.php","line":1},
              {"kind":"endpoint","techKey":"api:amazon-sp-api","vendor":"Amazon SP-API","path":"m.php","line":1}]
     eps = build_endpoints(matches, str(tmp_path), vendors)
-    keys = {e["techKey"] for e in eps}
-    assert keys == {"api:stripe","api:amazon-sp-api"}   # unrelated domains on one line -> BOTH kept
+    by = {e["techKey"]: e for e in eps}
+    assert set(by) == {"api:stripe","api:amazon-sp-api"}   # unrelated domains on one line -> BOTH kept
+    assert by["api:stripe"]["version"] == "v1"          # each version from its OWN url, not the neighbor's
+    assert by["api:amazon-sp-api"]["version"] == "v0"
+    assert "stripe" in by["api:stripe"]["example"] and "sellingpartner" in by["api:amazon-sp-api"]["example"]

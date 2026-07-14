@@ -17,12 +17,15 @@ import re
 from pathlib import Path
 
 
-def _read_line(repo_root: str, path: str, line: int) -> str:
-    try:
-        text = (Path(repo_root) / path).read_text(encoding="utf-8", errors="replace")
-    except OSError:
-        return ""
-    lines = text.splitlines()
+def _read_line(repo_root: str, path: str, line: int, cache: dict) -> str:
+    lines = cache.get(path)
+    if lines is None:
+        try:
+            text = (Path(repo_root) / path).read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            text = ""
+        lines = text.splitlines()
+        cache[path] = lines
     return lines[line - 1] if 1 <= line <= len(lines) else ""
 
 
@@ -38,20 +41,34 @@ def _version(line: str, version_regex: str):
     return m.group(1) if m else None
 
 
+def _segment(line: str, domain: str) -> str:
+    """The URL substring anchored at this vendor's domain (domain -> next quote/space),
+    so a second vendor URL on the same line can't contaminate version/example."""
+    idx = line.find(domain)
+    if idx < 0:
+        return line
+    import re as _re
+    return _re.split(r'["\'\s]', line[idx:], 1)[0]
+
+
 def build_endpoints(matches: list, repo_root: str, vendors: list, *, max_files: int = 20) -> list:
     by_key = {v.techKey: v for v in vendors}
 
     # Pass 1: resolve each endpoint match's line/domain/version, keyed by its source location.
     computed = []
+    line_cache: dict = {}
     for m in matches:
         if m.get("kind") != "endpoint":
             continue
         v = by_key.get(m.get("techKey", ""))
-        line = _read_line(repo_root, m.get("path", ""), int(m.get("line", 0) or 0))
+        line = _read_line(repo_root, m.get("path", ""), int(m.get("line", 0) or 0), line_cache)
         domain = _domain_in(line, v.domains) if v else ""
-        version = _version(line, v.version_regex) if v else None
+        # Anchor version/example to THIS vendor's own URL segment so a second vendor URL on the
+        # same line (realistic in minified/bundled JS) can't contaminate the version we report.
+        seg = _segment(line, domain) if domain else line
+        version = _version(seg, v.version_regex) if v else None
         loc = (m.get("path", ""), int(m.get("line", 0) or 0))
-        computed.append({"loc": loc, "domain": domain, "version": version, "line": line, "match": m})
+        computed.append({"loc": loc, "domain": domain, "version": version, "seg": seg, "match": m})
 
     # Nesting-only dedup: group matches by (path, line), then within each group drop a match
     # only when its resolved domain is a proper substring (strictly shorter, and `in`) of some
@@ -80,7 +97,7 @@ def build_endpoints(matches: list, repo_root: str, vendors: list, *, max_files: 
         rec = groups.get(key)
         if rec is None:
             rec = {"vendor": m.get("vendor", ""), "domain": c["domain"], "version": c["version"],
-                   "techKey": m.get("techKey", ""), "example": c["line"].strip(),
+                   "techKey": m.get("techKey", ""), "example": c["seg"].strip(),
                    "file_count": 0, "files": []}
             groups[key] = rec
         loc_str = f"{m.get('path','')}:{m.get('line',0)}"
