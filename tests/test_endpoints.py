@@ -62,3 +62,16 @@ def test_nested_domain_attributes_to_most_specific_vendor(tmp_path):
                {"kind":"endpoint","techKey":"api:google-maps","vendor":"Google Maps","path":"m.php","line":1}]
     eps = build_endpoints(matches, str(tmp_path), vendors)
     assert len(eps) == 1 and eps[0]["techKey"] == "api:google-maps"   # most-specific wins, no double-count
+
+
+def test_two_unrelated_vendors_on_same_line_both_kept(tmp_path):
+    _write(tmp_path, "m.php",
+           '$u = ["https://api.stripe.com/v1/a","https://sellingpartnerapi.com/orders/v0/b"];\n')
+    vendors = [Vendor("Stripe","api:stripe",("api.stripe.com",),r'/(v\d+)'),
+               Vendor("Amazon SP-API","api:amazon-sp-api",("sellingpartnerapi",),
+                      r'/(v[0-9][0-9.]*|[0-9]{4}-[0-9]{2}-[0-9]{2})')]
+    matches=[{"kind":"endpoint","techKey":"api:stripe","vendor":"Stripe","path":"m.php","line":1},
+             {"kind":"endpoint","techKey":"api:amazon-sp-api","vendor":"Amazon SP-API","path":"m.php","line":1}]
+    eps = build_endpoints(matches, str(tmp_path), vendors)
+    keys = {e["techKey"] for e in eps}
+    assert keys == {"api:stripe","api:amazon-sp-api"}   # unrelated domains on one line -> BOTH kept

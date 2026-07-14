@@ -1,11 +1,15 @@
 """Turn normalized engine matches into endpoint records: read the matched line from the file,
 extract the API version, and aggregate per (techKey, domain, version).
 
-Nested-domain dedup: some vendor domains are supersets of others (e.g. `maps.googleapis.com`
+Nesting-only dedup: some vendor domains are supersets of others (e.g. `maps.googleapis.com`
 is a superset of `googleapis.com`), so a single URL can trigger rules for multiple techKeys at
-the same (path, line). Before aggregating, we collapse each distinct location down to the match
-whose vendor domain found in the line is the longest (most specific), dropping the rest, so one
-occurrence is never double-attributed to both the specific and the generic vendor.
+the same (path, line). When that happens we drop the generic match and keep only the most
+specific one. But two matches on the same line are NOT always the same URL -- a minified or
+concatenated source line can legitimately contain two unrelated vendor URLs (e.g. a Stripe URL
+and an Amazon SP-API URL on one line). Since this tool must never silently miss a genuine
+endpoint, we only drop a match when its resolved domain is a proper substring of another
+match's resolved domain at the same (path, line); unrelated domains on the same line are both
+kept.
 """
 from __future__ import annotations
 
@@ -49,17 +53,28 @@ def build_endpoints(matches: list, repo_root: str, vendors: list, *, max_files: 
         loc = (m.get("path", ""), int(m.get("line", 0) or 0))
         computed.append({"loc": loc, "domain": domain, "version": version, "line": line, "match": m})
 
-    # Most-specific-domain-wins dedup: when several matches land on the same (path, line)
-    # (nested vendor domains all matching one URL), keep only the one with the longest domain.
-    best_by_loc: dict = {}
+    # Nesting-only dedup: group matches by (path, line), then within each group drop a match
+    # only when its resolved domain is a proper substring (strictly shorter, and `in`) of some
+    # other match's resolved domain in the same group. Two unrelated domains on the same line
+    # (neither a substring of the other) are both kept. An empty "" domain (unknown vendor) is
+    # a substring of any non-empty domain, so it's dropped when a real domain is present at the
+    # same spot; if every domain in a group is "", they all survive (len(d) < len(d) is False).
+    by_loc: dict = {}
     for c in computed:
-        cur = best_by_loc.get(c["loc"])
-        if cur is None or len(c["domain"]) > len(cur["domain"]):
-            best_by_loc[c["loc"]] = c
+        by_loc.setdefault(c["loc"], []).append(c)
+
+    kept = []
+    for group in by_loc.values():
+        domains = [g["domain"] for g in group]
+        for g in group:
+            d = g["domain"]
+            is_nested = any(len(d) < len(other) and d in other for other in domains)
+            if not is_nested:
+                kept.append(g)
 
     # Pass 2: aggregate the deduped matches into endpoint records.
     groups: dict = {}
-    for c in best_by_loc.values():
+    for c in kept:
         m = c["match"]
         key = (m.get("techKey", ""), c["domain"], c["version"])
         rec = groups.get(key)
