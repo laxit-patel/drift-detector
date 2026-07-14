@@ -7,6 +7,7 @@ from __future__ import annotations
 
 from agent.lib.http_util import default_http
 from agent.lib.purl import osv_ecosystem
+from agent.lib import cvss
 
 OSV_QUERY_URL = "https://api.osv.dev/v1/query"
 
@@ -16,9 +17,24 @@ def _severity_label(vuln: dict) -> str:
     sev = ds.get("severity")
     if sev:
         return str(sev).upper()                 # GHSA: LOW / MODERATE / HIGH / CRITICAL
-    if vuln.get("severity"):                     # CVSS vector present but unlabeled
-        return "RATED"
-    return "UNKNOWN"
+    best = None                                  # else derive from any CVSS vector/score
+    for s in vuln.get("severity") or []:
+        score = s.get("score")
+        val = None
+        if isinstance(score, (int, float)):
+            val = float(score)
+        elif isinstance(score, str):
+            val = cvss.base_score(score) if score.startswith("CVSS:") else _as_float(score)
+        if val is not None and (best is None or val > best):
+            best = val
+    return cvss.label(best) if best is not None else "UNKNOWN"
+
+
+def _as_float(s: str):
+    try:
+        return float(s)
+    except ValueError:
+        return None
 
 
 def _cve(vuln: dict) -> str:
@@ -28,8 +44,16 @@ def _cve(vuln: dict) -> str:
     return vuln.get("id", "")
 
 
-def _fixed_version(vuln: dict) -> str | None:
+def _fixed_version(vuln: dict, ecosystem: str | None = None, name: str | None = None) -> str | None:
+    # only the affected entry for the queried package/ecosystem — an advisory can list
+    # ranges for several packages/ecosystems, whose 'fixed' would be a different package's.
     for aff in vuln.get("affected") or []:
+        pkg = aff.get("package") or {}
+        # skip only when the entry names a DIFFERENT package/ecosystem; missing = don't exclude
+        if name and pkg.get("name") and pkg.get("name") != name:
+            continue
+        if ecosystem and pkg.get("ecosystem") and pkg.get("ecosystem") != ecosystem:
+            continue
         for rng in aff.get("ranges") or []:
             for ev in rng.get("events") or []:
                 if ev.get("fixed"):
@@ -58,7 +82,7 @@ def query_package(eco: str, name: str, version: str | None, *, http=default_http
             "cve": _cve(v),
             "severity": _severity_label(v),
             "summary": (v.get("summary") or (v.get("details") or "")[:160]).strip(),
-            "fixed": _fixed_version(v),
+            "fixed": _fixed_version(v, osv_eco, name),
             "url": _source_url(v),
         })
     return out

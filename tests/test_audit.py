@@ -65,3 +65,12 @@ def test_audit_degrades_gracefully_when_source_down():
     assert out["findings"] == []                       # nothing fabricated
     assert out["coverage"]["osvErrors"] == 1 and out["coverage"]["eolErrors"] == 1
     assert any("unreachable" in n for n in out["coverage"]["notes"])
+
+
+def test_cve_deduped_within_repo():
+    doc = {"repos": [{"path": "svc", "sdks": [
+        {"eco": "npm", "pkg": "axios", "ver": "^0.21.1", "file": "a/package.json"},
+        {"eco": "npm", "pkg": "axios", "ver": "^0.21.1", "file": "b/package.json"},  # same pkg, 2nd manifest
+    ]}]}
+    out = audit_inventory(doc, "2026-07-14", http=lambda *a, **k: {}, osv_query=_fake_osv, eol_check=_fake_eol)
+    assert len([f for f in out["findings"] if f["kind"] == "cve"]) == 1   # not 2

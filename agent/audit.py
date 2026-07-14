@@ -44,6 +44,7 @@ def audit_inventory(doc: dict, now: str, *, http=None,
 
     for r in repos:
         path = r.get("path")
+        seen_cve: set = set()          # dedupe a vuln within one repo (same pkg in 2 manifests)
         # --- packages -> OSV ---
         for s in r.get("sdks", []):
             eco, pkg = s.get("eco"), s.get("pkg")
@@ -62,6 +63,10 @@ def audit_inventory(doc: dict, now: str, *, http=None,
                     coverage["notes"].append(f"OSV unreachable — package audit skipped ({exc}).")
                     continue
             for v in osv_cache.get(key) or []:
+                dk = (v["id"], eco, pkg)
+                if dk in seen_cve:
+                    continue
+                seen_cve.add(dk)
                 findings.append({
                     "repo": path, "kind": "cve", "ref": f"{eco}/{pkg}", "version": s.get("ver"),
                     "id": v["id"], "cve": v["cve"], "fixed": v.get("fixed"),

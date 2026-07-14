@@ -71,8 +71,14 @@ def check(product: str, version: str | None, now: str, *, http=default_http) -> 
 
 
 def _newest_supported(cycles: list, now: date) -> str | None:
-    # newest cycle that is NOT end-of-life -> the sensible upgrade target
-    for c in cycles:                       # endoflife.date lists cycles newest-first
-        if _classify(c.get("eol"), now)[0] != "DEPRECATED":
-            return str(c.get("latest") or c.get("cycle"))
-    return None
+    # sensible upgrade target: prefer a fully-supported (OK) cycle; fall back to one
+    # merely nearing EOL (REVIEW) over nothing. endoflife.date lists cycles newest-first.
+    review = None
+    for c in cycles:
+        status = _classify(c.get("eol"), now)[0]
+        target = str(c.get("latest") or c.get("cycle"))
+        if status == "OK":
+            return target
+        if status == "REVIEW" and review is None:
+            review = target
+    return review

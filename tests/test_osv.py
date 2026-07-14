@@ -45,3 +45,34 @@ def test_query_all_dedupes_by_key():
     result = osv.query_all(pkgs, http=counting)
     assert calls["n"] == 2                          # react queried once despite two occurrences
     assert set(result.keys()) == {("npm", "react", "19.0.0"), ("npm", "react-dom", "19.0.0")}
+
+
+def test_severity_from_cvss_vector_when_no_ghsa_label():
+    # PyPI/Packagist-style advisory: CVSS vector only, no database_specific.severity
+    vuln = {"id": "PYSEC-1", "aliases": ["CVE-9"], "summary": "rce",
+            "severity": [{"type": "CVSS_V3", "score": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H"}],
+            "affected": [{"package": {"ecosystem": "PyPI", "name": "victim"},
+                          "ranges": [{"events": [{"introduced": "0"}, {"fixed": "2.0"}]}]}]}
+
+    def http(url, *, method="GET", body=None, timeout=20):
+        return {"vulns": [vuln]}
+
+    v = osv.query_package("python", "victim", "1.0", http=http)[0]
+    assert v["severity"] == "CRITICAL"      # 9.8 base score -> CRITICAL (was silently "RATED"/REVIEW)
+    assert v["fixed"] == "2.0"
+
+
+def test_fixed_version_ignores_other_packages_in_advisory():
+    vuln = {"id": "GHSA-multi", "aliases": [], "summary": "x", "database_specific": {"severity": "HIGH"},
+            "affected": [
+                {"package": {"ecosystem": "PyPI", "name": "other"},
+                 "ranges": [{"events": [{"introduced": "0"}, {"fixed": "99.0"}]}]},
+                {"package": {"ecosystem": "npm", "name": "target"},
+                 "ranges": [{"events": [{"introduced": "0"}, {"fixed": "1.7.4"}]}]},
+            ]}
+
+    def http(url, *, method="GET", body=None, timeout=20):
+        return {"vulns": [vuln]}
+
+    v = osv.query_package("npm", "target", "0.21.1", http=http)[0]
+    assert v["fixed"] == "1.7.4"             # not "99.0" from the unrelated PyPI package

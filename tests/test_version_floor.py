@@ -28,3 +28,10 @@ def test_osv_ecosystem_mapping():
     assert osv_ecosystem("composer") == "Packagist"
     assert osv_ecosystem("python") == "PyPI"
     assert osv_ecosystem("go") is None
+
+
+@pytest.mark.parametrize("spec,expected", [
+    ("<2.0", None), ("<=3", None), (">=1,<2", "1"), ("1!2.3.4", "2.3.4"),
+])
+def test_floor_bounds_and_epoch(spec, expected):
+    assert floor(spec) == expected
