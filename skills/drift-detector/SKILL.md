@@ -8,10 +8,10 @@ description: Use when the user wants to detect third-party integration drift —
 Detect **third-party integration drift** across a folder of cloned repos: which third-party APIs each repo calls (with `file:line` and version), which SDKs / frameworks / runtimes it declares, and **what changed since the last scan**. The scanning is **deterministic Python** (Opengrep static analysis) — cheap and token-free; your job is to run it, then narrate / query the result — never read source files yourself to build the inventory.
 
 ## Running a scan
-Prefer the `/drift-detector <folder>` command. Or run the CLI directly, from the repo root with the venv active:
+Prefer the `/drift-detector <folder>` command. Under the hood it calls the bundled **self-bootstrapping runner** `bin/drift-scan`, which works from any directory:
 
 ```bash
-python -m agent.cli inventory-scan --root <folder> \
+<plugin>/bin/drift-scan --root <folder> \
   --state <folder>/.drift-detector \
   --out-json <folder>/.drift-detector/inventory.json \
   --out-md   <folder>/.drift-detector/INVENTORY.md \
@@ -19,7 +19,9 @@ python -m agent.cli inventory-scan --root <folder> \
   --now $(date +%F)
 ```
 
-`<folder>` is any directory; git repos are discovered **recursively** at any depth (skipping `node_modules`/`vendor`/etc, and not descending into a found repo). `--root` is **repeatable** — pass it once per folder to scan several trees in one inventory (repos are deduped by real path; identities stay stable and collision-free). Requires `opengrep` or `semgrep` on `PATH` — the scan fails loud if neither is present.
+On first use `drift-scan` creates a plugin-local venv and installs the engine (semgrep) — needs `uv` (recommended) or python≥3.11 + internet, one-time; later runs reuse it. It resolves the vendor/framework catalogs package-relative and puts the `agent` package on `PYTHONPATH`, so **cwd doesn't matter**. `<folder>` is any directory; git repos are discovered **recursively** at any depth (skipping `node_modules`/`vendor`/etc, and not descending into a found repo). `--root` is **repeatable** — pass it once per folder to scan several trees in one inventory (repos are deduped by real path; identities stay stable and collision-free).
+
+(For local development from the repo with the dev venv active, you can still run `python -m agent.cli inventory-scan …` directly.)
 
 ## Drift = the diff since last scan
 `DRIFT.md` (`--out-diff`) is the drift report: **new/removed third-party APIs, API version bumps (SP-API v0→v2), SDK version changes, runtime changes**, per repo. It is computed against the *previous* scan's `inventory.json`, so:

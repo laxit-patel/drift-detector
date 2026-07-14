@@ -3,11 +3,16 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
+from pathlib import Path
 
 import yaml
 
 # Captures /v3, /v24.0, /2010-10-01, /2021-06-30 — the version forms in the PM's inventory.
 DEFAULT_VERSION_REGEX = r'/(v[0-9][0-9.]*|[0-9]{4}-[0-9]{2}-[0-9]{2})'
+
+# Package-relative so the catalog resolves no matter the caller's cwd
+# (e.g. when the plugin runs from a teammate's project dir). agent/lib/ -> agent/.
+_DEFAULT_VENDORS = str(Path(__file__).resolve().parent.parent / "vendors.yaml")
 
 
 @dataclass(frozen=True)
@@ -22,7 +27,8 @@ def vendor_slug(vendor: str) -> str:
     return re.sub(r"[^a-z0-9]+", "-", vendor.lower()).strip("-")
 
 
-def load_vendors(path: str = "agent/vendors.yaml") -> list:
+def load_vendors(path: str | None = None) -> list:
+    path = path or _DEFAULT_VENDORS
     with open(path, "r", encoding="utf-8") as fh:
         raw = yaml.safe_load(fh) or []
     out = []

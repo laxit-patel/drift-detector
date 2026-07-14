@@ -15,14 +15,20 @@ The cost model: the scan is a deterministic static-analysis run (**zero LLM toke
 spends tokens only on the summary + interactive Q&A. Contrast with an autonomous agent doing the
 whole scan itself.
 
+## Install (teammates)
+
+The plugin is distributed as a Claude Code **marketplace** (this git repo). To install:
+
+```
+/plugin marketplace add <git-url-of-this-repo>
+/plugin install drift-detector@tops-tools
+```
+
+Then run `/drift-detector <folder>` (see Use below). The first run bootstraps itself.
+
 ## Prerequisites
 
-1. **Python env** — the plugin drives `python -m agent.cli inventory-scan` from this repo.
-   Activate the project venv (`source .venv/bin/activate`; uv-managed, Python 3.12).
-2. **Opengrep (or Semgrep)** on `PATH` — the static-analysis engine.
-   - Opengrep: install the standalone binary (fully OSS, no server/JVM).
-   - Or a drop-in dev proxy: `uv pip install semgrep`.
-   The scan **fails loud** if neither is found — no silent empty inventory.
+Just **`uv`** (recommended — https://docs.astral.sh/uv/) **or** python ≥ 3.11 with `venv`, and internet access on the first run. The bundled runner `bin/drift-scan` creates a plugin-local venv and installs the scan engine (semgrep) itself — **no separate Opengrep/Semgrep install, no manual Python setup**. Later runs reuse the venv. The scan **fails loud** if it can't provision the engine — no silent empty inventory.
 
 ## Use
 

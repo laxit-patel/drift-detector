@@ -1,0 +1,50 @@
+#!/usr/bin/env bash
+# Self-bootstrapping runner for the Drift Detector plugin.
+#
+# Provisions a plugin-local virtualenv (once) with the runtime deps + the scan
+# engine (semgrep), then runs `agent.cli inventory-scan` against it. Designed to
+# work from ANY working directory a teammate invokes it in: the `agent` package
+# is made importable via PYTHONPATH (not cwd), catalog files resolve
+# package-relative, and relative --root/--out paths still resolve against the
+# caller's cwd because we do NOT chdir.
+#
+# All arguments are passed straight through to `inventory-scan`
+# (e.g. --root, --state, --out-json, --out-md, --out-diff, --now).
+set -euo pipefail
+
+# Plugin root: prefer the injected var; else derive from this script's location
+# (bin/ -> plugin root). Works whether installed (cache) or run in-repo.
+PLUGIN_ROOT="${CLAUDE_PLUGIN_ROOT:-}"
+if [ -z "$PLUGIN_ROOT" ]; then
+  PLUGIN_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+fi
+
+VENV="$PLUGIN_ROOT/.venv"
+MARKER="$VENV/.drift-deps-ok"
+REQ="$PLUGIN_ROOT/requirements-plugin.txt"
+PYVER="3.12"   # semgrep has well-supported wheels here; tomllib needs >=3.11
+
+# Provision the venv once (idempotent via the marker file). Prefer uv: it
+# creates a venv without the system python3-venv/ensurepip package and can fetch
+# a suitable Python itself. Fall back to system python3 (must be >=3.11 with venv).
+if [ ! -f "$MARKER" ]; then
+  echo "drift-detector: first-run setup — creating venv + installing the scan engine (one-time, may take a minute)…" >&2
+  if command -v uv >/dev/null 2>&1; then
+    uv venv --python "$PYVER" "$VENV" 1>&2
+    VIRTUAL_ENV="$VENV" uv pip install -q -r "$REQ" 1>&2
+  elif command -v "${DRIFT_PYTHON:-python3}" >/dev/null 2>&1; then
+    "${DRIFT_PYTHON:-python3}" -m venv "$VENV"
+    "$VENV/bin/python" -m pip install -q --upgrade pip 1>&2
+    "$VENV/bin/python" -m pip install -q -r "$REQ" 1>&2
+  else
+    echo "drift-detector: need 'uv' (recommended: https://docs.astral.sh/uv/) or python3>=3.11 with venv support." >&2
+    exit 3
+  fi
+  touch "$MARKER"
+fi
+
+# Run from the caller's cwd (so relative paths resolve), with the plugin on the
+# import path. The venv's python finds the pip-installed semgrep next to it
+# (agent.lib.scan_util.resolve_engine checks dirname(sys.executable)).
+exec env PYTHONPATH="$PLUGIN_ROOT${PYTHONPATH:+:$PYTHONPATH}" \
+  "$VENV/bin/python" -m agent.cli inventory-scan "$@"

@@ -1,6 +1,8 @@
 """Guards the Claude Code plugin structure: valid manifest, command + skill present and
-referencing the real CLI subcommand they drive."""
+referencing the real CLI subcommand they drive, and a self-bootstrapping runner."""
 import json
+import os
+import stat
 from pathlib import Path
 
 _ROOT = Path(__file__).resolve().parent.parent
@@ -12,10 +14,28 @@ def test_plugin_manifest_valid():
     assert manifest["description"] and manifest["version"]
 
 
-def test_command_present_with_frontmatter_and_references_cli():
+def test_command_present_with_frontmatter_and_references_runner():
     cmd = (_ROOT / "commands" / "drift-detector.md").read_text()
     assert cmd.startswith("---") and "description:" in cmd and "argument-hint:" in cmd
-    assert "inventory-scan" in cmd and "$ARGUMENTS" in cmd          # drives the real CLI over the arg
+    assert "drift-scan" in cmd and "$ARGUMENTS" in cmd          # drives the bundled runner over the arg
+
+
+def test_bootstrap_runner_present_and_executable():
+    runner = _ROOT / "bin" / "drift-scan"
+    assert runner.exists()
+    assert os.stat(runner).st_mode & stat.S_IXUSR                # executable bit set
+    body = runner.read_text()
+    assert "agent.cli inventory-scan" in body                   # drives the real CLI
+    assert "requirements-plugin.txt" in body                    # installs the lean runtime deps
+    assert (_ROOT / "requirements-plugin.txt").exists()
+
+
+def test_catalog_defaults_are_package_relative():
+    # loaders must resolve their catalog regardless of the caller's cwd
+    from agent.lib.vendors import _DEFAULT_VENDORS
+    from agent.lib.frameworks import _DEFAULT_FRAMEWORKS
+    assert Path(_DEFAULT_VENDORS).is_absolute() and Path(_DEFAULT_VENDORS).exists()
+    assert Path(_DEFAULT_FRAMEWORKS).is_absolute() and Path(_DEFAULT_FRAMEWORKS).exists()
 
 
 def test_skill_present_with_frontmatter():
