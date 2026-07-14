@@ -28,3 +28,11 @@ def test_referenced_cli_subcommand_exists():
     # the plugin drives `python -m agent.cli inventory-scan`; ensure that subcommand handler exists
     from agent import cli
     assert hasattr(cli, "_cmd_inventory_scan")
+
+
+def test_marketplace_manifest_valid_and_matches_plugin():
+    mp = json.loads((_ROOT / ".claude-plugin" / "marketplace.json").read_text())
+    pj = json.loads((_ROOT / ".claude-plugin" / "plugin.json").read_text())
+    assert mp["name"] and mp["owner"]["name"]                    # required marketplace fields
+    entry = next(p for p in mp["plugins"] if p["name"] == pj["name"])
+    assert entry["source"] == "./"                              # plugin IS this repo root

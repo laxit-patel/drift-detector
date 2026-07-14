@@ -1,0 +1,15 @@
+{
+  "name": "tops-tools",
+  "owner": {
+    "name": "TOPS",
+    "email": "harshad@topsinfosolutions.com"
+  },
+  "plugins": [
+    {
+      "name": "drift-detector",
+      "source": "./",
+      "description": "Detect third-party integration drift across one or more folders of repos — code-level API/SDK/runtime usage (via Opengrep) + what changed since the last scan. Cheap, deterministic, incremental; reports in chat.",
+      "version": "0.1.0"
+    }
+  ]
+}
