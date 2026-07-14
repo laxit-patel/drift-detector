@@ -36,6 +36,15 @@ def test_runner_has_doctor_with_actionable_hint():
     assert "astral.sh/uv/install.sh" in body                    # exact uv install remediation
 
 
+def test_runner_and_command_support_audit():
+    runner = (_ROOT / "bin" / "drift-scan").read_text()
+    assert '"${1:-}" = "audit"' in runner                       # runner dispatches the audit subcommand
+    cmd = (_ROOT / "commands" / "drift-detector.md").read_text()
+    assert "audit" in cmd and "bom.json" in cmd and "findings.sarif" in cmd
+    from agent import cli
+    assert hasattr(cli, "_cmd_audit")
+
+
 def test_catalog_defaults_are_package_relative():
     # loaders must resolve their catalog regardless of the caller's cwd
     from agent.lib.vendors import _DEFAULT_VENDORS

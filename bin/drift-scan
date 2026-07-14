@@ -75,6 +75,10 @@ if [ "${1:-}" = "doctor" ]; then
   exit 3
 fi
 
+# Subcommand: default inventory-scan; 'audit' enriches a prior scan (OSV + endoflife).
+SUB="inventory-scan"
+if [ "${1:-}" = "audit" ]; then SUB="audit"; shift; fi
+
 # ---------- provision the venv once (idempotent via the marker file) ----------
 # Prefer uv: it creates a venv without the system python3-venv/ensurepip package
 # and can fetch a suitable Python itself. Fall back to system python3.
@@ -99,4 +103,4 @@ fi
 # import path. The venv's python finds the pip-installed semgrep next to it
 # (agent.lib.scan_util.resolve_engine checks dirname(sys.executable)).
 exec env PYTHONPATH="$PLUGIN_ROOT${PYTHONPATH:+:$PYTHONPATH}" \
-  "$VENV/bin/python" -m agent.cli inventory-scan "$@"
+  "$VENV/bin/python" -m agent.cli "$SUB" "$@"

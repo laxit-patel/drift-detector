@@ -7,7 +7,9 @@ Detect **integration drift** across the git repos found under `$ARGUMENTS` (one 
 
 The bundled runner `bin/drift-scan` is **self-bootstrapping**: on first use it creates a plugin-local venv and installs the engine (needs `uv` or python≥3.11 + internet, one-time ~a minute); later runs reuse it. It works from **any** directory — you do NOT need to be in the plugin's repo.
 
-**If no folder was given** (the user ran `/drift-detector` with nothing after it, so `$ARGUMENTS` is empty): do **not** scan. Ask them which folder(s) to scan — e.g. *"Which folder(s) should I scan? Give one or more paths, e.g. `~/work` or `~/work ~/personal`."* — and wait for their answer before running. Never scan the current directory or run with an empty root. (`/drift-detector doctor` is the one no-path exception — it runs the health check.)
+**Sub-modes** (first word of `$ARGUMENTS`): `doctor` = health check; `audit <folder>` = enrich a prior scan with vulnerability (OSV.dev) + end-of-life (endoflife.date) findings → writes `AUDIT.md` + `bom.json` (CycloneDX) + `findings.sarif`; otherwise the argument(s) are folder(s) to scan.
+
+**If no folder was given** (the user ran `/drift-detector` with nothing after it, so `$ARGUMENTS` is empty): do **not** scan. Ask them which folder(s) to scan — e.g. *"Which folder(s) should I scan? Give one or more paths, e.g. `~/work` or `~/work ~/personal`."* — and wait for their answer before running. Never scan the current directory or run with an empty root.
 
 **Before running, tell the user in one line** that this is a *deterministic local static-analysis scan (AST-level, via Opengrep) that costs no tokens* — so a pause is the scan working, not an expensive agent. Then run it (the `--progress` flag prints an informative per-phase log).
 
@@ -25,6 +27,14 @@ The bundled runner `bin/drift-scan` is **self-bootstrapping**: on first use it c
    [ -z "$SCAN" ] && { echo "drift-detector: runner not found — is the plugin installed?" >&2; exit 4; }
 
    if [ "$1" = "doctor" ]; then "$SCAN" doctor; exit $?; fi
+   if [ "$1" = "audit" ]; then
+     F="$2"; D="$F/.drift-detector"
+     [ -z "$F" ] && { echo "Usage: /drift-detector audit <folder>" >&2; exit 2; }
+     [ -f "$D/inventory.json" ] || { echo "No inventory at $D/inventory.json — run /drift-detector \"$F\" first" >&2; exit 3; }
+     "$SCAN" audit --progress --in "$D/inventory.json" --now "$(date +%F)" \
+       --out-audit "$D/AUDIT.md" --out-bom "$D/bom.json" --out-sarif "$D/findings.sarif" --out-json "$D/audit.json"
+     exit $?
+   fi
    if [ "$#" -eq 0 ]; then echo "No folder given. Usage: /drift-detector <folder> [more-folders]  (or: /drift-detector doctor)" >&2; exit 2; fi
 
    STATE_HOME="$1"                       # first folder holds shared state + reports
@@ -49,3 +59,10 @@ The bundled runner `bin/drift-scan` is **self-bootstrapping**: on first use it c
 4. **Follow-ups** — answer questions like *"which repos use Amazon SP-API?"*, *"who drifted onto an old runtime?"*, *"what Stripe versions are in use?"* by reading `inventory.json` (the queryable shape-map). **Do NOT re-scan for a question** — filter the JSON. Only re-scan when the user wants a fresh check or the code changed.
 
    `inventory.json` shape — per repo: `{path, ref, head_sha, runtimes{name:{range,techKey}}, frameworks{name:{ver}}, sdks[{eco,pkg,ver,file}], endpoints[{vendor,domain,version,techKey,file_count,files:[path:line]}]}`; rollups: `unique_apis`, `unique_api_versions[{vendor,version}]`, `unique_packages`; `coverage`. Query patterns: *"which repos use X"* → the `repos[]` whose `endpoints[].vendor`/`techKey` matches X, list `path` + `files[]` call-sites; *"who's on old version Y / old runtime"* → filter `endpoints[].version`, `sdks[].ver`, or `runtimes[]`.
+
+5. **After a scan, nudge the audit.** The inventory says *what* you use, not what's *risky*. Offer: *"Run `/drift-detector audit <folder>` to check these against known CVEs (OSV) and end-of-life (endoflife.date)."*
+
+## Audit mode (`/drift-detector audit <folder>`)
+Runs on the folder's existing `inventory.json` (from a prior scan), hits OSV.dev + endoflife.date, and writes **`AUDIT.md`** + **`bom.json`** (CycloneDX) + **`findings.sarif`** to `<folder>/.drift-detector/`. Then:
+- **Point the user at `AUDIT.md`** (don't paste it) and lead with the headline: *"🔴 N action-required, 🟠 M to review across K repos"* — name the worst few (retired runtimes like PHP 7.4 / Node 15; high/critical CVEs). `bom.json` is the CycloneDX SBOM for security tooling; `findings.sarif` uploads to GitHub's Security tab.
+- Findings are classified **DEPRECATED** (action required) / **REVIEW** (assess & monitor), each with a cited source URL. Versions are the **declared manifest floor** — flag that they should verify against lockfiles. If the audit reports a source was unreachable (offline), relay that honestly.
