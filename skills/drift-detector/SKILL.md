@@ -19,7 +19,7 @@ python -m agent.cli inventory-scan --root <folder> \
   --now $(date +%F)
 ```
 
-`<folder>` is a directory whose immediate subdirectories are git clones. Requires `opengrep` or `semgrep` on `PATH` — the scan fails loud if neither is present.
+`<folder>` is any directory; git repos are discovered **recursively** at any depth (skipping `node_modules`/`vendor`/etc, and not descending into a found repo). `--root` is **repeatable** — pass it once per folder to scan several trees in one inventory (repos are deduped by real path; identities stay stable and collision-free). Requires `opengrep` or `semgrep` on `PATH` — the scan fails loud if neither is present.
 
 ## Drift = the diff since last scan
 `DRIFT.md` (`--out-diff`) is the drift report: **new/removed third-party APIs, API version bumps (SP-API v0→v2), SDK version changes, runtime changes**, per repo. It is computed against the *previous* scan's `inventory.json`, so:

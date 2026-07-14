@@ -30,7 +30,7 @@ whole scan itself.
 /drift-detector /path/to/folder-of-cloned-repos
 ```
 
-`<folder>`'s immediate subdirectories must be git clones. The command:
+Git repos under `<folder>` are discovered **recursively** (at any depth). Pass multiple space-separated folders to scan several trees at once. The command:
 1. checks the engine,
 2. runs the scan (only repos whose git `HEAD` changed since last time are re-analyzed — a
    per-repo commit-SHA cache makes re-runs fast),
@@ -50,7 +50,7 @@ whole scan itself.
 
 ## Notes & limits (v1)
 
-- **Local folder** input (clone orchestration is out of scope). Point it at a directory of clones.
+- **Local folder(s)** input (clone orchestration is out of scope). Point it at one or more directories; repos are found recursively and multiple roots are deduped by real path.
 - Endpoint **version** is best-effort from the URL on the matched line — `None` when a repo builds
   the URL from a base constant with the version appended elsewhere (needs dataflow).
 - Detects hard-coded endpoints + manifest-declared SDKs; an SDK used only via its client library

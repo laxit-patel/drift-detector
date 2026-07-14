@@ -1,25 +1,27 @@
 ---
-description: Detect third-party integration drift across a folder of repos — code-level API/SDK usage + what changed since the last scan — and summarize in chat.
-argument-hint: <path-to-folder-of-cloned-repos>
+description: Detect third-party integration drift across one or more folders of repos — code-level API/SDK usage + what changed since the last scan — and summarize in chat.
+argument-hint: <folder> [more-folders...]
 ---
 
-Detect **integration drift** across the folder of cloned git repos at `$ARGUMENTS`, and report it in chat. The heavy lifting is a **deterministic Python scan** (Opengrep static analysis + manifest parsing) — it costs ~no tokens; your job is only to run it and narrate / answer follow-ups. Do NOT read source files yourself to build the inventory — the scanner does that.
+Detect **integration drift** across the git repos found under `$ARGUMENTS` (one or more space-separated folders), and report it in chat. Discovery is **recursive** — repos nested at any depth are found, and each folder given is a separate scan root. The heavy lifting is a **deterministic Python scan** (Opengrep static analysis + manifest parsing) — it costs ~no tokens; your job is only to run it and narrate / answer follow-ups. Do NOT read source files yourself to build the inventory — the scanner does that.
 
 1. **Preflight.** From the repo root, activate the venv (`source .venv/bin/activate`) and confirm the engine: `opengrep --version || semgrep --version`. If neither is installed, tell the user to install Opengrep (or `uv pip install semgrep`) and STOP — never fabricate a result. The scan also fails loud if the engine is missing.
 
-2. **Scan** (deterministic; only repos whose git `HEAD` changed since last time are re-analyzed, via the per-repo commit-SHA cache — so drift runs are fast):
+2. **Scan** (deterministic; only repos whose git `HEAD` changed since last time are re-analyzed, via the per-repo commit-SHA cache — so drift runs are fast). `--root` is repeatable — pass one per folder; the first folder holds the shared state/output:
 
    ```bash
-   python -m agent.cli inventory-scan \
-     --root "$ARGUMENTS" \
-     --state "$ARGUMENTS/.drift-detector" \
-     --out-json "$ARGUMENTS/.drift-detector/inventory.json" \
-     --out-md "$ARGUMENTS/.drift-detector/INVENTORY.md" \
-     --out-diff "$ARGUMENTS/.drift-detector/DRIFT.md" \
+   set -- $ARGUMENTS
+   STATE_HOME="$1"                       # first folder holds shared state + reports
+   ROOT_ARGS=(); for r in "$@"; do ROOT_ARGS+=(--root "$r"); done
+   python -m agent.cli inventory-scan "${ROOT_ARGS[@]}" \
+     --state "$STATE_HOME/.drift-detector" \
+     --out-json "$STATE_HOME/.drift-detector/inventory.json" \
+     --out-md "$STATE_HOME/.drift-detector/INVENTORY.md" \
+     --out-diff "$STATE_HOME/.drift-detector/DRIFT.md" \
      --now "$(date +%F)"
    ```
 
-3. **Read** `DRIFT.md` and `INVENTORY.md` from `$ARGUMENTS/.drift-detector/`.
+3. **Read** `DRIFT.md` and `INVENTORY.md` from `<first-folder>/.drift-detector/`.
 
 4. **Report — lead with drift.**
    - If `DRIFT.md` shows changes (there was a prior scan): **lead with what drifted** — new/removed third-party APIs, API version bumps (e.g. SP-API v0→v2), SDK version changes, runtime changes — grouped by repo, most notable first. Flag anything risky by name (retired APIs like Amazon **MWS**; a jump onto/off a deprecated version; ancient Node/PHP pins).
