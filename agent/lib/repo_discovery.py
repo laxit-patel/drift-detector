@@ -10,11 +10,13 @@ independently of the order of `roots`:
 - each repo's "home root" is the nearest ancestor root (longest path prefix);
 - the base identity is the repo's path relative to that home root (or the home
   root's basename when the repo *is* the root);
+- a repo whose *resolved* path escapes every root (an in-tree symlink pointing
+  outside all roots) has no ancestor root — it falls back to its in-tree walk
+  path relative to the root it was discovered under;
 - if two *different* repos would collide on the same identity (e.g. two roots
-  that share a basename), each is disambiguated by prefixing with its home
-  root's path relative to the common ancestor of all roots — unique by
-  construction, since distinct absolute paths stay distinct relative to a shared
-  prefix.
+  that share a basename), each is disambiguated by prefixing with its root's
+  path relative to the common ancestor of all roots — unique by construction,
+  since distinct absolute paths stay distinct relative to a shared prefix.
 """
 from __future__ import annotations
 
@@ -30,7 +32,8 @@ def _find_git_repos(root: Path, visited: set | None = None):
     A repo is a dir containing a `.git` entry. Once found, its subtree is not
     descended into. Dirs named in `_SKIP_DIRS` are never descended into.
     Symlinks are followed, but a `visited` set of resolved paths guards against
-    symlink cycles causing unbounded recursion.
+    symlink cycles causing unbounded recursion. Yields the *walk* path (which
+    may contain symlink components), so callers can relate it to `root`.
     """
     if visited is None:
         visited = set()
@@ -61,43 +64,56 @@ def discover_repos(roots: list) -> list:
     """
     resolved_roots = [Path(r).resolve() for r in roots]
 
-    # Collect distinct repos by resolved absolute path.
-    repos: set = set()
-    for root in resolved_roots:
+    # Map each distinct repo (by resolved abs path) to the root/walk-path it was
+    # discovered under. Iterate roots in a deterministic order so the fallback
+    # identity for symlink-escaped repos does not depend on the input order.
+    found: dict = {}
+    for root in sorted(resolved_roots, key=lambda p: (len(p.parts), str(p))):
         for repo in _find_git_repos(root):
-            repos.add(repo.resolve())
+            found.setdefault(repo.resolve(), (root, repo))
 
-    # Home root = nearest ancestor root (longest path); deterministic, and
-    # independent of the order of `roots`. Every discovered repo has at least
-    # one ancestor (or equal) root, so `candidates` is never empty.
-    def _home_root(repo: Path) -> Path:
+    def _home_root(repo: Path):
+        # Nearest ancestor root (longest path); deterministic, order-independent.
+        # None when the repo's resolved path escapes every root (symlink target).
         candidates = [r for r in resolved_roots if r == repo or r in repo.parents]
-        return max(candidates, key=lambda r: (len(r.parts), str(r)))
+        return max(candidates, key=lambda r: (len(r.parts), str(r))) if candidates else None
 
-    base: dict = {}
-    for repo in repos:
-        hr = _home_root(repo)
-        identity = hr.name if repo == hr else repo.relative_to(hr).as_posix()
-        base[repo] = (hr, identity)
-
-    # Identity collisions can only occur across *different* home roots (distinct
-    # repos under one root have distinct relative paths). Prefix colliding repos
-    # with their home root's path relative to the common ancestor of all roots.
-    owners: dict = {}
-    for repo, (hr, identity) in base.items():
-        owners.setdefault(identity, []).append(repo)
-
-    def _disambig_prefix(hr: Path) -> str:
+    common = None
+    if len(resolved_roots) > 1:
         try:
             common = Path(os.path.commonpath([str(r) for r in resolved_roots]))
-            return hr.relative_to(common).as_posix()
-        except ValueError:  # no common path (e.g. different drives) -> full path
-            return hr.relative_to(hr.anchor).as_posix()
+        except ValueError:  # no common path (e.g. different drives)
+            common = None
+
+    def _rel_to_common(p: Path) -> str:
+        if common is not None:
+            return p.relative_to(common).as_posix()
+        return p.relative_to(p.anchor).as_posix()  # full path minus anchor -> still unique
+
+    # base: repo -> (root_used_for_disambiguation, base_identity, is_root_itself)
+    base: dict = {}
+    for repo in found:
+        hr = _home_root(repo)
+        if hr is not None:
+            identity = hr.name if repo == hr else repo.relative_to(hr).as_posix()
+            base[repo] = (hr, identity, repo == hr)
+        else:
+            disc_root, walk = found[repo]
+            identity = walk.relative_to(disc_root).as_posix() or disc_root.name
+            base[repo] = (disc_root, identity, False)
+
+    # Collisions only occur across different roots -> disambiguate uniquely.
+    owners: dict = {}
+    for repo, (_root, identity, _self) in base.items():
+        owners.setdefault(identity, []).append(repo)
 
     result = []
-    for repo, (hr, identity) in base.items():
+    for repo, (dis_root, identity, is_root_itself) in base.items():
         if len(owners[identity]) > 1:
-            identity = f"{_disambig_prefix(hr)}/{identity}"
+            if is_root_itself:            # base identity was just the basename
+                identity = _rel_to_common(dis_root)
+            else:
+                identity = f"{_rel_to_common(dis_root)}/{identity}"
         result.append((str(repo), identity))
 
     return sorted(result)

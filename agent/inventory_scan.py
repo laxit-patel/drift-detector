@@ -46,8 +46,9 @@ def scan_folder(root, state_dir, now, *, engine=None, run=None, git=None) -> dic
             coverage["reposErrored"].append({"repo": name, "reason": str(exc)})
 
     prior = ir_store.load_ir(state_dir)                # BEFORE save_ir overwrites it
+    root_count = len({os.path.realpath(r) for r in roots})   # distinct, not raw
     doc = {"generated": now,
-           "scope": {"rootCount": len(roots), "reposScanned": coverage["reposScanned"]},
+           "scope": {"rootCount": root_count, "reposScanned": coverage["reposScanned"]},
            "repos": repos, "coverage": coverage}
     doc.update(build_rollups(repos))
     ir_store.save_ir(state_dir, doc)

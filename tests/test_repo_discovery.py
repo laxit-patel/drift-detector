@@ -128,3 +128,34 @@ def test_symlink_cycle_terminates(tmp_path):
     found = discover_repos([str(root)])
     identities = sorted(identity for _, identity in found)
     assert identities == ["real"]
+
+
+def test_symlink_escaping_root_does_not_crash(tmp_path):
+    # A repo reached via an in-tree symlink whose target lives OUTSIDE every
+    # root: its resolved path has no ancestor root. Must not crash; identity
+    # falls back to the in-tree walk path (the symlink name).
+    outside = tmp_path / "outside"
+    _mkrepo(outside / "shared")
+    root = tmp_path / "root"
+    root.mkdir()
+    os.symlink(outside / "shared", root / "vendored", target_is_directory=True)
+
+    found = discover_repos([str(root)])
+    assert len(found) == 1
+    abs_path, identity = found[0]
+    assert identity == "vendored"
+    assert Path(abs_path) == (outside / "shared").resolve()
+
+
+def test_same_basename_root_repos_disambiguated(tmp_path):
+    # Two roots that are THEMSELVES repos and share a basename ("project").
+    # Identity must not double the trailing segment ("g1/project/project").
+    parent = tmp_path / "parent"
+    r1 = parent / "g1" / "project"
+    r2 = parent / "g2" / "project"
+    _mkrepo(r1)
+    _mkrepo(r2)
+
+    found = discover_repos([str(r1), str(r2)])
+    identities = sorted(identity for _, identity in found)
+    assert identities == ["g1/project", "g2/project"]
