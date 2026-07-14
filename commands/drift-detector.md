@@ -7,9 +7,9 @@ Detect **integration drift** across the git repos found under `$ARGUMENTS` (one 
 
 The bundled runner `bin/drift-scan` is **self-bootstrapping**: on first use it creates a plugin-local venv and installs the engine (needs `uv` or python≥3.11 + internet, one-time ~a minute); later runs reuse it. It works from **any** directory — you do NOT need to be in the plugin's repo.
 
-**Before running, tell the user in one line** that this is a *deterministic local static-analysis scan (AST-level, via Opengrep) that costs no tokens* — so a pause is the scan working, not an expensive agent. Then run it (the `--progress` flag prints an informative per-phase log).
+**If no folder was given** (the user ran `/drift-detector` with nothing after it, so `$ARGUMENTS` is empty): do **not** scan. Ask them which folder(s) to scan — e.g. *"Which folder(s) should I scan? Give one or more paths, e.g. `~/work` or `~/work ~/personal`."* — and wait for their answer before running. Never scan the current directory or run with an empty root. (`/drift-detector doctor` is the one no-path exception — it runs the health check.)
 
-If `$ARGUMENTS` is exactly `doctor`, run `"$SCAN" doctor` (see runner discovery below) and relay its output — it checks prerequisites (uv/python/venv/engine) and prints exact install steps. Use this when a scan failed to provision.
+**Before running, tell the user in one line** that this is a *deterministic local static-analysis scan (AST-level, via Opengrep) that costs no tokens* — so a pause is the scan working, not an expensive agent. Then run it (the `--progress` flag prints an informative per-phase log).
 
 1. **Scan** (deterministic; only repos whose git `HEAD` changed since last time are re-analyzed, via the per-repo commit-SHA cache — so drift runs are fast). `--root` is repeatable — pass one per folder; the first folder holds the shared state/output. Locate the bundled runner, then run it:
 
@@ -18,15 +18,14 @@ If `$ARGUMENTS` is exactly `doctor`, run `"$SCAN" doctor` (see runner discovery 
 
    # find the bundled self-bootstrapping runner (portable across Claude Code versions)
    SCAN=""
-   for c in "${CLAUDE_PLUGIN_ROOT:-}/bin/drift-scan" \
-            "${CLAUDE_SKILL_DIR:-}/../bin/drift-scan" \
-            "${CLAUDE_SKILL_DIR:-}/bin/drift-scan"; do
+   for c in "${CLAUDE_PLUGIN_ROOT:-}/bin/drift-scan" "${CLAUDE_SKILL_DIR:-}/../bin/drift-scan"; do
      [ -n "$c" ] && [ -x "$c" ] && { SCAN="$c"; break; }
    done
    [ -z "$SCAN" ] && SCAN="$(find "$HOME/.claude/plugins" -type f -name drift-scan -path '*drift-detector*' 2>/dev/null | head -1)"
    [ -z "$SCAN" ] && { echo "drift-detector: runner not found — is the plugin installed?" >&2; exit 4; }
 
    if [ "$1" = "doctor" ]; then "$SCAN" doctor; exit $?; fi
+   if [ "$#" -eq 0 ]; then echo "No folder given. Usage: /drift-detector <folder> [more-folders]  (or: /drift-detector doctor)" >&2; exit 2; fi
 
    STATE_HOME="$1"                       # first folder holds shared state + reports
    ROOT_ARGS=(); for r in "$@"; do ROOT_ARGS+=(--root "$r"); done
@@ -48,3 +47,5 @@ If `$ARGUMENTS` is exactly `doctor`, run `"$SCAN" doctor` (see runner discovery 
    Keep it tight; the report holds the detail.
 
 4. **Follow-ups** — answer questions like *"which repos use Amazon SP-API?"*, *"who drifted onto an old runtime?"*, *"what Stripe versions are in use?"* by reading `inventory.json` (the queryable shape-map). **Do NOT re-scan for a question** — filter the JSON. Only re-scan when the user wants a fresh check or the code changed.
+
+   `inventory.json` shape — per repo: `{path, ref, head_sha, runtimes{name:{range,techKey}}, frameworks{name:{ver}}, sdks[{eco,pkg,ver,file}], endpoints[{vendor,domain,version,techKey,file_count,files:[path:line]}]}`; rollups: `unique_apis`, `unique_api_versions[{vendor,version}]`, `unique_packages`; `coverage`. Query patterns: *"which repos use X"* → the `repos[]` whose `endpoints[].vendor`/`techKey` matches X, list `path` + `files[]` call-sites; *"who's on old version Y / old runtime"* → filter `endpoints[].version`, `sdks[].ver`, or `runtimes[]`.

@@ -1,5 +1,5 @@
-"""Guards the Claude Code plugin structure: valid manifest, command + skill present and
-referencing the real CLI subcommand they drive, and a self-bootstrapping runner."""
+"""Guards the Claude Code plugin structure: valid manifest, the slash command
+referencing the real CLI subcommand it drives, and a self-bootstrapping runner."""
 import json
 import os
 import stat
@@ -44,10 +44,15 @@ def test_catalog_defaults_are_package_relative():
     assert Path(_DEFAULT_FRAMEWORKS).is_absolute() and Path(_DEFAULT_FRAMEWORKS).exists()
 
 
-def test_skill_present_with_frontmatter():
-    skill = (_ROOT / "skills" / "drift-detector" / "SKILL.md").read_text()
-    assert skill.startswith("---") and "name: drift-detector" in skill
-    assert "inventory.json" in skill                                # documents the queryable IR
+def test_command_asks_when_no_folder_and_documents_ir():
+    cmd = (_ROOT / "commands" / "drift-detector.md").read_text()
+    assert "No folder given" in cmd                                 # guards the empty-argument case
+    assert "inventory.json" in cmd                                  # documents the queryable IR (folded in from the old skill)
+
+
+def test_no_skill_dir():
+    # single entry point: the slash command only, no skill (which showed as a duplicate)
+    assert not (_ROOT / "skills").exists()
 
 
 def test_referenced_cli_subcommand_exists():

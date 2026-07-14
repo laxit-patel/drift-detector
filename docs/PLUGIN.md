@@ -7,9 +7,10 @@ expensive autonomous LLM agent.
 
 ## What it is
 
-- **Slash command** `/drift-detector <folder>` — runs a scan and summarizes it in chat.
-- **Skill** `drift-detector` — teaches Claude to run/interpret the scan and answer
-  follow-up questions by querying the produced inventory (the "IR"), never by re-scanning.
+- **Slash command** `/drift-detector <folder> [more-folders...]` — runs a scan, points you at the
+  report, and answers follow-up questions by querying the produced inventory (the "IR"), never by
+  re-scanning. Run `/drift-detector` with no path and it asks which folder(s) to scan;
+  `/drift-detector doctor` checks prerequisites.
 
 The cost model: the scan is a deterministic static-analysis run (**zero LLM tokens**); Claude
 spends tokens only on the summary + interactive Q&A. Contrast with an autonomous agent doing the
