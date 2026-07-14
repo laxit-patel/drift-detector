@@ -10,6 +10,7 @@ from agent.lib.vendor_rules import write_ruleset
 from agent.lib.repo_scan import scan_repo
 from agent.lib.inv_rollups import build_rollups
 from agent.lib.inventory_render import render_inventory_md
+from agent.lib.inventory_diff import diff_inventories
 
 
 def scan_folder(root, state_dir, now, *, engine=None, run=None, git=None) -> dict:
@@ -44,8 +45,10 @@ def scan_folder(root, state_dir, now, *, engine=None, run=None, git=None) -> dic
         except Exception as exc:            # no single repo aborts the scan
             coverage["reposErrored"].append({"repo": name, "reason": str(exc)})
 
+    prior = ir_store.load_ir(state_dir)                # BEFORE save_ir overwrites it
     doc = {"generated": now, "scope": {"reposScanned": coverage["reposScanned"]},
            "repos": repos, "coverage": coverage}
     doc.update(build_rollups(repos))
     ir_store.save_ir(state_dir, doc)
-    return {"doc": doc, "report_md": render_inventory_md(doc)}
+    return {"doc": doc, "report_md": render_inventory_md(doc),
+            "diff": diff_inventories(prior or {}, doc)}

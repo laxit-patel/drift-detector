@@ -48,3 +48,31 @@ def diff_inventories(prev: dict, curr: dict) -> dict:
     return {"reposAdded": sorted(set(c) - set(p)),
             "reposRemoved": sorted(set(p) - set(c)),
             "changes": changes}
+
+
+def render_diff_md(diff: dict) -> str:
+    out = ["# Changes since last scan", ""]
+    added, removed, changes = diff.get("reposAdded", []), diff.get("reposRemoved", []), diff.get("changes", [])
+    if not (added or removed or changes):
+        out += ["_no changes_", ""]
+        return "\n".join(out)
+    if added:
+        out += [f"**Repos added:** {', '.join(added)}", ""]
+    if removed:
+        out += [f"**Repos removed:** {', '.join(removed)}", ""]
+    for ch in changes:
+        out.append(f"## {ch['repo']}")
+        for e in ch.get("endpointsAdded", []):
+            out.append(f"- 🆕 API {e['techKey']} {e.get('version') or ''} ({e['domain']})")
+        for e in ch.get("endpointsRemoved", []):
+            out.append(f"- ❌ API removed {e['techKey']} {e.get('version') or ''} ({e['domain']})")
+        for s in ch.get("sdkVersionChanges", []):
+            out.append(f"- ⬆️ {s['eco']} {s['pkg']}: {s['from']} → {s['to']}")
+        for s in ch.get("sdksAdded", []):
+            out.append(f"- 🆕 dep {s['eco']} {s['pkg']} {s['ver']}")
+        for s in ch.get("sdksRemoved", []):
+            out.append(f"- ❌ dep removed {s['eco']} {s['pkg']}")
+        for r in ch.get("runtimeChanges", []):
+            out.append(f"- 🔧 runtime {r['product']}: {r['from']} → {r['to']}")
+        out.append("")
+    return "\n".join(out)

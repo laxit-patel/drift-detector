@@ -23,6 +23,7 @@ from agent.lib.chat import build_summary_text, post_chat
 from agent.lib.contract import scan as contract_scan_mod
 from agent import contract_report as contract_report_mod
 from agent import inventory_scan as inventory_scan_mod
+from agent.lib.inventory_diff import render_diff_md
 
 
 def _cmd_ingest(args) -> int:
@@ -269,6 +270,9 @@ def _cmd_inventory_scan(args) -> int:
         json.dump(out["doc"], fh, ensure_ascii=False, indent=2, sort_keys=True)
     with open(args.out_md, "w", encoding="utf-8") as fh:
         fh.write(out["report_md"])
+    if getattr(args, "out_diff", None):
+        with open(args.out_diff, "w", encoding="utf-8") as fh:
+            fh.write(render_diff_md(out["diff"]))
     d = out["doc"]
     print(f"inventory-scan {args.now}: {len(d['repos'])} repos · "
           f"{len(d.get('unique_apis', []))} APIs · {len(d.get('unique_packages', []))} packages · "
@@ -344,6 +348,7 @@ def main(argv: list[str], *, client=None, post=None) -> int:
     pis = sub.add_parser("inventory-scan")
     for a in ("--root", "--state", "--out-json", "--out-md", "--now"):
         pis.add_argument(a, required=True)
+    pis.add_argument("--out-diff", required=False)
     pis.set_defaults(func=_cmd_inventory_scan)
 
     args = p.parse_args(argv)
