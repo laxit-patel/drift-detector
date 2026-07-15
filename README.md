@@ -1,12 +1,13 @@
 # Drift Detector
 
-A Claude Code plugin that builds a **code-level inventory of the third-party
-integrations** your repos use — which APIs/SDKs/runtimes each project calls, with
-`file:line` and versions — reports **what changed since the last scan** (drift),
-and **audits** those dependencies for known vulnerabilities (OSV) and end-of-life
-runtimes (endoflife.date). Everything runs locally as a **deterministic pipeline**
-(Opengrep/semgrep AST matching + manifest parsing + public API lookups) — **zero
-LLM tokens**; Claude only narrates the result and answers follow-ups.
+A Claude Code plugin — a **goal-driven agent** for keeping third-party API integrations
+green. It builds a **code-level inventory** of the integrations your repos use (which
+APIs/SDKs/runtimes, with `file:line` and versions), reports **what changed since the last
+scan** (drift), **audits** those dependencies for known vulnerabilities (OSV) and
+end-of-life runtimes (endoflife.date), and can **run itself on a schedule** and deliver the
+result to a Google Chat thread. Everything runs locally as a **deterministic pipeline**
+(Opengrep/semgrep AST matching + manifest parsing + public API lookups) — **zero LLM
+tokens**; Claude only orchestrates, narrates, and sets things up.
 
 ## Install
 
@@ -51,6 +52,22 @@ classifying each finding **DEPRECATED** (act now) / **REVIEW** (assess) with a c
 source. Needs network on the run (still zero LLM tokens); degrades gracefully offline.
 Versions checked are the **declared manifest floor** — verify against your lockfile
 before acting (conservative: it may over-report, never under-reports).
+
+### Autonomous & scheduled
+
+`/drift-detector <folder>` runs the full **scan → audit** pipeline and then offers to make
+it autonomous. On your OK it installs a **cron job on this machine** (default Sundays 7am)
+that re-runs the deterministic pipeline — **no Claude, no tokens** — and, if you give a
+**Google Chat** incoming-webhook URL, posts the summary to your team thread.
+
+```
+/drift-detector schedule <folder>      # install the weekly cron (shows the crontab line first)
+/drift-detector unschedule <folder>    # remove it
+```
+
+The scheduled run is the `run` subcommand (`scan → audit → deliver`); logs land in
+`<folder>/.drift-detector/cron.log`. The agent always shows the exact crontab line and asks
+before touching your crontab. (Cron = Linux/macOS.)
 
 ## Outputs (written to `<folder>/.drift-detector/`)
 

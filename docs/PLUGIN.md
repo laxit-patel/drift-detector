@@ -46,6 +46,14 @@ Git repos under `<folder>` are discovered **recursively** (at any depth). Pass m
 5. answers follow-ups (*"which repos use SP-API?"*, *"who's on an old Node?"*) from
    `inventory.json` — the queryable shape-map — without re-scanning.
 
+## Autonomous mode — `/drift-detector schedule <folder>`
+
+`/drift-detector <folder>` runs the full **scan → audit** pipeline (the `run` subcommand) and offers
+to install a **cron job** (default Sundays 7am) that re-runs it deterministically — zero LLM tokens —
+and posts a summary to **Google Chat** if a webhook is configured. The agent shows the exact crontab
+line and confirms before touching your crontab; `unschedule <folder>` removes it. Config + `cron.log`
+live in `<folder>/.drift-detector/`.
+
 ## Audit — `/drift-detector audit <folder>`
 
 Runs on the folder's existing `inventory.json` and checks it against **OSV.dev** (CVEs per
@@ -75,5 +83,6 @@ graceful offline. Checks the **declared manifest floor** version — verify agai
   (no hard-coded URL) shows via the manifest, not as a call-site.
 - Extend `agent/vendors.yaml` (vendors) and `agent/frameworks.yaml` (frameworks) as your stack grows.
 - The audit uses Tier-1 sources (OSV + endoflife.date). Deferred: Tier 2 (registry abandoned/deprecated,
-  e.g. `fzaninotto/faker`) + Tier 3 (community/early-warning) signals; lockfile-precise versions;
-  weekly-cron + delivery (SARIF upload / committed report); fleet auto-clone.
+  e.g. `fzaninotto/faker`) + Tier 3 (community/early-warning) signals; lockfile-precise versions.
+- Delivery connectors: Google Chat + local reports (shipped). Deferred: email, SARIF auto-upload to
+  the GitHub Security tab, fleet auto-clone, systemd-timer/launchd (cron is Linux/macOS).
