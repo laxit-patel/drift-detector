@@ -10,7 +10,7 @@ def _w(root, rel, text):
     p.write_text(text)
 
 
-_VENDORS = [Vendor("Stripe", "api:stripe", ("api.stripe.com",), r'/(v\d+)')]
+_VENDORS = [Vendor("Stripe", "api:stripe", ("stripe.com",), r'/(v\d+)')]
 
 
 def _fake_opengrep(canned):
@@ -21,8 +21,8 @@ def test_scan_repo_assembles_manifests_and_endpoints(tmp_path):
     _w(tmp_path, "composer.json", '{"require": {"php": "^8.2", "laravel/framework": "^12.0"}}')
     _w(tmp_path, "pay.php", '$u = "https://api.stripe.com/v1/charges";\n')
     canned = json.dumps({"results": [
-        {"check_id": "x.stripe-endpoint", "path": "pay.php", "start": {"line": 1},
-         "extra": {"metadata": {"vendor": "Stripe", "techKey": "api:stripe", "kind": "endpoint"}}}],
+        {"check_id": "x.url-literal", "path": "pay.php", "start": {"line": 1},
+         "extra": {"metadata": {"kind": "url"}}}],
         "errors": [], "paths": {"scanned": ["pay.php"]}})
     git = lambda args: {"rev-parse HEAD": "sha1", "rev-parse --abbrev-ref HEAD": "main",
                         "log -1 --format=%cI": "2026-07-10"}[" ".join(args[2:])]
@@ -36,12 +36,12 @@ def test_scan_repo_assembles_manifests_and_endpoints(tmp_path):
     assert note["opengrepErrors"] == []
 
 
-def test_scan_repo_drops_empty_domain_endpoints(tmp_path):
-    _w(tmp_path, "x.php", 'nothing matches a known domain here\n')
+def test_scan_repo_drops_boilerplate_and_bare_lines(tmp_path):
+    _w(tmp_path, "x.php", '"http://www.w3.org/2001/XMLSchema"; // no real endpoint here\n')
     canned = json.dumps({"results": [
-        {"check_id": "x.stripe-endpoint", "path": "x.php", "start": {"line": 1},
-         "extra": {"metadata": {"vendor": "Stripe", "techKey": "api:stripe", "kind": "endpoint"}}}],
+        {"check_id": "x.url-literal", "path": "x.php", "start": {"line": 1},
+         "extra": {"metadata": {"kind": "url"}}}],
         "errors": [], "paths": {"scanned": ["x.php"]}})
     record, _ = scan_repo(str(tmp_path), "r", 1, _VENDORS, "/r.yaml", engine="semgrep",
                           run=_fake_opengrep(canned), git=lambda a: "")
-    assert record["endpoints"] == []                           # domain unresolved -> dropped
+    assert record["endpoints"] == []                           # boilerplate host -> dropped

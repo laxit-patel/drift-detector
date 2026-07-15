@@ -1,32 +1,27 @@
-"""Render the vendor catalog into an Opengrep endpoint rule pack. The AST-aware
-'"=~/regex/"' string-literal pattern matches endpoint URLs in code while skipping comments."""
+"""Render the endpoint rule pack. Discover-then-classify: ONE broad, AST-aware rule matches every
+`http(s)://` URL string literal (skipping comments); classification against the vendor catalog
+happens in Python (agent.lib.classify_url), so the catalog is never the detection ceiling.
+"""
 from __future__ import annotations
 
-import re
-
 import yaml
-
-from agent.lib.vendors import vendor_slug
 
 DEFAULT_LANGUAGES = ["php", "js", "ts", "python", "ruby", "go", "java", "csharp"]
 
 
-def _rule_for(v, languages: list) -> dict:
-    patterns = [{"pattern": '"=~/' + re.escape(d) + '/"'} for d in v.domains]
-    return {
-        "id": f"{vendor_slug(v.vendor)}-endpoint",
+def build_ruleset(vendors: list | None = None, languages: list = DEFAULT_LANGUAGES) -> dict:
+    # `vendors` is accepted for signature compatibility but no longer shapes the rules —
+    # one broad URL-literal rule replaces the per-vendor allowlist.
+    return {"rules": [{
+        "id": "url-literal",
         "languages": list(languages),
-        "message": f"{v.vendor} endpoint",
+        "message": "URL literal",
         "severity": "INFO",
-        "metadata": {"vendor": v.vendor, "techKey": v.techKey, "kind": "endpoint"},
-        "pattern-either": patterns,
-    }
+        "metadata": {"kind": "url"},
+        "pattern": r'"=~/https?:\/\//"',
+    }]}
 
 
-def build_ruleset(vendors: list, languages: list = DEFAULT_LANGUAGES) -> dict:
-    return {"rules": [_rule_for(v, languages) for v in vendors]}
-
-
-def write_ruleset(vendors: list, path: str, languages: list = DEFAULT_LANGUAGES) -> None:
+def write_ruleset(vendors: list | None, path: str, languages: list = DEFAULT_LANGUAGES) -> None:
     with open(path, "w", encoding="utf-8") as fh:
         yaml.safe_dump(build_ruleset(vendors, languages), fh, sort_keys=False)

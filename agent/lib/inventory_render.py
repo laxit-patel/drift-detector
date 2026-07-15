@@ -10,11 +10,24 @@ from __future__ import annotations
 from collections import Counter, defaultdict
 
 
+UNKNOWN = "Unknown"
+
+
 def _vendor_repo_counts(repos: list) -> Counter:
     c: Counter = Counter()
     for r in repos:
-        for v in {ep.get("vendor", "") for ep in r.get("endpoints", []) if ep.get("vendor")}:
+        for v in {ep.get("vendor", "") for ep in r.get("endpoints", [])
+                  if ep.get("vendor") and ep.get("vendor") != UNKNOWN}:
             c[v] += 1
+    return c
+
+
+def _unknown_host_counts(repos: list) -> Counter:
+    c: Counter = Counter()
+    for r in repos:
+        for host in {ep.get("domain", "") for ep in r.get("endpoints", [])
+                     if ep.get("vendor") == UNKNOWN and ep.get("domain")}:
+            c[host] += 1
     return c
 
 
@@ -143,6 +156,14 @@ def render_inventory_md(doc: dict, diff: dict | None = None) -> str:
     for vendor, n in _ranked(vendor_counts):
         out.append(f"| {vendor} | {', '.join(versions.get(vendor, [])) or '—'} | {n} |")
     out.append("")
+
+    unknown = _ranked(_unknown_host_counts(repos))
+    if unknown:
+        out += ["## Unknown external endpoints (not in catalog — review / add to vendors.yaml)", "",
+                "| Host | Repos |", "|---|---|"]
+        for host, n in unknown:
+            out.append(f"| {host} | {n} |")
+        out.append("")
 
     out += ["## Frameworks (by repo count)", "", "| Framework | Repos |", "|---|---|"]
     for name, n in _ranked(_framework_repo_counts(repos)):

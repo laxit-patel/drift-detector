@@ -1,29 +1,61 @@
-# Vendor catalog — single source of truth for endpoint detection.
-# domains: substrings matched inside string literals (AST-aware) by the generated rules.
-# versionRegex: one capture group = the API version, applied to the matched line (default covers /vN and dates).
-- { vendor: Amazon SP-API,    techKey: api:amazon-sp-api,       domains: [sellingpartnerapi] }
-- { vendor: Amazon MWS,       techKey: api:amazon-mws,          domains: [mws.amazonservices] }
-- { vendor: Amazon Ads API,   techKey: api:amazon-ads,          domains: [advertising-api.amazon] }
-- { vendor: eBay,             techKey: api:ebay,                domains: [api.ebay.com] }
-- { vendor: Walmart,          techKey: api:walmart-marketplace, domains: [walmartapis.com] }
-- { vendor: Shopify,          techKey: api:shopify,             domains: [myshopify.com] }
-- { vendor: Stripe,           techKey: api:stripe,              domains: [api.stripe.com] }
-- { vendor: PayPal,           techKey: api:paypal,              domains: [api.paypal.com] }
-- { vendor: Square,           techKey: api:square,              domains: [connect.squareup.com] }
-- { vendor: Razorpay,         techKey: api:razorpay,            domains: [api.razorpay.com] }
-- { vendor: Google APIs,      techKey: api:google,              domains: [googleapis.com] }
-- { vendor: Google Maps,      techKey: api:google-maps,         domains: [maps.googleapis.com] }
-- { vendor: Google OAuth2,    techKey: api:google-oauth2,       domains: [oauth2.googleapis.com] }
-- { vendor: Firebase FCM,     techKey: api:firebase-fcm,        domains: [fcm.googleapis.com] }
-- { vendor: Meta Graph API,   techKey: api:meta-graph,          domains: [graph.facebook.com] }
-- { vendor: Microsoft Graph,  techKey: api:microsoft-graph,     domains: [graph.microsoft.com] }
-- { vendor: OpenAI,           techKey: api:openai,              domains: [api.openai.com] }
-- { vendor: Anthropic,        techKey: api:anthropic,           domains: [api.anthropic.com] }
-- { vendor: Twilio,           techKey: api:twilio,              domains: [api.twilio.com] }
-- { vendor: SendGrid,         techKey: api:sendgrid,            domains: [api.sendgrid.com] }
-- { vendor: Mailgun,          techKey: api:mailgun,             domains: [api.mailgun.net] }
-- { vendor: Vonage Nexmo,     techKey: api:vonage,              domains: [rest.nexmo.com] }
-- { vendor: GitHub,           techKey: api:github,              domains: [api.github.com] }
-- { vendor: Slack,            techKey: api:slack,               domains: [slack.com/api, hooks.slack.com] }
-- { vendor: LinkedIn,         techKey: api:linkedin,            domains: [api.linkedin.com] }
-- { vendor: Twitter X,        techKey: api:twitter,             domains: [api.twitter.com, api.x.com] }
+# Vendor catalog — used to CLASSIFY discovered URL hosts (the scan finds all http(s) URLs; this
+# labels the ones we recognize; the rest surface as "Unknown external").
+# domains: a dotted value is matched as a registrable-domain SUFFIX (ebay.com -> api.sandbox.ebay.com);
+#          a value with no dot is a distinctive host FRAGMENT (sellingpartnerapi -> regional Amazon hosts).
+# Keep API-specific hosts (api.github.com, graph.facebook.com) where the bare domain is noisy.
+# versionRegex: one capture group = the API version, applied to the URL (default covers /vN and dates).
+
+# ── Marketplaces / e-commerce ──────────────────────────────────────────────
+- { vendor: Amazon SP-API,     techKey: api:amazon-sp-api,       domains: [sellingpartnerapi] }
+- { vendor: Amazon MWS,        techKey: api:amazon-mws,          domains: [mws.amazonservices.com] }
+- { vendor: Amazon Ads API,    techKey: api:amazon-ads,          domains: [advertising-api] }
+- { vendor: eBay,              techKey: api:ebay,                domains: [ebay.com] }
+- { vendor: Walmart,           techKey: api:walmart-marketplace, domains: [walmartapis.com] }
+- { vendor: Etsy,              techKey: api:etsy,                domains: [etsy.com] }
+- { vendor: Shopify,           techKey: api:shopify,             domains: [myshopify.com, shopify.dev] }
+- { vendor: BigCommerce,       techKey: api:bigcommerce,         domains: [bigcommerce.com] }
+- { vendor: WooCommerce,       techKey: api:woocommerce,         domains: [woocommerce.com] }
+- { vendor: Mirakl,            techKey: api:mirakl,              domains: [mirakl.net] }
+- { vendor: Rakuten,           techKey: api:rakuten,             domains: [rakuten.com, rms.rakuten.co.jp] }
+
+# ── Payments ───────────────────────────────────────────────────────────────
+- { vendor: Stripe,            techKey: api:stripe,              domains: [stripe.com] }
+- { vendor: PayPal,            techKey: api:paypal,              domains: [paypal.com] }
+- { vendor: Braintree,         techKey: api:braintree,           domains: [braintreegateway.com] }
+- { vendor: Square,            techKey: api:square,              domains: [squareup.com] }
+- { vendor: Adyen,             techKey: api:adyen,               domains: [adyen.com] }
+- { vendor: Razorpay,          techKey: api:razorpay,            domains: [razorpay.com] }
+- { vendor: Authorize.Net,     techKey: api:authorize-net,       domains: [authorize.net] }
+- { vendor: Klarna,            techKey: api:klarna,              domains: [klarna.com] }
+- { vendor: Checkout.com,      techKey: api:checkout-com,        domains: [checkout.com] }
+
+# ── Shipping / tax ─────────────────────────────────────────────────────────
+- { vendor: ShipStation,       techKey: api:shipstation,         domains: [shipstation.com] }
+- { vendor: EasyPost,          techKey: api:easypost,            domains: [easypost.com] }
+- { vendor: Shippo,            techKey: api:shippo,              domains: [goshippo.com] }
+- { vendor: Avalara,           techKey: api:avalara,             domains: [avalara.com] }
+- { vendor: TaxJar,            techKey: api:taxjar,              domains: [taxjar.com] }
+- { vendor: FedEx,             techKey: api:fedex,               domains: [fedex.com] }
+- { vendor: UPS,               techKey: api:ups,                 domains: [ups.com] }
+
+# ── Comms / marketing ──────────────────────────────────────────────────────
+- { vendor: Twilio,            techKey: api:twilio,              domains: [twilio.com] }
+- { vendor: SendGrid,          techKey: api:sendgrid,            domains: [sendgrid.com] }
+- { vendor: Mailgun,           techKey: api:mailgun,             domains: [mailgun.net, mailgun.com] }
+- { vendor: Mailchimp,         techKey: api:mailchimp,           domains: [mailchimp.com] }
+- { vendor: Klaviyo,           techKey: api:klaviyo,             domains: [klaviyo.com] }
+- { vendor: Vonage Nexmo,      techKey: api:vonage,              domains: [nexmo.com, vonage.com] }
+- { vendor: Slack,             techKey: api:slack,               domains: [slack.com] }
+
+# ── Cloud / platform / AI ──────────────────────────────────────────────────
+- { vendor: Google APIs,       techKey: api:google,              domains: [googleapis.com] }
+- { vendor: Google Maps,       techKey: api:google-maps,         domains: [maps.googleapis.com] }
+- { vendor: Google OAuth2,     techKey: api:google-oauth2,       domains: [oauth2.googleapis.com] }
+- { vendor: Firebase FCM,      techKey: api:firebase-fcm,        domains: [fcm.googleapis.com] }
+- { vendor: Meta Graph API,    techKey: api:meta-graph,          domains: [graph.facebook.com] }
+- { vendor: Microsoft Graph,   techKey: api:microsoft-graph,     domains: [graph.microsoft.com] }
+- { vendor: OpenAI,            techKey: api:openai,              domains: [api.openai.com] }
+- { vendor: Anthropic,         techKey: api:anthropic,           domains: [api.anthropic.com] }
+- { vendor: GitHub,            techKey: api:github,              domains: [api.github.com] }
+- { vendor: LinkedIn,          techKey: api:linkedin,            domains: [api.linkedin.com] }
+- { vendor: Twitter X,         techKey: api:twitter,             domains: [api.twitter.com, api.x.com] }

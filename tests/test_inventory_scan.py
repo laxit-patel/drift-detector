@@ -16,9 +16,10 @@ def _git_init(d, files):
 
 
 def _canned_stripe(path):
+    # the engine now emits generic URL-literal matches; classification happens in Python
     return json.dumps({"results": [
-        {"check_id": "x.stripe-endpoint", "path": path, "start": {"line": 1},
-         "extra": {"metadata": {"vendor": "Stripe", "techKey": "api:stripe", "kind": "endpoint"}}}],
+        {"check_id": "x.url-literal", "path": path, "start": {"line": 1},
+         "extra": {"metadata": {"kind": "url"}}}],
         "errors": [], "paths": {"scanned": [path]}})
 
 

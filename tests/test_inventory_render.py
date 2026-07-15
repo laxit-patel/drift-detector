@@ -71,3 +71,14 @@ def test_render_leads_with_drift_when_diff_present():
 def test_render_no_drift_section_without_changes():
     md = render_inventory_md(_DOC, {"reposAdded": [], "reposRemoved": [], "changes": []})
     assert "Drift since last scan" not in md
+
+
+def test_unknown_external_endpoints_surfaced_and_excluded_from_apis():
+    doc = {"generated": "2026-07-15", "scope": {}, "coverage": {}, "repos": [
+        {"path": "a", "endpoints": [
+            {"vendor": "Stripe", "version": "v1", "domain": "api.stripe.com"},
+            {"vendor": "Unknown", "domain": "api.feedonomics.com", "version": "v2"}]}]}
+    md = render_inventory_md(doc)
+    assert "Unknown external endpoints" in md and "api.feedonomics.com" in md
+    apis = md.split("Third-party APIs")[1].split("## ")[0]
+    assert "Stripe" in apis and "Unknown" not in apis        # Unknown gets its own section, not the API table

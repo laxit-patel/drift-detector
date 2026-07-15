@@ -8,86 +8,82 @@ def _write(tmp_path, rel, text):
     p.write_text(text)
 
 
-_VENDORS = [Vendor("Amazon SP-API", "api:amazon-sp-api", ("sellingpartnerapi",),
-                   r'/(v[0-9][0-9.]*|[0-9]{4}-[0-9]{2}-[0-9]{2})'),
-            Vendor("Stripe", "api:stripe", ("api.stripe.com",), r'/(v\d+)')]
+_SP = Vendor("Amazon SP-API", "api:amazon-sp-api", ("sellingpartnerapi",),
+             r'/(v[0-9][0-9.]*|[0-9]{4}-[0-9]{2}-[0-9]{2})')
+_STRIPE = Vendor("Stripe", "api:stripe", ("stripe.com",), r'/(v\d+)')
+_VENDORS = [_SP, _STRIPE]
+
+
+def _url(path, line):
+    return {"kind": "url", "path": path, "line": line}
 
 
 def test_aggregates_endpoints_with_version_and_filelines(tmp_path):
     _write(tmp_path, "a.php", 'x\n$u = "https://sellingpartnerapi-na.amazon.com/orders/v0/orders";\n')
     _write(tmp_path, "b.php", '$v = "https://api.stripe.com/v1/charges";\n')
-    matches = [
-        {"kind": "endpoint", "techKey": "api:amazon-sp-api", "vendor": "Amazon SP-API",
-         "path": "a.php", "line": 2},
-        {"kind": "endpoint", "techKey": "api:stripe", "vendor": "Stripe", "path": "b.php", "line": 1},
-    ]
-    eps = build_endpoints(matches, str(tmp_path), _VENDORS)
-    by_key = {(e["techKey"], e["version"]): e for e in eps}
-    sp = by_key[("api:amazon-sp-api", "v0")]
-    assert sp["domain"] == "sellingpartnerapi" and sp["files"] == ["a.php:2"] and sp["file_count"] == 1
-    assert "sellingpartnerapi" in sp["example"]
-    assert by_key[("api:stripe", "v1")]["domain"] == "api.stripe.com"
+    eps = build_endpoints([_url("a.php", 2), _url("b.php", 1)], str(tmp_path), _VENDORS)
+    by = {(e["techKey"], e["version"]): e for e in eps}
+    sp = by[("api:amazon-sp-api", "v0")]
+    assert sp["domain"] == "sellingpartnerapi-na.amazon.com" and sp["files"] == ["a.php:2"]
+    assert sp["vendor"] == "Amazon SP-API" and "sellingpartnerapi" in sp["example"]
+    assert by[("api:stripe", "v1")]["domain"] == "api.stripe.com"
+
+
+def test_registrable_suffix_catches_subdomain_variants(tmp_path):
+    # the whole point of #1: ebay.com must catch api.sandbox.ebay.com (the old allowlist missed it)
+    _write(tmp_path, "c.php", '"https://api.sandbox.ebay.com/ws/api.dll";\n')
+    ebay = Vendor("eBay", "api:ebay", ("ebay.com",), r'/(v\d+)')
+    eps = build_endpoints([_url("c.php", 1)], str(tmp_path), [ebay])
+    assert eps[0]["vendor"] == "eBay" and eps[0]["domain"] == "api.sandbox.ebay.com"
+
+
+def test_uncatalogued_url_is_unknown_external(tmp_path):
+    _write(tmp_path, "d.php", '"https://api.feedonomics.com/v2/import";\n')
+    eps = build_endpoints([_url("d.php", 1)], str(tmp_path), _VENDORS)
+    assert len(eps) == 1 and eps[0]["vendor"] == "Unknown" and eps[0]["classified"] is False
+    assert eps[0]["domain"] == "api.feedonomics.com" and eps[0]["version"] == "v2"
+
+
+def test_boilerplate_hosts_ignored(tmp_path):
+    _write(tmp_path, "e.php", '"http://www.w3.org/2001/XMLSchema"; "https://fonts.googleapis.com/css";\n')
+    assert build_endpoints([_url("e.php", 1)], str(tmp_path), _VENDORS) == []
 
 
 def test_same_vendor_version_groups_and_counts(tmp_path):
     _write(tmp_path, "a.php", '"https://api.stripe.com/v1/a";\n')
     _write(tmp_path, "b.php", '"https://api.stripe.com/v1/b";\n')
-    matches = [{"kind": "endpoint", "techKey": "api:stripe", "vendor": "Stripe", "path": p, "line": 1}
-               for p in ("a.php", "b.php")]
-    eps = build_endpoints(matches, str(tmp_path),
-                          [Vendor("Stripe", "api:stripe", ("api.stripe.com",), r'/(v\d+)')])
+    eps = build_endpoints([_url("a.php", 1), _url("b.php", 1)], str(tmp_path), [_STRIPE])
     assert len(eps) == 1 and eps[0]["file_count"] == 2 and set(eps[0]["files"]) == {"a.php:1", "b.php:1"}
 
 
 def test_no_version_when_url_has_none(tmp_path):
     _write(tmp_path, "a.php", '"https://api.stripe.com/charges";\n')
-    eps = build_endpoints([{"kind": "endpoint", "techKey": "api:stripe", "vendor": "Stripe",
-                            "path": "a.php", "line": 1}], str(tmp_path),
-                          [Vendor("Stripe", "api:stripe", ("api.stripe.com",), r'/(v\d+)')])
-    assert eps[0]["version"] is None
+    assert build_endpoints([_url("a.php", 1)], str(tmp_path), [_STRIPE])[0]["version"] is None
 
 
-def test_non_endpoint_matches_ignored(tmp_path):
-    eps = build_endpoints([{"kind": "sdk", "techKey": "api:stripe", "vendor": "Stripe",
-                            "path": "a.php", "line": 1}], str(tmp_path), _VENDORS)
-    assert eps == []
+def test_non_url_matches_ignored(tmp_path):
+    assert build_endpoints([{"kind": "sdk", "path": "a.php", "line": 1}], str(tmp_path), _VENDORS) == []
 
 
-def test_nested_domain_attributes_to_most_specific_vendor(tmp_path):
+def test_most_specific_domain_wins(tmp_path):
     _write(tmp_path, "m.php", '"https://maps.googleapis.com/maps/api/geocode/json";\n')
     vendors = [Vendor("Google APIs", "api:google", ("googleapis.com",), r'/(v\d+)'),
                Vendor("Google Maps", "api:google-maps", ("maps.googleapis.com",), r'/(v\d+)')]
-    # both rules fire at the same location:
-    matches = [{"kind":"endpoint","techKey":"api:google","vendor":"Google APIs","path":"m.php","line":1},
-               {"kind":"endpoint","techKey":"api:google-maps","vendor":"Google Maps","path":"m.php","line":1}]
-    eps = build_endpoints(matches, str(tmp_path), vendors)
-    assert len(eps) == 1 and eps[0]["techKey"] == "api:google-maps"   # most-specific wins, no double-count
+    eps = build_endpoints([_url("m.php", 1)], str(tmp_path), vendors)
+    assert len(eps) == 1 and eps[0]["techKey"] == "api:google-maps"     # longest matching domain wins
 
 
-def test_two_unrelated_vendors_on_same_line_both_kept(tmp_path):
+def test_two_urls_on_one_line_both_extracted(tmp_path):
     _write(tmp_path, "m.php",
-           '$u = ["https://api.stripe.com/v1/a","https://sellingpartnerapi.com/orders/v0/b"];\n')
-    vendors = [Vendor("Stripe","api:stripe",("api.stripe.com",),r'/(v\d+)'),
-               Vendor("Amazon SP-API","api:amazon-sp-api",("sellingpartnerapi",),
-                      r'/(v[0-9][0-9.]*|[0-9]{4}-[0-9]{2}-[0-9]{2})')]
-    matches=[{"kind":"endpoint","techKey":"api:stripe","vendor":"Stripe","path":"m.php","line":1},
-             {"kind":"endpoint","techKey":"api:amazon-sp-api","vendor":"Amazon SP-API","path":"m.php","line":1}]
-    eps = build_endpoints(matches, str(tmp_path), vendors)
+           '$u = ["https://api.stripe.com/v1/a","https://sellingpartnerapi-na.amazon.com/orders/v0/b"];\n')
+    eps = build_endpoints([_url("m.php", 1)], str(tmp_path), _VENDORS)   # one line -> both URLs classified
     by = {e["techKey"]: e for e in eps}
-    assert set(by) == {"api:stripe","api:amazon-sp-api"}   # unrelated domains on one line -> BOTH kept
-    assert by["api:stripe"]["version"] == "v1"          # each version from its OWN url, not the neighbor's
-    assert by["api:amazon-sp-api"]["version"] == "v0"
-    assert "stripe" in by["api:stripe"]["example"] and "sellingpartner" in by["api:amazon-sp-api"]["example"]
+    assert set(by) == {"api:stripe", "api:amazon-sp-api"}
+    assert by["api:stripe"]["version"] == "v1" and by["api:amazon-sp-api"]["version"] == "v0"
 
 
 def test_endpoint_files_are_repo_relative(tmp_path):
-    # the engine returns ABSOLUTE paths when scanning an absolute dir; files[] must be repo-relative
-    from agent.lib.vendors import Vendor
     (tmp_path / "lib").mkdir()
     (tmp_path / "lib" / "req.php").write_text('"https://api.stripe.com/v1/x";\n')
-    abs_path = str(tmp_path / "lib" / "req.php")
-    v = [Vendor("Stripe", "api:stripe", ("api.stripe.com",), r'/(v\d+)')]
-    eps = build_endpoints([{"kind": "endpoint", "techKey": "api:stripe", "vendor": "Stripe",
-                            "path": abs_path, "line": 1}], str(tmp_path), v)
-    assert eps[0]["files"] == ["lib/req.php:1"]          # relative, not the absolute /tmp/... path
-    assert eps[0]["version"] == "v1"                      # still reads the line + extracts version
+    eps = build_endpoints([_url(str(tmp_path / "lib" / "req.php"), 1)], str(tmp_path), [_STRIPE])
+    assert eps[0]["files"] == ["lib/req.php:1"] and eps[0]["version"] == "v1"
