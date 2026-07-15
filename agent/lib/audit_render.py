@@ -12,15 +12,34 @@ def _esc(s) -> str:
 
 
 def render_audit_md(audit: dict) -> str:
-    findings = audit.get("findings", [])
+    findings = [f for f in audit.get("findings", []) if not f.get("suppressed")]
     counts = audit.get("counts", {})
-    out = [f"# Deprecation & Vulnerability Audit — {audit.get('generated', '')}".rstrip(), ""]
+    delta = audit.get("delta")
+    now = audit.get("generated", "")
+    out = [f"# Deprecation & Vulnerability Audit — {now}".rstrip(), ""]
     out.append(f"**🔴 {counts.get('DEPRECATED', 0)} action-required · "
                f"🟠 {counts.get('REVIEW', 0)} to review · across {counts.get('reposAffected', 0)} repos**")
+    if delta is not None:
+        out.append("")
+        out.append(f"_Since last scan: 🆕 {len(delta.get('new', []))} new · "
+                   f"✅ {len(delta.get('resolved', []))} resolved · "
+                   f"⏳ {len(delta.get('persisting', []))} still open"
+                   + (f" · 🔕 {delta.get('mutedCount', 0)} muted" if delta.get("mutedCount") else "") + "_")
+        newf = delta.get("new", [])
+        if newf:
+            out += ["", "## 🆕 New since last scan", ""]
+            for f in sorted(newf, key=lambda x: (_ORDER.get(x["status"], 9), x["repo"])):
+                out.append(f"- {_BADGE.get(f['status'], '')} **{_esc(f['ref'])}** `{_esc(f['version'])}` in "
+                           f"`{_esc(f['repo'])}` — {_esc(f['detail'])}")
+        resolved = delta.get("resolved", [])
+        if resolved:
+            out += ["", "## ✅ Resolved since last scan", ""]
+            for r in resolved:
+                out.append(f"- {_esc(r.get('ref'))} ({_esc(r.get('kind'))})")
     out.append("")
 
     if not findings:
-        out += ["_No deprecation or vulnerability findings._", ""]
+        out += ["_No open deprecation or vulnerability findings._", ""]
     else:
         urgent = [f for f in findings if f["status"] == "DEPRECATED"]
         if urgent:

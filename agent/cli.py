@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 import time
 
@@ -63,6 +64,8 @@ def _cmd_audit(args) -> int:
               file=sys.stderr, flush=True)
 
     audit = audit_inventory(doc, args.now, http=http) if http else audit_inventory(doc, args.now)
+    from agent.lib.findings_state import apply_lifecycle
+    apply_lifecycle(audit, os.path.dirname(os.path.abspath(args.in_json)), args.now)
 
     with open(args.out_audit, "w", encoding="utf-8") as fh:
         fh.write(render_audit_md(audit))
@@ -136,6 +139,17 @@ def _cmd_unschedule(args) -> int:
     return 0
 
 
+def _cmd_mute(args) -> int:
+    from agent.lib.findings_state import add_to_baseline, remove_from_baseline
+    if args.remove:
+        remove_from_baseline(args.state, args.fingerprint)
+        print(f"unmuted {args.fingerprint}")
+    else:
+        add_to_baseline(args.state, args.fingerprint)
+        print(f"muted {args.fingerprint} (excluded from action counts until unmuted)")
+    return 0
+
+
 def main(argv: list[str]) -> int:
     p = argparse.ArgumentParser(prog="drift-detector")
     sub = p.add_subparsers(dest="cmd", required=True)
@@ -160,6 +174,12 @@ def main(argv: list[str]) -> int:
     pu = sub.add_parser("unschedule")
     pu.add_argument("--state", required=True)
     pu.set_defaults(func=_cmd_unschedule)
+
+    pmu = sub.add_parser("mute")
+    pmu.add_argument("--state", required=True)
+    pmu.add_argument("--fingerprint", required=True)
+    pmu.add_argument("--remove", action="store_true")
+    pmu.set_defaults(func=_cmd_mute)
 
     pa = sub.add_parser("audit")
     pa.add_argument("--in", dest="in_json", required=True)

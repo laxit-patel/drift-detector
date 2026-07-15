@@ -38,7 +38,7 @@ def test_runner_has_doctor_with_actionable_hint():
 
 def test_runner_and_command_support_audit_run_schedule():
     runner = (_ROOT / "bin" / "drift-scan").read_text()
-    assert "audit|run|schedule|unschedule)" in runner           # runner dispatches all subcommands
+    assert "audit|run|schedule|unschedule|mute)" in runner      # runner dispatches all subcommands
     cmd = (_ROOT / "commands" / "drift-detector.md").read_text()
     assert "audit" in cmd and "bom.json" in cmd and "findings.sarif" in cmd
     assert "schedule" in cmd and "cron" in cmd.lower()          # agent offers autonomy

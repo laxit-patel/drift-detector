@@ -37,7 +37,7 @@ def test_audit_md_leads_with_urgent_and_tables():
 
 def test_audit_md_empty():
     md = render_audit_md({"generated": "2026-07-14", "counts": {}, "findings": [], "coverage": {}})
-    assert "No deprecation or vulnerability findings" in md
+    assert "No open deprecation or vulnerability findings" in md
 
 
 def test_cyclonedx_bom_shape():

@@ -12,13 +12,22 @@ from agent.lib.http_util import default_http
 
 def build_chat_card(audit: dict, now: str, *, folder: str | None = None) -> dict:
     c = audit.get("counts", {})
-    findings = audit.get("findings", [])
+    delta = audit.get("delta")
+    findings = [f for f in audit.get("findings", []) if not f.get("suppressed")]
     dep = Counter(f["repo"] for f in findings if f.get("status") == "DEPRECATED")
     worst = "<br>".join(f"• <b>{repo}</b> — {n}" for repo, n in dep.most_common(5)) or "—"
     fixes = [f for f in findings if f.get("status") == "DEPRECATED" and f.get("recommendation")]
     top = "<br>".join(f"• {f['ref']} {f['version']} → {f['recommendation']}" for f in fixes[:5]) or "—"
 
-    sections = [
+    sections = []
+    if delta is not None:
+        newf, res = delta.get("new", []), delta.get("resolved", [])
+        change = (f"🆕 <b>{len(newf)} new</b> · ✅ {len(res)} resolved · ⏳ {len(delta.get('persisting', []))} still open")
+        section_new = "<br>".join(f"• {f['ref']} {f['version']} in {f['repo']}" for f in newf[:5]) or "—"
+        sections.append({"header": "Since last scan", "widgets": [
+            {"textParagraph": {"text": change}},
+            {"textParagraph": {"text": "<b>New:</b><br>" + section_new}}]})
+    sections += [
         {"header": "Worst repos", "widgets": [{"textParagraph": {"text": worst}}]},
         {"header": "Top fixes", "widgets": [{"textParagraph": {"text": top}}]},
     ]

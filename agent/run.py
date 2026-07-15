@@ -16,6 +16,7 @@ from agent.lib.audit_render import render_audit_md
 from agent.lib.cyclonedx import build_bom
 from agent.lib.sarif import build_sarif
 from agent.lib.chat import build_chat_card, post_chat
+from agent.lib.findings_state import apply_lifecycle
 from agent.lib.repo_discovery import discover_repos
 from agent.lib.http_util import default_http
 
@@ -59,6 +60,7 @@ def run_pipeline(roots, state_dir, now, *, chat_webhook=None, pull=False,
     _write(os.path.join(state_dir, "DRIFT.md"), render_diff_md(scan["diff"]))
 
     audit = audit_inventory(doc, now, http=http) if http else audit_inventory(doc, now)
+    apply_lifecycle(audit, state_dir, now)
     _write(os.path.join(state_dir, "AUDIT.md"), render_audit_md(audit))
     _write_json(os.path.join(state_dir, "bom.json"), build_bom(doc, audit["findings"], now))
     _write_json(os.path.join(state_dir, "findings.sarif"), build_sarif(doc, audit["findings"]))
