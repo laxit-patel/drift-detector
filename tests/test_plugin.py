@@ -36,6 +36,18 @@ def test_runner_has_doctor_with_actionable_hint():
     assert "astral.sh/uv/install.sh" in body                    # exact uv install remediation
 
 
+def test_mcp_server_launcher_and_tools():
+    runner = _ROOT / "bin" / "drift-mcp"
+    assert runner.exists() and os.stat(runner).st_mode & stat.S_IXUSR
+    body = runner.read_text()
+    assert "agent.mcp_server" in body and "requirements-mcp.txt" in body    # self-bootstraps + runs the server
+    assert "mcp>=" in (_ROOT / "requirements-mcp.txt").read_text()
+    server = (_ROOT / "agent" / "mcp_server.py").read_text()
+    assert "FastMCP" in server
+    for tool in ("list_repos", "query_integrations", "get_findings", "check_dependency", "check_runtime"):
+        assert f"def {tool}" in server                                      # the 5 facade tools
+
+
 def test_runner_and_command_support_audit_run_schedule():
     runner = (_ROOT / "bin" / "drift-scan").read_text()
     assert "audit|run|schedule|unschedule|mute)" in runner      # runner dispatches all subcommands
