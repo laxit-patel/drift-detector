@@ -21,7 +21,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: laxit-patel/drift-detector@v0.1.0-beta
+      - uses: laxit-patel/drift-detector@v0.2.0-beta
         with:
           fail-on-deprecated: ${{ github.event_name == 'pull_request' }}
           chat-webhook: ${{ secrets.DRIFT_CHAT_WEBHOOK }}   # optional
@@ -37,6 +37,9 @@ What you get:
   so the gate fires only on *new* deprecations.
 
 Action inputs: `path` (default `.`), `fail-on-deprecated`, `upload-sarif` (default true), `chat-webhook`.
+The caller workflow needs `permissions: security-events: write` for the SARIF upload (shown above) —
+without it, `upload-sarif` fails with *"Resource not accessible by integration."* The gate exits **3**
+on a DEPRECATED finding and **4** if the audit sources were unreachable (couldn't certify clean).
 
 ## GitLab CI (or any non-GitHub runner)
 

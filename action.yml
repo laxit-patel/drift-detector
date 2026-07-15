@@ -32,8 +32,9 @@ runs:
           --state "${{ inputs.path }}/.drift-detector" \
           --now "$(date +%F)" --progress "${FLAGS[@]}"
     - name: Upload SARIF to code-scanning
-      # run even if the gate failed the previous step, so the alerts still surface
-      if: ${{ always() && inputs.upload-sarif == 'true' }}
+      # run even if the gate failed the previous step, so the alerts still surface —
+      # but only if the scan actually produced a SARIF (skip when the run died early).
+      if: ${{ always() && inputs.upload-sarif == 'true' && hashFiles(format('{0}/.drift-detector/findings.sarif', inputs.path)) != '' }}
       uses: github/codeql-action/upload-sarif@v3
       with:
         sarif_file: "${{ inputs.path }}/.drift-detector/findings.sarif"

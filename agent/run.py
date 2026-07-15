@@ -72,4 +72,5 @@ def run_pipeline(roots, state_dir, now, *, chat_webhook=None, pull=False,
         ok = post_chat(chat_webhook, card, http=http or default_http)
         delivered.append({"channel": "chat", "ok": ok})
 
-    return {"scope": doc.get("scope", {}), "auditCounts": audit["counts"], "delivered": delivered}
+    return {"scope": doc.get("scope", {}), "auditCounts": audit["counts"],
+            "coverage": audit.get("coverage", {}), "delivered": delivered}
