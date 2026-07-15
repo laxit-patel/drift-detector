@@ -50,7 +50,9 @@ def audit_inventory(doc: dict, now: str, *, http=None,
         # --- packages -> OSV ---
         for s in r.get("sdks", []):
             eco, pkg = s.get("eco"), s.get("pkg")
-            ver = floor(s.get("ver"))
+            resolved = s.get("resolved")                 # exact version from a lockfile, if any
+            ver = resolved or floor(s.get("ver"))        # else the declared manifest floor
+            vsource = "lockfile" if resolved else "manifest"
             if osv_ecosystem(eco) is None or ver is None:
                 continue
             key = (eco, pkg, ver)
@@ -70,7 +72,8 @@ def audit_inventory(doc: dict, now: str, *, http=None,
                     continue
                 seen_cve.add(dk)
                 findings.append({
-                    "repo": path, "kind": "cve", "ref": f"{eco}/{pkg}", "version": s.get("ver"),
+                    "repo": path, "kind": "cve", "ref": f"{eco}/{pkg}",
+                    "version": ver, "versionSource": vsource,
                     "id": v["id"], "cve": v["cve"], "fixed": v.get("fixed"),
                     "status": _cve_status(v["severity"]), "severity": v["severity"],
                     "detail": v["summary"] or v["cve"], "date": None,

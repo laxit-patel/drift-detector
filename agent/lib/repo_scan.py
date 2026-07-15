@@ -7,6 +7,7 @@ from agent.lib.record_routing import partition_records
 from agent.lib.opengrep import run_scan
 from agent.lib.endpoints import build_endpoints
 from agent.lib.superset import to_superset_repo
+from agent.lib import lockfile
 
 
 def scan_repo(repo_abs, repo_name, repo_id, vendors, rules_path, *,
@@ -21,4 +22,17 @@ def scan_repo(repo_abs, repo_name, repo_id, vendors, rules_path, *,
     endpoints = [e for e in build_endpoints(scan["matches"], repo_abs, vendors) if e.get("domain")]
 
     record = to_superset_repo(meta, partitioned, endpoints)
+    _annotate_resolved(record, repo_abs)
     return record, {"unparsed": unparsed, "opengrepErrors": scan["errors"]}
+
+
+def _annotate_resolved(record, repo_abs):
+    """Attach lockfile-resolved exact versions to sdks[] (falls back to the manifest range)."""
+    resolved = lockfile.resolve_versions(repo_abs)
+    for s in record.get("sdks", []):
+        exact = resolved.get((s["eco"], lockfile.norm(s["eco"], s["pkg"])))
+        if exact:
+            s["resolved"] = exact
+            s["versionSource"] = "lockfile"
+        else:
+            s["versionSource"] = "manifest"
