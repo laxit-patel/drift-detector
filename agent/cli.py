@@ -109,6 +109,10 @@ def _cmd_run(args) -> int:
     deliver = ", ".join(f"{d['channel']}:{'ok' if d['ok'] else 'FAILED'}" for d in out["delivered"]) or "local only"
     print(f"✓ scan+audit: 🔴 {c.get('DEPRECATED', 0)} action-required · 🟠 {c.get('REVIEW', 0)} review · "
           f"deliver: {deliver}")
+    if getattr(args, "fail_on_deprecated", False) and c.get("DEPRECATED", 0) > 0:
+        print(f"✗ gate: {c['DEPRECATED']} DEPRECATED finding(s) (excluding muted) — failing (exit 3)",
+              file=sys.stderr)
+        return 3
     return 0
 
 
@@ -161,6 +165,8 @@ def main(argv: list[str]) -> int:
     pr.add_argument("--chat-webhook")
     pr.add_argument("--pull", action="store_true")
     pr.add_argument("--progress", action="store_true")
+    pr.add_argument("--fail-on-deprecated", action="store_true",
+                    help="exit 3 if any un-muted DEPRECATED finding (CI gate)")
     pr.set_defaults(func=_cmd_run)
 
     psc = sub.add_parser("schedule")
