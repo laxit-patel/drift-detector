@@ -6,11 +6,16 @@ from __future__ import annotations
 
 import json
 import os
+import re
 
 from agent.lib import osv, eol
 from agent.lib.http_util import default_http
 
 _SEV_RANK = {"CRITICAL": 4, "HIGH": 3, "MODERATE": 2, "MEDIUM": 2, "LOW": 1, "UNKNOWN": 0, "": 0}
+
+
+def _semver_key(s: str):
+    return [int(p) for p in re.findall(r"\d+", str(s))] or [0]
 
 
 def _read_json(path):
@@ -68,11 +73,15 @@ def get_findings(audit: dict, repo: str | None = None, status: str | None = None
 
 def check_dependency(ecosystem: str, name: str, version: str, *, http=None) -> dict:
     """LIVE OSV lookup for a specific package version — generation-time prevention."""
-    vulns = osv.query_package(ecosystem, name, version, http=http or default_http)
+    base = {"ecosystem": ecosystem, "package": name, "version": version}
+    try:
+        vulns = osv.query_package(ecosystem, name, version, http=http or default_http)
+    except Exception as exc:
+        return {**base, "checked": False, "error": f"OSV unavailable: {exc}"}
     worst = max((v.get("severity", "") for v in vulns), key=lambda s: _SEV_RANK.get(str(s).upper(), 0), default=None)
-    fixes = sorted({v["fixed"] for v in vulns if v.get("fixed")})
+    fixes = sorted({v["fixed"] for v in vulns if v.get("fixed")}, key=_semver_key)   # numeric, not string sort
     return {
-        "ecosystem": ecosystem, "package": name, "version": version,
+        **base, "checked": True,
         "vulnerable": bool(vulns), "count": len(vulns), "worst_severity": worst,
         "cves": [v["cve"] for v in vulns[:10] if v.get("cve")],
         "recommendation": (f"{len(vulns)} known advisories; upgrade to ≥ {fixes[-1]}" if fixes
@@ -82,8 +91,11 @@ def check_dependency(ecosystem: str, name: str, version: str, *, http=None) -> d
 
 def check_runtime(product: str, version: str, now: str, *, http=None) -> dict:
     """LIVE endoflife.date lookup for a runtime/framework version."""
-    res = eol.check(product, version, now, http=http or default_http)
+    try:
+        res = eol.check(product, version, now, http=http or default_http)
+    except Exception as exc:
+        return {"product": product, "version": version, "checked": False, "error": f"endoflife.date unavailable: {exc}"}
     if not res:
-        return {"product": product, "version": version, "tracked": False}
-    return {"product": product, "version": version, "tracked": True,
+        return {"product": product, "version": version, "checked": True, "tracked": False}
+    return {"product": product, "version": version, "checked": True, "tracked": True,
             "status": res["status"], "eol_date": res.get("eol_date"), "recommended": res.get("recommended")}

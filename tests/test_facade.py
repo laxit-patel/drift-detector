@@ -42,19 +42,30 @@ def test_get_findings_filters_and_hides_suppressed():
     assert len(dep) == 1 and dep[0]["status"] == "DEPRECATED"
 
 
-def test_check_dependency_live_shape():
-    def fake_http(url, *, method="GET", body=None, timeout=20):
-        return {"vulns": [{"id": "GHSA-1", "aliases": ["CVE-1"], "summary": "x",
-                           "database_specific": {"severity": "HIGH"},
-                           "affected": [{"package": {"ecosystem": "npm", "name": "axios"},
-                                         "ranges": [{"events": [{"introduced": "0"}, {"fixed": "1.7.4"}]}]}],
-                           "references": [{"url": "u"}]}]}
-    r = facade.check_dependency("npm", "axios", "0.21.1", http=fake_http)
-    assert r["vulnerable"] is True and r["worst_severity"] == "HIGH"
-    assert r["cves"] == ["CVE-1"] and "1.7.4" in r["recommendation"]
+def _vuln(fixed, sev="HIGH"):
+    return {"id": "GHSA-" + fixed, "aliases": ["CVE-" + fixed], "summary": "x",
+            "database_specific": {"severity": sev},
+            "affected": [{"package": {"ecosystem": "npm", "name": "axios"},
+                          "ranges": [{"events": [{"introduced": "0"}, {"fixed": fixed}]}]}],
+            "references": [{"url": "u"}]}
 
-    r2 = facade.check_dependency("npm", "clean", "1.0", http=lambda *a, **k: {"vulns": []})
-    assert r2["vulnerable"] is False and r2["recommendation"] == "no known advisories"
+
+def test_check_dependency_recommends_numeric_max_fix():
+    # two advisories fixed in 1.7.4 and 1.10.0 -> must recommend 1.10.0, NOT string-sorted 1.7.4
+    r = facade.check_dependency("npm", "axios", "0.21.1",
+                                http=lambda *a, **k: {"vulns": [_vuln("1.7.4"), _vuln("1.10.0")]})
+    assert r["vulnerable"] is True and r["worst_severity"] == "HIGH" and r["checked"] is True
+    assert "≥ 1.10.0" in r["recommendation"]
+
+    clean = facade.check_dependency("npm", "clean", "1.0", http=lambda *a, **k: {"vulns": []})
+    assert clean["vulnerable"] is False and clean["recommendation"] == "no known advisories"
+
+
+def test_check_dependency_offline_is_clean():
+    def boom(*a, **k):
+        raise ConnectionError("no net")
+    r = facade.check_dependency("npm", "axios", "1.0", http=boom)
+    assert r["checked"] is False and "unavailable" in r["error"]     # structured, not a raised exception
 
 
 def test_check_runtime_live():
