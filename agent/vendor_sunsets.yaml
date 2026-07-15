@@ -1,0 +1,28 @@
+# Vendor API-sunset catalog — CURATED. This is the one thing no CVE/EOL feed covers:
+# when a vendor RETIRES a version of their API (your integration breaks in production).
+#
+# RULES (match the tool's principles):
+#   • Every entry MUST cite a `source` URL. Never invent a date — if you can't source it, don't add it.
+#   • `vendor` must match the name in agent/vendors.yaml (e.g. "Amazon SP-API", "Shopify").
+#   • `version`: the API version string as it appears in your code/URLs (e.g. v0, v3, 2023-01),
+#     or "*" for a whole-API retirement (any usage of that vendor is flagged).
+#   • `retires`: YYYY-MM-DD. Omit if the API is already deprecated with no fixed date
+#     (it will be flagged as action-required without a date).
+#   • `replacement` and `note` are optional but make the finding actionable.
+#
+# The tool joins these against the ENDPOINT inventory (which has file:line call-sites), so a
+# finding reads: "SP-API v0 retires <date> — used at these 14 file:line across 6 repos".
+#
+# ── Template (copy, fill with a real sourced announcement, uncomment) ─────────────────
+# - { vendor: Amazon SP-API, version: v0, retires: 2026-09-30, replacement: v2,
+#     source: https://developer-docs.amazon.com/sp-api/changelog, note: Orders v0 endpoints }
+# - { vendor: Shopify, version: "2023-01", retires: 2024-01-01, replacement: "2024-01",
+#     source: https://shopify.dev/docs/api/usage/versioning, note: quarterly version sunset }
+# ──────────────────────────────────────────────────────────────────────────────────────
+
+# Seed — historical/verifiable only. Extend with your vendors' actual announcements.
+- vendor: Amazon MWS
+  version: "*"
+  replacement: Amazon SP-API
+  source: https://developer-docs.amazon.com/sp-api/docs/migrating-from-amazon-mws
+  note: Amazon Marketplace Web Service (MWS) is deprecated; all usage should migrate to SP-API. Confirm the current cut-off date for your marketplace.

@@ -7,7 +7,7 @@ unreachable it is skipped and noted in coverage — never fabricated, never a ha
 """
 from __future__ import annotations
 
-from agent.lib import osv, eol
+from agent.lib import osv, eol, vendor_sunsets
 from agent.lib.http_util import default_http
 from agent.lib.version_floor import floor
 from agent.lib.purl import osv_ecosystem
@@ -28,11 +28,49 @@ def _runtime_products(repo: dict):
         yield name, (fw or {}).get("ver")
 
 
+def _sunset_findings(repo: dict, sun_index: dict, now: str) -> list:
+    """Join the repo's endpoints against the vendor-sunset catalog (the file:line layer)."""
+    path, eps, out = repo.get("path"), repo.get("endpoints", []), []
+    for vendor, entries in sun_index.items():
+        vendor_eps = [e for e in eps if e.get("vendor") == vendor]
+        if not vendor_eps:
+            continue
+        for entry in entries:
+            cver = entry.get("version")
+            files, confirmed = [], False
+            for e in vendor_eps:
+                ev = e.get("version")
+                if cver == "*" or (ev and ev != "?" and str(ev) == str(cver)):
+                    confirmed = True
+                    files += e.get("files", [])
+                elif not ev or ev == "?":            # version-specific entry, unknown usage -> verify
+                    files += e.get("files", [])
+            if not files:
+                continue
+            files = list(dict.fromkeys(files))[:6]
+            status = vendor_sunsets.status_for(entry.get("retires"), now, confirmed=confirmed)
+            vlabel = "(all versions)" if cver == "*" else (str(cver) if confirmed else f"{cver}?")
+            when = f"retires {entry['retires']}" if entry.get("retires") else "deprecated"
+            verify = "" if confirmed else " — version undetermined, verify"
+            rec = f"migrate to {entry['replacement']}" if entry.get("replacement") else "plan migration"
+            if entry.get("retires"):
+                rec += f" before {entry['retires']}"
+            out.append({
+                "repo": path, "kind": "sunset", "ref": vendor, "version": cver,
+                "status": status, "severity": "SUNSET",
+                "detail": f"{vendor} {vlabel} {when}{verify} · used at " + ", ".join(files),
+                "date": entry.get("retires"), "source_url": entry.get("source", ""), "tier": 1,
+                "recommendation": rec, "files": files,
+            })
+    return out
+
+
 def audit_inventory(doc: dict, now: str, *, http=None,
-                    osv_query=None, eol_check=None) -> dict:
+                    osv_query=None, eol_check=None, sunsets=None) -> dict:
     http = http or default_http
     osv_query = osv_query or osv.query_package     # resolve at call time (monkeypatch-friendly)
     eol_check = eol_check or eol.check
+    sun_index = vendor_sunsets.by_vendor(sunsets if sunsets is not None else vendor_sunsets.load_sunsets())
     repos = doc.get("repos", [])
     findings: list = []
     coverage = {"osvErrors": 0, "eolErrors": 0, "notes": [
@@ -105,7 +143,10 @@ def audit_inventory(doc: dict, now: str, *, http=None,
                     "date": res.get("eol_date"), "source_url": res["source_url"], "tier": 1,
                     "recommendation": (f"upgrade to {res['recommended']}" if res.get("recommended") else "upgrade to a supported release"),
                 })
+        # --- endpoints -> vendor-sunset catalog (the code-level layer) ---
+        findings.extend(_sunset_findings(r, sun_index, now))
 
+    coverage["notes"].append("Vendor API sunsets: curated catalog (agent/vendor_sunsets.yaml) joined against endpoints — extend it with your vendors' announcements.")
     counts = {
         "DEPRECATED": sum(1 for f in findings if f["status"] == "DEPRECATED"),
         "REVIEW": sum(1 for f in findings if f["status"] == "REVIEW"),

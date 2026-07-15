@@ -17,8 +17,14 @@ BASELINE_NAME = "audit-baseline.json"
 
 
 def fingerprint(f: dict) -> str:
-    ident = (f.get("id") or f.get("cve") or "") if f.get("kind") == "cve" else f.get("ref", "")
-    raw = f"{f.get('repo')}|{f.get('kind')}|{f.get('ref')}|{ident}"
+    kind = f.get("kind")
+    if kind == "cve":
+        ident = f.get("id") or f.get("cve") or ""          # version-independent (a fix resolves it)
+    elif kind == "sunset":
+        ident = f"{f.get('ref')}|{f.get('version')}"       # a specific API version's retirement
+    else:                                                   # eol: the product line
+        ident = f.get("ref", "")
+    raw = f"{f.get('repo')}|{kind}|{f.get('ref')}|{ident}"
     return hashlib.sha256(raw.encode()).hexdigest()[:16]
 
 

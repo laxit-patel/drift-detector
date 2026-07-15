@@ -10,7 +10,21 @@ _RULES = {
             "shortDescription": {"text": "Dependency with a known vulnerability (OSV)"}},
     "eol": {"id": "eol", "name": "end-of-life-runtime",
             "shortDescription": {"text": "End-of-life runtime or framework (endoflife.date)"}},
+    "sunset": {"id": "sunset", "name": "retiring-vendor-api",
+               "shortDescription": {"text": "Third-party API version scheduled for retirement"}},
 }
+
+
+def _locations_from_files(repo, files):
+    locs = []
+    for fl in files:
+        uri, _, line = str(fl).rpartition(":")
+        uri = uri or fl
+        phys = {"artifactLocation": {"uri": f"{repo}/{uri}"}}
+        if line.isdigit():
+            phys["region"] = {"startLine": int(line)}
+        locs.append({"physicalLocation": phys})
+    return locs
 
 
 def build_sarif(doc: dict, findings: list) -> dict:
@@ -24,20 +38,23 @@ def build_sarif(doc: dict, findings: list) -> dict:
     for f in findings:
         rid = f["kind"] if f["kind"] in _RULES else "cve"
         rules.setdefault(rid, _RULES[rid])
-        rel = None
-        if f["kind"] == "cve":
-            eco, _, pkg = f["ref"].partition("/")
-            rel = file_of.get((f["repo"], eco, pkg))
-        uri = f"{f['repo']}/{rel}" if rel else f"{f['repo']}"
-        phys = {"artifactLocation": {"uri": uri}}
-        if rel:
-            phys["region"] = {"startLine": 1}
+        if f.get("files"):                            # sunset findings carry precise file:line
+            locations = _locations_from_files(f["repo"], f["files"])
+        else:
+            rel = None
+            if f["kind"] == "cve":
+                eco, _, pkg = f["ref"].partition("/")
+                rel = file_of.get((f["repo"], eco, pkg))
+            phys = {"artifactLocation": {"uri": f"{f['repo']}/{rel}" if rel else f"{f['repo']}"}}
+            if rel:
+                phys["region"] = {"startLine": 1}
+            locations = [{"physicalLocation": phys}]
         results.append({
             "ruleId": rid,
             "level": "error" if f["status"] == "DEPRECATED" else "warning",
             "message": {"text": f"{f['ref']} {f['version']}: {f['detail']}"
                                 + (f" (fix: {f['recommendation']})" if f.get("recommendation") else "")},
-            "locations": [{"physicalLocation": phys}],
+            "locations": locations,
             "properties": {"status": f["status"], "severity": f.get("severity"),
                            "source": f.get("source_url")},
         })
