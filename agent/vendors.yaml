@@ -48,6 +48,7 @@
 - { vendor: Slack,             techKey: api:slack,               domains: [slack.com] }
 
 # ── Cloud / platform / AI ──────────────────────────────────────────────────
+- { vendor: Amazon AWS,        techKey: api:aws,                 domains: [amazonaws.com] }
 - { vendor: Google APIs,       techKey: api:google,              domains: [googleapis.com] }
 - { vendor: Google Maps,       techKey: api:google-maps,         domains: [maps.googleapis.com] }
 - { vendor: Google OAuth2,     techKey: api:google-oauth2,       domains: [oauth2.googleapis.com] }

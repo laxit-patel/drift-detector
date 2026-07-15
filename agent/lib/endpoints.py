@@ -72,9 +72,9 @@ def build_endpoints(matches: list, repo_root: str, vendors: list, *, max_files: 
         if kind == "url":                                   # discovery: classify every URL host
             for url in classify_url.extract_urls(line):
                 host = classify_url.host_of(url)
-                if classify_url.is_ignored(host):
-                    continue
-                v = classify_url.classify_host(host, vendors)
+                v = classify_url.classify_host(host, vendors)   # known vendor wins even if its
+                if v is None and classify_url.is_ignored(host):  # registrable is on the ignore list
+                    continue                                     # (skip only UNKNOWN boilerplate)
                 add(v.vendor if v else UNKNOWN, v.techKey if v else "", host,
                     classify_url.version_of(url, v), url, rel, lineno)
         elif kind == "endpoint":                            # recall: host-only reference to a known vendor

@@ -49,6 +49,14 @@ def test_boilerplate_hosts_ignored(tmp_path):
     assert build_endpoints([_url("e.php", 1)], str(tmp_path), _VENDORS) == []
 
 
+def test_known_vendor_kept_even_if_its_registrable_is_on_ignore_list(tmp_path):
+    # facebook.com is ignored (marketing links) but graph.facebook.com is a real known API
+    _write(tmp_path, "g.php", '"https://graph.facebook.com/v19.0/me"; "https://www.facebook.com/share";\n')
+    meta = Vendor("Meta Graph API", "api:meta-graph", ("graph.facebook.com",), r'/(v[0-9.]+)')
+    eps = build_endpoints([_url("g.php", 1)], str(tmp_path), [meta])
+    assert len(eps) == 1 and eps[0]["vendor"] == "Meta Graph API"    # graph.* kept, www.* ignored
+
+
 def test_same_vendor_version_groups_and_counts(tmp_path):
     _write(tmp_path, "a.php", '"https://api.stripe.com/v1/a";\n')
     _write(tmp_path, "b.php", '"https://api.stripe.com/v1/b";\n')

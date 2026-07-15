@@ -17,12 +17,22 @@ _URL_RE = re.compile(r"""https?://[^\s"'`<>)\]}]+""", re.IGNORECASE)
 
 # hosts (by registrable suffix) that are never third-party API integrations
 _IGNORE = {
+    # schemas / specs / xml namespaces
     "w3.org", "xmlsoap.org", "schema.org", "json-schema.org", "purl.org", "apache.org",
-    "example.com", "example.org", "example.net", "localhost", "test.com",
-    "fonts.googleapis.com", "fonts.gstatic.com", "gravatar.com", "placeholder.com",
-    "googletagmanager.com", "google-analytics.com", "gstatic.com", "jsdelivr.net",
-    "unpkg.com", "cloudflare.com", "cdnjs.cloudflare.com", "bootstrapcdn.com",
-    "ns.adobe.com", "sentry.io", "gmpg.org", "wordpress.org", "adobe.com",
+    "example.com", "example.org", "example.net", "localhost", "test.com", "gmpg.org",
+    # asset / font / image CDNs + placeholders
+    "fonts.googleapis.com", "fonts.gstatic.com", "gstatic.com", "jsdelivr.net", "unpkg.com",
+    "cloudflare.com", "cdnjs.cloudflare.com", "bootstrapcdn.com", "fonts.bunny.net",
+    "gravatar.com", "placeholder.com", "placehold.co", "picsum.photos", "via.placeholder.com",
+    # analytics / tag managers
+    "googletagmanager.com", "google-analytics.com", "ns.adobe.com",
+    # developer docs / package registries / code hosting (repo & doc links, not API calls)
+    "github.com", "gitlab.com", "bitbucket.org", "laravel.com", "laracasts.com", "symfony.com",
+    "php.net", "npmjs.com", "packagist.org", "wordpress.org", "readthedocs.io", "mozilla.org",
+    "getcomposer.org", "nodejs.org", "python.org", "jquery.com", "getbootstrap.com",
+    # search / social / video (marketing links, not integrations)
+    "google.com", "bing.com", "youtube.com", "youtu.be", "vimeo.com", "facebook.com",
+    "twitter.com", "linkedin.com", "instagram.com",
 }
 
 
