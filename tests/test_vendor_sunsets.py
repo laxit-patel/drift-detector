@@ -7,6 +7,24 @@ _NOOP = {"osv_query": lambda *a, **k: [], "eol_check": lambda *a, **k: None,
          "http": lambda *a, **k: {}}
 
 
+def test_unquoted_date_coerced_to_str_stays_json_serializable(tmp_path):
+    import json
+    p = tmp_path / "s.yaml"
+    p.write_text("- { vendor: Amazon SP-API, version: v0, retires: 2026-09-30, source: u }\n")  # unquoted!
+    loaded = vs.load_sunsets(str(p))
+    assert isinstance(loaded[0]["retires"], str) and loaded[0]["retires"] == "2026-09-30"
+    out = audit_inventory(_doc("Amazon SP-API", "v0", ["a.js:1"]), "2026-07-15",
+                          sunsets=loaded, **_NOOP)
+    json.dumps(out)                                    # must not raise (was: date not serializable)
+
+
+def test_version_less_entry_is_dropped(tmp_path):
+    p = tmp_path / "s.yaml"
+    p.write_text("- { vendor: X, source: u }\n- { vendor: Y, version: v1, source: u }\n")
+    loaded = vs.load_sunsets(str(p))
+    assert [s["vendor"] for s in loaded] == ["Y"]      # X has no version -> dropped
+
+
 def test_catalog_loads_and_status():
     cat = vs.load_sunsets()
     assert any(s["vendor"] == "Amazon MWS" for s in cat)          # seeded entry

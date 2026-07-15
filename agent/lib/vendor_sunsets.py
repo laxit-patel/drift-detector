@@ -12,13 +12,22 @@ from pathlib import Path
 import yaml
 
 _DEFAULT = str(Path(__file__).resolve().parent.parent / "vendor_sunsets.yaml")
-_CACHE = None
 
 
 def load_sunsets(path: str | None = None) -> list:
     with open(path or _DEFAULT, encoding="utf-8") as fh:
         raw = yaml.safe_load(fh) or []
-    return [s for s in raw if isinstance(s, dict) and s.get("vendor")]
+    out = []
+    for s in raw:
+        if not (isinstance(s, dict) and s.get("vendor") and s.get("version") is not None):
+            continue                      # need a vendor and a version (or "*"); skip footguns
+        s = dict(s)
+        # YAML parses an unquoted date/number as a date/int — coerce so it stays JSON-serializable
+        s["version"] = str(s["version"])
+        if s.get("retires") is not None:
+            s["retires"] = str(s["retires"])
+        out.append(s)
+    return out
 
 
 def by_vendor(sunsets: list) -> dict:
@@ -26,13 +35,6 @@ def by_vendor(sunsets: list) -> dict:
     for s in sunsets:
         idx[s["vendor"]].append(s)
     return idx
-
-
-def index(path: str | None = None) -> dict:
-    global _CACHE
-    if _CACHE is None:
-        _CACHE = by_vendor(load_sunsets(path))
-    return _CACHE
 
 
 def status_for(retires, now: str, *, confirmed: bool) -> str:

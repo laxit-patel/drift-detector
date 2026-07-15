@@ -14,9 +14,10 @@
 # finding reads: "SP-API v0 retires <date> — used at these 14 file:line across 6 repos".
 #
 # ── Template (copy, fill with a real sourced announcement, uncomment) ─────────────────
-# - { vendor: Amazon SP-API, version: v0, retires: 2026-09-30, replacement: v2,
+# Quote dates and date-like versions ("YYYY-MM-DD") so YAML keeps them as strings.
+# - { vendor: Amazon SP-API, version: v0, retires: "2026-09-30", replacement: v2,
 #     source: https://developer-docs.amazon.com/sp-api/changelog, note: Orders v0 endpoints }
-# - { vendor: Shopify, version: "2023-01", retires: 2024-01-01, replacement: "2024-01",
+# - { vendor: Shopify, version: "2023-01", retires: "2024-01-01", replacement: "2024-01",
 #     source: https://shopify.dev/docs/api/usage/versioning, note: quarterly version sunset }
 # ──────────────────────────────────────────────────────────────────────────────────────
 
