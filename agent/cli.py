@@ -81,9 +81,75 @@ def _cmd_audit(args) -> int:
     return 0
 
 
+def _config_webhook(state: str):
+    from agent.lib.schedule import load_config
+    return ((load_config(state).get("connectors") or {}).get("chat") or {}).get("webhookUrl")
+
+
+def _cmd_run(args) -> int:
+    from agent.run import run_pipeline
+    webhook = args.chat_webhook or _config_webhook(args.state)
+    progress = None
+    if getattr(args, "progress", False):
+        print("drift-detector · scan → audit → deliver (deterministic · 0 LLM tokens)",
+              file=sys.stderr, flush=True)
+
+        def progress(msg):
+            print(f"⚙ {msg}", file=sys.stderr, flush=True)
+    try:
+        out = run_pipeline(args.root, args.state, args.now, chat_webhook=webhook,
+                           pull=getattr(args, "pull", False), progress=progress)
+    except RuntimeError as exc:
+        print(f"run failed: {exc}", file=sys.stderr)
+        return 2
+    c = out["auditCounts"]
+    deliver = ", ".join(f"{d['channel']}:{'ok' if d['ok'] else 'FAILED'}" for d in out["delivered"]) or "local only"
+    print(f"✓ scan+audit: 🔴 {c.get('DEPRECATED', 0)} action-required · 🟠 {c.get('REVIEW', 0)} review · "
+          f"deliver: {deliver}")
+    return 0
+
+
+def _cmd_schedule(args) -> int:
+    from pathlib import Path
+    from agent.lib import schedule as sched
+    plugin_root = str(Path(__file__).resolve().parent.parent)
+    webhook = args.chat_webhook or _config_webhook(args.state)
+    line = sched.install_cron(args.root, args.state, args.at, plugin_root=plugin_root,
+                              chat_webhook=webhook, pull=getattr(args, "pull", False))
+    print("installed cron:\n  " + line)
+    return 0
+
+
+def _cmd_unschedule(args) -> int:
+    from agent.lib import schedule as sched
+    print("removed schedule" if sched.remove_cron(args.state) else "no schedule found")
+    return 0
+
+
 def main(argv: list[str]) -> int:
     p = argparse.ArgumentParser(prog="drift-detector")
     sub = p.add_subparsers(dest="cmd", required=True)
+
+    pr = sub.add_parser("run")           # scan -> audit -> deliver, deterministic (cron entrypoint)
+    pr.add_argument("--root", action="append", required=True)
+    pr.add_argument("--state", required=True)
+    pr.add_argument("--now", required=True)
+    pr.add_argument("--chat-webhook")
+    pr.add_argument("--pull", action="store_true")
+    pr.add_argument("--progress", action="store_true")
+    pr.set_defaults(func=_cmd_run)
+
+    psc = sub.add_parser("schedule")
+    psc.add_argument("--root", required=True)
+    psc.add_argument("--state", required=True)
+    psc.add_argument("--at", default="0 7 * * 0")
+    psc.add_argument("--chat-webhook")
+    psc.add_argument("--pull", action="store_true")
+    psc.set_defaults(func=_cmd_schedule)
+
+    pu = sub.add_parser("unschedule")
+    pu.add_argument("--state", required=True)
+    pu.set_defaults(func=_cmd_unschedule)
 
     pa = sub.add_parser("audit")
     pa.add_argument("--in", dest="in_json", required=True)

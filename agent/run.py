@@ -1,0 +1,73 @@
+"""The deterministic scan -> audit -> deliver pipeline, in one non-interactive call.
+
+This is what the cron job runs (zero LLM tokens). All external effects — the scan engine,
+git, HTTP — are injected, so tests exercise the whole pipeline without network or a real engine.
+"""
+from __future__ import annotations
+
+import json
+import os
+import subprocess
+
+from agent.inventory_scan import scan_folder
+from agent.audit import audit_inventory
+from agent.lib.inventory_diff import render_diff_md
+from agent.lib.audit_render import render_audit_md
+from agent.lib.cyclonedx import build_bom
+from agent.lib.sarif import build_sarif
+from agent.lib.chat import build_chat_card, post_chat
+from agent.lib.repo_discovery import discover_repos
+from agent.lib.http_util import default_http
+
+
+def _write(path, text):
+    with open(path, "w", encoding="utf-8") as fh:
+        fh.write(text)
+
+
+def _write_json(path, obj):
+    with open(path, "w", encoding="utf-8") as fh:
+        json.dump(obj, fh, ensure_ascii=False, indent=2, sort_keys=True)
+
+
+def _default_pull(repo_path):
+    subprocess.run(["git", "-C", repo_path, "pull", "--ff-only"],
+                   capture_output=True, timeout=120)
+
+
+def _pull_repos(roots, pull_run):
+    runner = pull_run or _default_pull
+    for abs_path, _identity in discover_repos(roots):
+        try:
+            runner(abs_path)
+        except Exception:
+            pass          # best-effort; a repo that won't fast-forward is scanned as-is
+
+
+def run_pipeline(roots, state_dir, now, *, chat_webhook=None, pull=False,
+                 engine=None, run=None, git=None, http=None, progress=None,
+                 pull_run=None) -> dict:
+    roots = [roots] if isinstance(roots, (str, os.PathLike)) else list(roots)
+    os.makedirs(state_dir, exist_ok=True)
+    if pull:
+        _pull_repos(roots, pull_run)
+
+    scan = scan_folder(roots, state_dir, now, engine=engine, run=run, git=git, progress=progress)
+    doc = scan["doc"]
+    _write_json(os.path.join(state_dir, "inventory.json"), doc)
+    _write(os.path.join(state_dir, "INVENTORY.md"), scan["report_md"])
+    _write(os.path.join(state_dir, "DRIFT.md"), render_diff_md(scan["diff"]))
+
+    audit = audit_inventory(doc, now, http=http) if http else audit_inventory(doc, now)
+    _write(os.path.join(state_dir, "AUDIT.md"), render_audit_md(audit))
+    _write_json(os.path.join(state_dir, "bom.json"), build_bom(doc, audit["findings"], now))
+    _write_json(os.path.join(state_dir, "findings.sarif"), build_sarif(doc, audit["findings"]))
+    _write_json(os.path.join(state_dir, "audit.json"), audit)
+
+    delivered = []
+    if chat_webhook:
+        card = build_chat_card(audit, now, folder=str(roots[0]))
+        ok = post_chat(chat_webhook, card, http=http or default_http)
+        delivered.append({"channel": "chat", "ok": ok})
+
+    return {"scope": doc.get("scope", {}), "auditCounts": audit["counts"], "delivered": delivered}

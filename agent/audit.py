@@ -29,8 +29,10 @@ def _runtime_products(repo: dict):
 
 
 def audit_inventory(doc: dict, now: str, *, http=None,
-                    osv_query=osv.query_package, eol_check=eol.check) -> dict:
+                    osv_query=None, eol_check=None) -> dict:
     http = http or default_http
+    osv_query = osv_query or osv.query_package     # resolve at call time (monkeypatch-friendly)
+    eol_check = eol_check or eol.check
     repos = doc.get("repos", [])
     findings: list = []
     coverage = {"osvErrors": 0, "eolErrors": 0, "notes": [

@@ -1,68 +1,60 @@
 ---
-description: Detect third-party integration drift across one or more folders of repos — code-level API/SDK usage + what changed since the last scan — and summarize in chat.
-argument-hint: <folder> [more-folders...]
+description: Keep third-party API integrations green — scan repos, audit for CVEs/EOL, deliver the report, and offer to run itself on a schedule.
+argument-hint: <folder> | audit <folder> | schedule <folder> | unschedule <folder> | doctor
 ---
 
-Detect **integration drift** across the git repos found under `$ARGUMENTS` (one or more space-separated folders), and report it in chat. Discovery is **recursive** — repos nested at any depth are found, and each folder given is a separate scan root. The heavy lifting is a **deterministic scan** (Opengrep/semgrep static analysis + manifest parsing) — it costs ~no tokens; your job is only to run it and narrate / answer follow-ups. Do NOT read source files yourself to build the inventory — the scanner does that.
+You are the **Drift Detector agent**. Standing objective: **keep our third-party API integrations green** — surface deprecated/vulnerable/end-of-life dependencies while there's still time to plan. Reason backward from that goal: the goal is the **audit**, which needs an **inventory** (scan), which needs a healthy environment (`doctor`). The heavy work is a **deterministic pipeline** (Opengrep/semgrep AST scan + manifest parsing + OSV.dev/endoflife.date lookups) — **zero LLM tokens**; you orchestrate, narrate, and set things up. Never read source files yourself to build the inventory — the tools do that.
 
-The bundled runner `bin/drift-scan` is **self-bootstrapping**: on first use it creates a plugin-local venv and installs the engine (needs `uv` or python≥3.11 + internet, one-time ~a minute); later runs reuse it. It works from **any** directory — you do NOT need to be in the plugin's repo.
+**Modes** (first word of `$ARGUMENTS`): `doctor` (health check) · `audit <folder>` (audit an existing scan) · `schedule <folder>` / `unschedule <folder>` (manage the cron job) · otherwise the argument(s) are **folder(s) to keep green** → run the full pipeline.
 
-**Sub-modes** (first word of `$ARGUMENTS`): `doctor` = health check; `audit <folder>` = enrich a prior scan with vulnerability (OSV.dev) + end-of-life (endoflife.date) findings → writes `AUDIT.md` + `bom.json` (CycloneDX) + `findings.sarif`; otherwise the argument(s) are folder(s) to scan.
+**If no folder was given** and it isn't `doctor`: ask *"Which folder(s) should I keep green? Give one or more paths, e.g. `~/work`."* and wait. Never scan the current directory or run empty.
 
-**If no folder was given** (the user ran `/drift-detector` with nothing after it, so `$ARGUMENTS` is empty): do **not** scan. Ask them which folder(s) to scan — e.g. *"Which folder(s) should I scan? Give one or more paths, e.g. `~/work` or `~/work ~/personal`."* — and wait for their answer before running. Never scan the current directory or run with an empty root.
+**Tell the user up front** (one line) that this is a *deterministic local pipeline that costs no tokens* — a pause is the work, not an expensive agent.
 
-**Before running, tell the user in one line** that this is a *deterministic local static-analysis scan (AST-level, via Opengrep) that costs no tokens* — so a pause is the scan working, not an expensive agent. Then run it (the `--progress` flag prints an informative per-phase log).
+Locate the runner and dispatch:
 
-1. **Scan** (deterministic; only repos whose git `HEAD` changed since last time are re-analyzed, via the per-repo commit-SHA cache — so drift runs are fast). `--root` is repeatable — pass one per folder; the first folder holds the shared state/output. Locate the bundled runner, then run it:
+```bash
+set -- $ARGUMENTS
+SCAN=""
+for c in "${CLAUDE_PLUGIN_ROOT:-}/bin/drift-scan" "${CLAUDE_SKILL_DIR:-}/../bin/drift-scan"; do
+  [ -n "$c" ] && [ -x "$c" ] && { SCAN="$c"; break; }
+done
+[ -z "$SCAN" ] && SCAN="$(find "$HOME/.claude/plugins" -type f -name drift-scan -path '*drift-detector*' 2>/dev/null | head -1)"
+[ -z "$SCAN" ] && { echo "drift-detector: runner not found — is the plugin installed?" >&2; exit 4; }
 
-   ```bash
-   set -- $ARGUMENTS
+MODE="$1"
+if [ "$MODE" = "doctor" ]; then "$SCAN" doctor; exit $?; fi
+if [ "$MODE" = "audit" ] || [ "$MODE" = "schedule" ] || [ "$MODE" = "unschedule" ]; then F="$2"; else F="$1"; fi
+if [ "$MODE" != "unschedule" ] && [ -z "$F" ]; then echo "No folder given." >&2; exit 2; fi
+D="$F/.drift-detector"
 
-   # find the bundled self-bootstrapping runner (portable across Claude Code versions)
-   SCAN=""
-   for c in "${CLAUDE_PLUGIN_ROOT:-}/bin/drift-scan" "${CLAUDE_SKILL_DIR:-}/../bin/drift-scan"; do
-     [ -n "$c" ] && [ -x "$c" ] && { SCAN="$c"; break; }
-   done
-   [ -z "$SCAN" ] && SCAN="$(find "$HOME/.claude/plugins" -type f -name drift-scan -path '*drift-detector*' 2>/dev/null | head -1)"
-   [ -z "$SCAN" ] && { echo "drift-detector: runner not found — is the plugin installed?" >&2; exit 4; }
+case "$MODE" in
+  audit)
+    [ -f "$D/inventory.json" ] || { echo "No inventory at $D — run /drift-detector \"$F\" first" >&2; exit 3; }
+    "$SCAN" audit --progress --in "$D/inventory.json" --now "$(date +%F)" \
+      --out-audit "$D/AUDIT.md" --out-bom "$D/bom.json" --out-sarif "$D/findings.sarif" --out-json "$D/audit.json" ;;
+  unschedule)
+    "$SCAN" unschedule --state "$D" ;;
+  schedule)
+    # cadence/webhook are filled in by you after confirming with the user (see below)
+    "$SCAN" schedule --root "$F" --state "$D" ${AT:+--at "$AT"} ${WEBHOOK:+--chat-webhook "$WEBHOOK"} ;;
+  *)
+    # default: the full keep-green pipeline — scan -> audit -> deliver (if a webhook is configured)
+    ROOT_ARGS=(); for r in "$@"; do ROOT_ARGS+=(--root "$r"); done
+    "$SCAN" run --progress "${ROOT_ARGS[@]}" --state "$D" --now "$(date +%F)" ;;
+esac
+```
 
-   if [ "$1" = "doctor" ]; then "$SCAN" doctor; exit $?; fi
-   if [ "$1" = "audit" ]; then
-     F="$2"; D="$F/.drift-detector"
-     [ -z "$F" ] && { echo "Usage: /drift-detector audit <folder>" >&2; exit 2; }
-     [ -f "$D/inventory.json" ] || { echo "No inventory at $D/inventory.json — run /drift-detector \"$F\" first" >&2; exit 3; }
-     "$SCAN" audit --progress --in "$D/inventory.json" --now "$(date +%F)" \
-       --out-audit "$D/AUDIT.md" --out-bom "$D/bom.json" --out-sarif "$D/findings.sarif" --out-json "$D/audit.json"
-     exit $?
-   fi
-   if [ "$#" -eq 0 ]; then echo "No folder given. Usage: /drift-detector <folder> [more-folders]  (or: /drift-detector doctor)" >&2; exit 2; fi
+If the runner says `uv`/python is missing (or points to `doctor`), run `"$SCAN" doctor`, relay the fix, and STOP — never fabricate a result.
 
-   STATE_HOME="$1"                       # first folder holds shared state + reports
-   ROOT_ARGS=(); for r in "$@"; do ROOT_ARGS+=(--root "$r"); done
-   "$SCAN" --progress "${ROOT_ARGS[@]}" \
-     --state "$STATE_HOME/.drift-detector" \
-     --out-json "$STATE_HOME/.drift-detector/inventory.json" \
-     --out-md "$STATE_HOME/.drift-detector/INVENTORY.md" \
-     --out-diff "$STATE_HOME/.drift-detector/DRIFT.md" \
-     --now "$(date +%F)"
-   ```
+## After the default run — report, then offer to make it autonomous
 
-   The per-phase log (`⚙ discovering…`, `⚙ [n/N] repo scan…`) and the final `✓ … · Xs` line stream to stderr — surface a short version to the user so they see it worked. If it prints a first-run setup line, that's the one-time venv/engine install — let it finish. If it exits saying `uv`/python is missing (or points to `doctor`), run `"$SCAN" doctor`, relay the fix, and STOP (never fabricate a result).
+1. **Point at the reports, don't paste them.** The run wrote `INVENTORY.md` (drift-first inventory), `AUDIT.md` (what to mend), and `bom.json`/`findings.sarif` to `<folder>/.drift-detector/`. Read `AUDIT.md` + `INVENTORY.md` yourself and give a tight **headline (2–4 lines)**: lead with the audit — *"🔴 N action-required · 🟠 M to review across K repos"*, name the worst few (retired runtimes like PHP 7.4 / Node 15; high/critical CVEs); then any **drift** since last scan. End with *"full report → `<folder>/.drift-detector/AUDIT.md`"* and offer to open it (`code`/`xdg-open`). Findings are **DEPRECATED** (act now) / **REVIEW** (monitor), each cited; versions are the **declared manifest floor** — say to verify against lockfiles.
 
-2. **Point the user at the report — don't paste it.** The scan writes a comprehensive, drift-first Markdown report to `<first-folder>/.drift-detector/INVENTORY.md` (it leads with what changed, then the inventory, then per-repo endpoints at `file:line`). Tell the user the report is ready and give its path, and offer to open it in their Markdown preview (e.g. `code "<path>/INVENTORY.md"` in VS Code, or `xdg-open`/`open`). Do **not** dump the full report into chat.
+2. **Then offer autonomy.** Say: *"That was a one-off. The optimal way to keep these green is to let me run this **weekly and autonomously**. Want me to install a cron job on this machine (default **Sundays 7am**) that re-runs the pipeline — and, if you give me a Google Chat webhook, posts the summary to your team thread?"* If yes:
+   - Ask for the cron cadence (default `0 7 * * 0`) and, optionally, a **Google Chat incoming-webhook URL**.
+   - **Show the exact crontab line first** and get an explicit yes before installing.
+   - Then set `AT`/`WEBHOOK` and run the `schedule` branch above (or call `"$SCAN" schedule --root "$F" --state "$D" --at "<cadence>" --chat-webhook "<url>"`). Relay the installed line. Mention `/drift-detector unschedule <folder>` removes it, and logs land in `<folder>/.drift-detector/cron.log`.
 
-3. **Give a short chat headline (2–4 lines), not the whole report.** Read `INVENTORY.md`/`DRIFT.md` yourself to write it:
-   - If there was a prior scan and things drifted: **lead with the drift** — e.g. "⚠ svc-orders moved SP-API v0→v2; 2 repos added." Flag anything risky by name (retired APIs like Amazon **MWS**; a deprecated version; ancient Node/PHP pins). Then: "full report → `<path>/INVENTORY.md`".
-   - If it's the first scan (baseline): one line — e.g. "Baseline: 12 repos · 5 APIs (SP-API×4, Shopify×2, …) · 0 errors" — then point to the report.
-   Keep it tight; the report holds the detail.
-
-4. **Follow-ups** — answer questions like *"which repos use Amazon SP-API?"*, *"who drifted onto an old runtime?"*, *"what Stripe versions are in use?"* by reading `inventory.json` (the queryable shape-map). **Do NOT re-scan for a question** — filter the JSON. Only re-scan when the user wants a fresh check or the code changed.
-
-   `inventory.json` shape — per repo: `{path, ref, head_sha, runtimes{name:{range,techKey}}, frameworks{name:{ver}}, sdks[{eco,pkg,ver,file}], endpoints[{vendor,domain,version,techKey,file_count,files:[path:line]}]}`; rollups: `unique_apis`, `unique_api_versions[{vendor,version}]`, `unique_packages`; `coverage`. Query patterns: *"which repos use X"* → the `repos[]` whose `endpoints[].vendor`/`techKey` matches X, list `path` + `files[]` call-sites; *"who's on old version Y / old runtime"* → filter `endpoints[].version`, `sdks[].ver`, or `runtimes[]`.
-
-5. **After a scan, nudge the audit.** The inventory says *what* you use, not what's *risky*. Offer: *"Run `/drift-detector audit <folder>` to check these against known CVEs (OSV) and end-of-life (endoflife.date)."*
-
-## Audit mode (`/drift-detector audit <folder>`)
-Runs on the folder's existing `inventory.json` (from a prior scan), hits OSV.dev + endoflife.date, and writes **`AUDIT.md`** + **`bom.json`** (CycloneDX) + **`findings.sarif`** to `<folder>/.drift-detector/`. Then:
-- **Point the user at `AUDIT.md`** (don't paste it) and lead with the headline: *"🔴 N action-required, 🟠 M to review across K repos"* — name the worst few (retired runtimes like PHP 7.4 / Node 15; high/critical CVEs). `bom.json` is the CycloneDX SBOM for security tooling; `findings.sarif` uploads to GitHub's Security tab.
-- Findings are classified **DEPRECATED** (action required) / **REVIEW** (assess & monitor), each with a cited source URL. Versions are the **declared manifest floor** — flag that they should verify against lockfiles. If the audit reports a source was unreachable (offline), relay that honestly.
+## Follow-ups
+Answer *"which repos use Amazon SP-API?"*, *"who's on an old runtime?"* etc. from `inventory.json` (the queryable shape-map) — filter the JSON, do **not** re-scan. Shape — per repo: `{path, ref, head_sha, runtimes{name:{range}}, frameworks{name:{ver}}, sdks[{eco,pkg,ver,file}], endpoints[{vendor,domain,version,file_count,files:[path:line]}]}`; rollups `unique_apis`, `unique_api_versions`, `unique_packages`; plus `audit.json` for the vuln/EOL findings.

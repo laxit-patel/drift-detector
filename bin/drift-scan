@@ -75,9 +75,11 @@ if [ "${1:-}" = "doctor" ]; then
   exit 3
 fi
 
-# Subcommand: default inventory-scan; 'audit' enriches a prior scan (OSV + endoflife).
+# Subcommand: default inventory-scan; others: audit / run / schedule / unschedule / doctor.
 SUB="inventory-scan"
-if [ "${1:-}" = "audit" ]; then SUB="audit"; shift; fi
+case "${1:-}" in
+  audit|run|schedule|unschedule) SUB="$1"; shift ;;
+esac
 
 # ---------- provision the venv once (idempotent via the marker file) ----------
 # Prefer uv: it creates a venv without the system python3-venv/ensurepip package

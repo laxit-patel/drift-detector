@@ -36,13 +36,14 @@ def test_runner_has_doctor_with_actionable_hint():
     assert "astral.sh/uv/install.sh" in body                    # exact uv install remediation
 
 
-def test_runner_and_command_support_audit():
+def test_runner_and_command_support_audit_run_schedule():
     runner = (_ROOT / "bin" / "drift-scan").read_text()
-    assert '"${1:-}" = "audit"' in runner                       # runner dispatches the audit subcommand
+    assert "audit|run|schedule|unschedule)" in runner           # runner dispatches all subcommands
     cmd = (_ROOT / "commands" / "drift-detector.md").read_text()
     assert "audit" in cmd and "bom.json" in cmd and "findings.sarif" in cmd
+    assert "schedule" in cmd and "cron" in cmd.lower()          # agent offers autonomy
     from agent import cli
-    assert hasattr(cli, "_cmd_audit")
+    assert all(hasattr(cli, n) for n in ("_cmd_audit", "_cmd_run", "_cmd_schedule", "_cmd_unschedule"))
 
 
 def test_catalog_defaults_are_package_relative():
