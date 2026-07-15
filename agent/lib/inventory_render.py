@@ -184,12 +184,31 @@ def render_inventory_md(doc: dict, diff: dict | None = None) -> str:
         out += _per_repo_section(repos)
 
     cov = doc.get("coverage") or {}
+    reps, eps, pks = cov.get("repos", {}), cov.get("endpoints", {}), cov.get("packages", {})
     out += ["## Coverage", ""]
-    out.append(f"- Repos scanned: {cov.get('reposScanned', len(repos))}")
-    errored = cov.get("reposErrored", [])
-    out.append(f"- Repos errored: {len(errored)}")
-    for e in errored:
-        out.append(f"    - {e.get('repo', '?')}: {e.get('reason', '')}")
+    out.append(f"- **Repos:** {reps.get('scanned', cov.get('reposScanned', len(repos)))} scanned"
+               + (f" of {reps['discovered']} discovered" if reps.get("discovered") else "")
+               + f" · {reps.get('errored', len(cov.get('reposErrored', [])))} errored")
+    if eps:
+        out.append(f"- **Endpoints:** {eps.get('known', 0)} known-vendor · "
+                   f"{eps.get('unknownExternal', 0)} unknown external")
+    if pks:
+        out.append(f"- **Packages:** {pks.get('total', 0)} total · {pks.get('lockfileResolved', 0)} "
+                   f"lockfile-exact · {pks.get('floorOnly', 0)} declared-floor-only")
+    for e in cov.get("reposErrored", []):
+        out.append(f"    - ⚠ errored: {e.get('repo', '?')}: {e.get('reason', '')}")
+
+    private = cov.get("privateSources", [])
+    if private:
+        n_pkg = sum(len(p.get("packages", [])) for p in private)
+        n_repo_src = sum(len(p.get("repositories", [])) for p in private)
+        out += ["",
+                f"> ⚠ **{len(private)} repo(s) use private package sources the scan can't see "
+                f"({n_pkg} git/file deps, {n_repo_src} private composer repos).** Integrations wrapped "
+                f"inside them may be under-reported — the GitLab connector will resolve their source."]
+        for p in private[:20]:
+            bits = [x["pkg"] for x in p.get("packages", [])] + list(p.get("repositories", []))
+            out.append(f"> - `{p['repo']}`: {', '.join(bits[:6])}" + (" …" if len(bits) > 6 else ""))
     out.append("")
 
     return "\n".join(out)

@@ -23,7 +23,7 @@ done
 [ -z "$SCAN" ] && { echo "drift-detector: runner not found — is the plugin installed?" >&2; exit 4; }
 
 MODE="$1"
-if [ "$MODE" = "doctor" ]; then "$SCAN" doctor; exit $?; fi
+if [ "$MODE" = "doctor" ]; then "$SCAN" doctor "${2:-}"; exit $?; fi   # optional folder -> scan-readiness pre-flight
 if [ "$MODE" = "audit" ] || [ "$MODE" = "schedule" ] || [ "$MODE" = "unschedule" ]; then F="$2"; else F="$1"; fi
 if [ "$MODE" != "unschedule" ] && [ -z "$F" ]; then echo "No folder given." >&2; exit 2; fi
 D="$F/.drift-detector"

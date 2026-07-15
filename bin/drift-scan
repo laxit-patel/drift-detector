@@ -69,6 +69,11 @@ if [ "${1:-}" = "doctor" ]; then
   echo
   if [ "$ready" = "1" ]; then
     echo "Ready ✓   run:  /drift-detector <folder>"
+    # optional scan-readiness pre-flight for a folder (private-source packages needing access)
+    if [ -n "${2:-}" ] && [ -f "$MARKER" ]; then
+      echo
+      env PYTHONPATH="$PLUGIN_ROOT${PYTHONPATH:+:$PYTHONPATH}" "$VENV/bin/python" -m agent.cli preflight --root "$2" || true
+    fi
     exit 0
   fi
   printf 'Not ready ✗   install ONE of these, then retry:\n\n%s\n' "$_UV_HINT" >&2
@@ -78,7 +83,7 @@ fi
 # Subcommand: default inventory-scan; others: audit / run / schedule / unschedule / doctor.
 SUB="inventory-scan"
 case "${1:-}" in
-  audit|run|schedule|unschedule|mute) SUB="$1"; shift ;;
+  audit|run|schedule|unschedule|mute|preflight) SUB="$1"; shift ;;
 esac
 
 # ---------- provision the venv once (idempotent via the marker file) ----------

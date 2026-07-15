@@ -149,6 +149,31 @@ def _cmd_unschedule(args) -> int:
     return 0
 
 
+def _cmd_preflight(args) -> int:
+    from agent.lib.repo_discovery import discover_repos
+    from agent.lib import private_sources
+    repos = discover_repos([args.root])
+    print(f"scan-readiness · {args.root}")
+    print(f"  repos discovered: {len(repos)}")
+    flagged, n_pkg, n_src = [], 0, 0
+    for abs_path, name in repos:
+        ps = private_sources.detect(abs_path)
+        if ps["packages"] or ps["repositories"]:
+            flagged.append((name, ps))
+            n_pkg += len(ps["packages"])
+            n_src += len(ps["repositories"])
+    if flagged:
+        print(f"  ⚠ {len(flagged)} repo(s) declare private package sources needing access "
+              f"({n_pkg} git/file deps · {n_src} private composer repos):")
+        for name, ps in flagged[:20]:
+            bits = [p["pkg"] for p in ps["packages"]] + ps["repositories"]
+            print(f"    - {name}: {', '.join(bits[:6])}" + (" …" if len(bits) > 6 else ""))
+        print("  → these need source access (GitLab auth); the connector will scan them.")
+    else:
+        print("  ✓ no private package sources detected — full source coverage.")
+    return 0
+
+
 def _cmd_mute(args) -> int:
     from agent.lib.findings_state import add_to_baseline, remove_from_baseline
     if args.remove:
@@ -192,6 +217,10 @@ def main(argv: list[str]) -> int:
     pmu.add_argument("--fingerprint", required=True)
     pmu.add_argument("--remove", action="store_true")
     pmu.set_defaults(func=_cmd_mute)
+
+    ppf = sub.add_parser("preflight")
+    ppf.add_argument("--root", required=True)
+    ppf.set_defaults(func=_cmd_preflight)
 
     pa = sub.add_parser("audit")
     pa.add_argument("--in", dest="in_json", required=True)

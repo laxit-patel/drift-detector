@@ -82,3 +82,18 @@ def test_unknown_external_endpoints_surfaced_and_excluded_from_apis():
     assert "Unknown external endpoints" in md and "api.feedonomics.com" in md
     apis = md.split("Third-party APIs")[1].split("## ")[0]
     assert "Stripe" in apis and "Unknown" not in apis        # Unknown gets its own section, not the API table
+
+
+def test_coverage_shows_private_sources_loudly():
+    doc = {"generated": "2026-07-15", "scope": {}, "repos": [], "coverage": {
+        "reposScanned": 3, "reposErrored": [],
+        "repos": {"discovered": 3, "scanned": 3, "errored": 0},
+        "endpoints": {"known": 5, "unknownExternal": 2},
+        "packages": {"total": 40, "lockfileResolved": 30, "floorOnly": 10},
+        "privateSources": [{"repo": "EbayApi", "packages": [{"pkg": "tops/ebay-wrapper"}],
+                            "repositories": ["https://git.topsdemo.in/x.git"]}]}}
+    md = render_inventory_md(doc)
+    assert "5 known-vendor · 2 unknown external" in md
+    assert "30 lockfile-exact · 10 declared-floor-only" in md
+    assert "private package sources the scan can't see" in md
+    assert "tops/ebay-wrapper" in md and "git.topsdemo.in" in md

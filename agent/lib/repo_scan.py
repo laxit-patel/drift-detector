@@ -7,7 +7,7 @@ from agent.lib.record_routing import partition_records
 from agent.lib.opengrep import run_scan
 from agent.lib.endpoints import build_endpoints
 from agent.lib.superset import to_superset_repo
-from agent.lib import lockfile
+from agent.lib import lockfile, private_sources
 
 
 def scan_repo(repo_abs, repo_name, repo_id, vendors, rules_path, *,
@@ -23,6 +23,7 @@ def scan_repo(repo_abs, repo_name, repo_id, vendors, rules_path, *,
 
     record = to_superset_repo(meta, partitioned, endpoints)
     _annotate_resolved(record, repo_abs)
+    record["privateSources"] = private_sources.detect(repo_abs)   # what we can't see (say so)
     return record, {"unparsed": unparsed, "opengrepErrors": scan["errors"]}
 
 

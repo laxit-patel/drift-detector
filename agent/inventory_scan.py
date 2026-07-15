@@ -13,6 +13,24 @@ from agent.lib.inventory_render import render_inventory_md
 from agent.lib.inventory_diff import diff_inventories
 
 
+def _rollup_coverage(coverage: dict, repos: list, *, discovered_count: int) -> None:
+    """Make the scan say what it did (and didn't) see — repos, endpoint buckets, package
+    resolution, and private sources it couldn't scan."""
+    eps = [e for r in repos for e in r.get("endpoints", [])]
+    pkgs = [s for r in repos for s in r.get("sdks", [])]
+    resolved = sum(1 for s in pkgs if s.get("versionSource") == "lockfile")
+    private = [{"repo": r.get("path"), "packages": (r.get("privateSources") or {}).get("packages", []),
+                "repositories": (r.get("privateSources") or {}).get("repositories", [])}
+               for r in repos if any((r.get("privateSources") or {}).values())]
+    coverage["repos"] = {"discovered": discovered_count, "scanned": coverage["reposScanned"],
+                         "errored": len(coverage["reposErrored"])}
+    coverage["endpoints"] = {"known": sum(1 for e in eps if e.get("vendor") and e["vendor"] != "Unknown"),
+                             "unknownExternal": sum(1 for e in eps if e.get("vendor") == "Unknown")}
+    coverage["packages"] = {"total": len(pkgs), "lockfileResolved": resolved,
+                            "floorOnly": len(pkgs) - resolved}
+    coverage["privateSources"] = private
+
+
 def scan_folder(root, state_dir, now, *, engine=None, run=None, git=None, progress=None) -> dict:
     # `root` may be a single path or a list of roots; discovery is recursive.
     roots = [root] if isinstance(root, (str, os.PathLike)) else list(root)
@@ -58,6 +76,7 @@ def scan_folder(root, state_dir, now, *, engine=None, run=None, git=None, progre
             coverage["reposErrored"].append({"repo": name, "reason": str(exc)})
 
     _p("aggregating inventory + drift delta …")
+    _rollup_coverage(coverage, repos, discovered_count=n)
     prior = ir_store.load_ir(state_dir)                # BEFORE save_ir overwrites it
     root_count = len({os.path.realpath(r) for r in roots})   # distinct, not raw
     doc = {"generated": now,
