@@ -83,6 +83,19 @@ def test_host_only_known_reference_caught_via_endpoint_rule(tmp_path):
     assert len(eps) == 1 and eps[0]["vendor"] == "Mailgun" and eps[0]["files"] == ["services.php:1"]
 
 
+def test_no_phantom_vendor_from_substring_collision(tmp_path):
+    # 'ups.com' (UPS) must NOT match inside 'startups.com'; 'slack.com' not inside 'myslack.com'
+    _write(tmp_path, "s.php", '"https://startups.com/x"; $h = "myslack.com";\n')
+    vendors = [Vendor("UPS", "api:ups", ("ups.com",), r'/(v\d+)'),
+               Vendor("Slack", "api:slack", ("slack.com",), r'/(v\d+)')]
+    matches = [{"kind": "url", "path": "s.php", "line": 1},
+               {"kind": "endpoint", "techKey": "api:ups", "path": "s.php", "line": 1},
+               {"kind": "endpoint", "techKey": "api:slack", "path": "s.php", "line": 1}]
+    eps = build_endpoints(matches, str(tmp_path), vendors)
+    assert not any(e["vendor"] in ("UPS", "Slack") for e in eps)     # no phantom known integrations
+    assert [e["vendor"] for e in eps] == ["Unknown"]                 # startups.com surfaces as Unknown
+
+
 def test_url_and_vendor_rule_on_same_line_deduped(tmp_path):
     # a real Mailgun URL fires BOTH the url-literal and the mailgun rule at the same spot -> one record
     _write(tmp_path, "m.php", '"https://api.mailgun.net/v3/send";\n')

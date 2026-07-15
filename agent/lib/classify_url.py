@@ -53,11 +53,28 @@ def is_ignored(host: str) -> bool:
     return any(host == s or host.endswith("." + s) for s in _IGNORE)
 
 
+_HOSTCHAR = frozenset("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-")
+
+
+def _at_boundary(text: str, token: str) -> bool:
+    """`token` occurs in `text` starting at a label boundary (not mid-label), so `ups.com`
+    matches `.ups.com`/start but NOT `startups.com`, and `sellingpartnerapi` doesn't match
+    `notsellingpartnerapi…`."""
+    start = 0
+    while True:
+        i = text.find(token, start)
+        if i < 0:
+            return False
+        if i == 0 or text[i - 1] not in _HOSTCHAR:
+            return True
+        start = i + 1
+
+
 def _matches(host: str, domain: str) -> bool:
     d = domain.lower()
     if "." in d:
         return host == d or host.endswith("." + d)      # registrable-domain suffix
-    return d in host                                     # distinctive fragment (e.g. sellingpartnerapi)
+    return _at_boundary(host, d)                         # distinctive fragment (e.g. sellingpartnerapi)
 
 
 def classify_host(host: str, vendors: list):
@@ -77,8 +94,9 @@ def version_of(url: str, vendor) -> str | None:
 
 
 def domain_in_line(line: str, domains) -> str:
+    # host-boundary aware so `ups.com` doesn't fire on `startups.com` / `groups.company.com`
     for d in domains:
-        if d in line:
+        if _at_boundary(line, d):
             return d
     return ""
 
