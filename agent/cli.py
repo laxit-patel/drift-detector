@@ -149,6 +149,29 @@ def _cmd_unschedule(args) -> int:
     return 0
 
 
+def _redact(s, token):
+    return s.replace(token, "***") if token else s
+
+
+def _cmd_gitlab_sync(args) -> int:
+    from agent.gitlab_sync import sync
+    token = os.environ.get("GITLAB_TOKEN")
+    if not token:
+        print("gitlab-sync: set GITLAB_TOKEN (a read_api + read_repository PAT) in the environment "
+              "— it is read from the env only, never a flag or a stored file.", file=sys.stderr)
+        return 2
+    try:
+        out = sync(args.base_url, token, args.dest, group=args.group,
+                   active_days=args.active_days, now=args.now)
+    except Exception as exc:
+        print(f"gitlab-sync failed: {_redact(str(exc), token)}", file=sys.stderr)
+        return 2
+    print(f"✓ gitlab-sync: {len(out['synced'])} synced · {len(out['failed'])} failed → {out['dest']}")
+    for f in out["failed"][:10]:
+        print(f"  ⚠ {f['repo']}: {_redact(f['reason'], token)}", file=sys.stderr)
+    return 0
+
+
 def _cmd_preflight(args) -> int:
     from agent.lib.repo_discovery import discover_repos
     from agent.lib import private_sources
@@ -221,6 +244,14 @@ def main(argv: list[str]) -> int:
     ppf = sub.add_parser("preflight")
     ppf.add_argument("--root", required=True)
     ppf.set_defaults(func=_cmd_preflight)
+
+    pgl = sub.add_parser("gitlab-sync")       # token comes from GITLAB_TOKEN env, never a flag
+    pgl.add_argument("--base-url", required=True)
+    pgl.add_argument("--dest", required=True)
+    pgl.add_argument("--group")
+    pgl.add_argument("--active-days", type=int)
+    pgl.add_argument("--now")
+    pgl.set_defaults(func=_cmd_gitlab_sync)
 
     pa = sub.add_parser("audit")
     pa.add_argument("--in", dest="in_json", required=True)
