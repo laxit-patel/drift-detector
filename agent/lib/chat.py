@@ -14,9 +14,9 @@ def build_chat_card(audit: dict, now: str, *, folder: str | None = None) -> dict
     c = audit.get("counts", {})
     findings = audit.get("findings", [])
     dep = Counter(f["repo"] for f in findings if f.get("status") == "DEPRECATED")
-    worst = "\n".join(f"• <b>{repo}</b> — {n}" for repo, n in dep.most_common(5)) or "—"
+    worst = "<br>".join(f"• <b>{repo}</b> — {n}" for repo, n in dep.most_common(5)) or "—"
     fixes = [f for f in findings if f.get("status") == "DEPRECATED" and f.get("recommendation")]
-    top = "\n".join(f"• {f['ref']} {f['version']} → {f['recommendation']}" for f in fixes[:5]) or "—"
+    top = "<br>".join(f"• {f['ref']} {f['version']} → {f['recommendation']}" for f in fixes[:5]) or "—"
 
     sections = [
         {"header": "Worst repos", "widgets": [{"textParagraph": {"text": worst}}]},

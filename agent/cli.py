@@ -114,15 +114,25 @@ def _cmd_schedule(args) -> int:
     from agent.lib import schedule as sched
     plugin_root = str(Path(__file__).resolve().parent.parent)
     webhook = args.chat_webhook or _config_webhook(args.state)
-    line = sched.install_cron(args.root, args.state, args.at, plugin_root=plugin_root,
-                              chat_webhook=webhook, pull=getattr(args, "pull", False))
+    try:
+        line = sched.install_cron(args.root, args.state, args.at, plugin_root=plugin_root,
+                                  chat_webhook=webhook, pull=getattr(args, "pull", False))
+    except Exception as exc:      # missing/failed crontab -> actionable message, not a traceback
+        print(f"schedule failed: {exc}\n  Is 'crontab' installed and the cron service running?",
+              file=sys.stderr)
+        return 2
     print("installed cron:\n  " + line)
     return 0
 
 
 def _cmd_unschedule(args) -> int:
     from agent.lib import schedule as sched
-    print("removed schedule" if sched.remove_cron(args.state) else "no schedule found")
+    try:
+        removed = sched.remove_cron(args.state)
+    except Exception as exc:
+        print(f"unschedule failed: {exc}", file=sys.stderr)
+        return 2
+    print("removed schedule" if removed else "no schedule found")
     return 0
 
 

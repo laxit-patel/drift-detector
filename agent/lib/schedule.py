@@ -9,6 +9,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import shlex
 import subprocess
 
 CONFIG_NAME = "agent.json"
@@ -42,23 +43,30 @@ def save_config(state_dir: str, cfg: dict) -> None:
 def _default_crontab(action: str, content: str | None = None) -> str:
     if action == "read":
         r = subprocess.run(["crontab", "-l"], capture_output=True, text=True)
-        return r.stdout if r.returncode == 0 else ""
+        if r.returncode == 0:
+            return r.stdout
+        # an EMPTY crontab exits non-zero with a "no crontab for <user>" message — that's fine.
+        # Any OTHER read failure must ABORT: proceeding would overwrite the real crontab with ours.
+        if "no crontab" in (r.stderr or "").lower():
+            return ""
+        raise RuntimeError(f"cannot read crontab (won't risk overwriting it): {(r.stderr or '').strip() or r.returncode}")
     subprocess.run(["crontab", "-"], input=content or "", text=True, check=True)
     return ""
 
 
 def _wrapper_script(root: str, state_dir: str, plugin_root: str, chat_webhook: str | None,
                     pull: bool, path_env: str) -> str:
-    scan = f'"{plugin_root}/bin/drift-scan" run --root "{root}" --state "{state_dir}" --now "$(date +%F)"'
+    q = shlex.quote
+    scan = f'{q(plugin_root + "/bin/drift-scan")} run --root {q(root)} --state {q(state_dir)} --now "$(date +%F)"'
     if chat_webhook:
-        scan += f' --chat-webhook "{chat_webhook}"'
+        scan += f" --chat-webhook {q(chat_webhook)}"
     if pull:
         scan += " --pull"
-    log = os.path.join(state_dir, LOG_NAME)
+    log = q(os.path.join(state_dir, LOG_NAME))
     return ("#!/usr/bin/env bash\n"
             "# drift-detector scheduled run — generated; remove via /drift-detector unschedule\n"
-            f'export PATH="{path_env}"\n'
-            f'{scan} >> "{log}" 2>&1\n')
+            f"export PATH={q(path_env)}\n"
+            f"{scan} >> {log} 2>&1\n")
 
 
 def install_cron(root: str, state_dir: str, when: str, *, plugin_root: str,

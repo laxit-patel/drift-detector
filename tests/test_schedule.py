@@ -19,12 +19,12 @@ def test_install_writes_wrapper_and_one_marked_line(tmp_path):
     line = schedule.install_cron(str(tmp_path / "repos"), str(state), "0 7 * * 0",
                                  plugin_root="/plug", chat_webhook="https://hook",
                                  path_env="/usr/bin:/home/u/.local/bin", crontab_run=ct)
-    # wrapper script
+    # wrapper script (values are shlex-quoted; safe strings render unquoted)
     wrapper = state / "cron-run.sh"
     body = wrapper.read_text()
     assert "/plug/bin/drift-scan" in body and "run --root" in body
-    assert '--chat-webhook "https://hook"' in body
-    assert 'export PATH="/usr/bin:/home/u/.local/bin"' in body
+    assert "--chat-webhook" in body and "https://hook" in body
+    assert "export PATH=" in body and "/usr/bin:/home/u/.local/bin" in body
     assert wrapper.stat().st_mode & 0o100                       # executable
     # crontab: existing line preserved + one marked line added
     assert "echo existing" in ct.content
@@ -57,3 +57,35 @@ def test_unschedule_removes_only_this_folders_line(tmp_path):
     assert ct.content.count("# drift-detector:") == 1           # only b's line remains
     assert "keep-me" in ct.content                              # unrelated line untouched
     assert schedule.remove_cron(state_a, crontab_run=ct) is False   # already gone
+
+
+def test_install_aborts_on_ambiguous_crontab_read_failure(tmp_path):
+    # a read failure that is NOT "no crontab" must abort, never overwrite the real crontab
+    import subprocess as sp
+    from agent.lib import schedule as sched
+
+    def read_boom(cmd, capture_output=True, text=True, **kw):
+        if cmd[:2] == ["crontab", "-l"]:
+            return sp.CompletedProcess(cmd, 1, stdout="", stderr="crontab: permission denied")
+        raise AssertionError("must not reach the write step")
+
+    import pytest
+    monkey = pytest.MonkeyPatch()
+    monkey.setattr(sched.subprocess, "run", read_boom)
+    try:
+        with pytest.raises(RuntimeError, match="overwriting"):
+            sched.install_cron(str(tmp_path / "r"), str(tmp_path / "s"), "0 7 * * 0", plugin_root="/p")
+    finally:
+        monkey.undo()
+
+
+def test_shlex_quotes_path_with_spaces(tmp_path):
+    import os
+    import shlex
+    ct = FakeCrontab()
+    state = tmp_path / "sp ace"
+    schedule.install_cron(str(tmp_path / "re po"), str(state), "0 7 * * 0",
+                          plugin_root="/p", crontab_run=ct)
+    body = (state / "cron-run.sh").read_text()
+    # the space-containing root is safely quoted (no bare `--root .../re po` that cron would split)
+    assert shlex.quote(os.path.abspath(str(tmp_path / "re po"))) in body
