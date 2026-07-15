@@ -16,7 +16,7 @@ def build_bom(doc: dict, findings: list, now: str) -> dict:
     components: dict = {}      # bom-ref (purl) -> component
     for r in doc.get("repos", []):
         for s in r.get("sdks", []):
-            ver = floor(s.get("ver"))
+            ver = s.get("resolved") or floor(s.get("ver"))   # match the audited version (vuln affects ref)
             purl = to_purl(s.get("eco"), s.get("pkg"), ver)
             if not purl:
                 continue

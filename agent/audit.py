@@ -37,7 +37,7 @@ def audit_inventory(doc: dict, now: str, *, http=None,
     findings: list = []
     coverage = {"osvErrors": 0, "eolErrors": 0, "notes": [
         "Sources: OSV.dev (CVEs, Tier 1) + endoflife.date (runtime/framework EOL, Tier 1).",
-        "Versions are the DECLARED manifest floor — verify against your lockfile.",
+        "Versions are lockfile-exact where a lockfile exists (versionSource: lockfile), else the declared manifest floor — verify against your lockfile.",
         "Parked: Tier 2 (SDK repo archived/changelog) and Tier 3 (community/early-warning) signals.",
     ]}
     osv_cache: dict = {}

@@ -53,6 +53,19 @@ def test_cyclonedx_bom_shape():
     assert any(p["value"] == "DEPRECATED" for p in php.get("properties", []))
 
 
+def test_cyclonedx_component_matches_vuln_ref_when_resolved_differs_from_floor():
+    doc = {"repos": [{"path": "web", "sdks": [
+        {"eco": "npm", "pkg": "axios", "ver": "^0.21.1", "resolved": "1.7.4", "versionSource": "lockfile"}]}]}
+    findings = [{"repo": "web", "kind": "cve", "ref": "npm/axios", "version": "1.7.4",
+                 "id": "GHSA-x", "cve": "CVE-1", "fixed": "1.9", "status": "DEPRECATED",
+                 "severity": "HIGH", "detail": "x", "source_url": "u", "tier": 1, "recommendation": "up"}]
+    bom = build_bom(doc, findings, "2026-07-15")
+    comp_purls = {c["purl"] for c in bom["components"] if "purl" in c}
+    vuln_ref = bom["vulnerabilities"][0]["affects"][0]["ref"]
+    assert vuln_ref == "pkg:npm/axios@1.7.4"          # resolved version, not the 0.21.1 floor
+    assert vuln_ref in comp_purls                     # component exists -> no dangling reference
+
+
 def test_sarif_shape_and_levels():
     sarif = build_sarif(_DOC, _AUDIT["findings"])
     assert sarif["version"] == "2.1.0"

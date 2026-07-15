@@ -65,16 +65,17 @@ def apply_lifecycle(audit: dict, state_dir: str, now: str) -> dict:
         fp = fingerprint(f)
         f["fingerprint"] = fp
         seen.add(fp)
+        entry = prior.get(fp)
+        f["first_seen"] = entry.get("first_seen", now) if entry else now
+        # keep muted findings in state too, so un-muting restores their history (not re-alarmed as new)
+        next_state[fp] = {"first_seen": f["first_seen"], "last_seen": now,
+                          "ref": f.get("ref"), "kind": f.get("kind"), "status": f.get("status")}
         if fp in baseline:
             f["suppressed"] = True
             muted.append(f)
             continue
-        entry = prior.get(fp)
-        f["first_seen"] = entry.get("first_seen", now) if entry else now
         if not entry:
             new.append(f)
-        next_state[fp] = {"first_seen": f["first_seen"], "last_seen": now,
-                          "ref": f.get("ref"), "kind": f.get("kind"), "status": f.get("status")}
 
     resolved = [{"fingerprint": fp, **entry} for fp, entry in prior.items()
                 if fp not in seen and fp not in baseline]
