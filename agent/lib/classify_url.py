@@ -64,3 +64,19 @@ def version_of(url: str, vendor) -> str | None:
     regex = vendor.version_regex if vendor else DEFAULT_VERSION_REGEX
     m = re.search(regex, url)
     return m.group(1) if m else None
+
+
+def domain_in_line(line: str, domains) -> str:
+    for d in domains:
+        if d in line:
+            return d
+    return ""
+
+
+def segment_at(line: str, token: str) -> str:
+    """The literal token containing `token` (up to the next quote/space/backtick) — so version/example
+    for a host-only reference aren't contaminated by neighbouring text on the line."""
+    idx = line.find(token)
+    if idx < 0:
+        return token
+    return re.split(r"""["'\s`]""", line[idx:], 1)[0]

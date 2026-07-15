@@ -65,6 +65,26 @@ def test_non_url_matches_ignored(tmp_path):
     assert build_endpoints([{"kind": "sdk", "path": "a.php", "line": 1}], str(tmp_path), _VENDORS) == []
 
 
+def test_host_only_known_reference_caught_via_endpoint_rule(tmp_path):
+    # a config with NO url scheme — 'api.mailgun.net' as a bare host literal (the old allowlist
+    # caught this; the broad URL rule alone would miss it, so the per-vendor rule recovers it)
+    _write(tmp_path, "services.php", "'mailgun' => ['domain' => 'api.mailgun.net'],\n")
+    mg = Vendor("Mailgun", "api:mailgun", ("mailgun.net",), r'/(v\d+)')
+    eps = build_endpoints([{"kind": "endpoint", "techKey": "api:mailgun", "path": "services.php", "line": 1}],
+                          str(tmp_path), [mg])
+    assert len(eps) == 1 and eps[0]["vendor"] == "Mailgun" and eps[0]["files"] == ["services.php:1"]
+
+
+def test_url_and_vendor_rule_on_same_line_deduped(tmp_path):
+    # a real Mailgun URL fires BOTH the url-literal and the mailgun rule at the same spot -> one record
+    _write(tmp_path, "m.php", '"https://api.mailgun.net/v3/send";\n')
+    mg = Vendor("Mailgun", "api:mailgun", ("mailgun.net",), r'/(v\d+)')
+    matches = [{"kind": "url", "path": "m.php", "line": 1},
+               {"kind": "endpoint", "techKey": "api:mailgun", "path": "m.php", "line": 1}]
+    eps = build_endpoints(matches, str(tmp_path), [mg])
+    assert len(eps) == 1 and eps[0]["file_count"] == 1     # not double-counted
+
+
 def test_most_specific_domain_wins(tmp_path):
     _write(tmp_path, "m.php", '"https://maps.googleapis.com/maps/api/geocode/json";\n')
     vendors = [Vendor("Google APIs", "api:google", ("googleapis.com",), r'/(v\d+)'),
