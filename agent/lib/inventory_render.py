@@ -190,7 +190,7 @@ def render_inventory_md(doc: dict, diff: dict | None = None) -> str:
                + (f" of {reps['discovered']} discovered" if reps.get("discovered") else "")
                + f" · {reps.get('errored', len(cov.get('reposErrored', [])))} errored")
     if eps:
-        out.append(f"- **Endpoints:** {eps.get('known', 0)} known-vendor · "
+        out.append(f"- **Endpoint refs:** {eps.get('known', 0)} known-vendor · "
                    f"{eps.get('unknownExternal', 0)} unknown external")
     if pks:
         out.append(f"- **Packages:** {pks.get('total', 0)} total · {pks.get('lockfileResolved', 0)} "

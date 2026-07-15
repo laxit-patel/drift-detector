@@ -17,7 +17,17 @@ from pathlib import Path
 from agent.lib.manifest_scan import _walk
 
 _NPM_PRIVATE = re.compile(r"^(git\+|git:|git@|ssh://|file:|link:|https?://|github:|gitlab:|bitbucket:)", re.I)
+# bare GitHub shorthand `user/repo` or `user/repo#ref` (npm treats these as git deps) — but not
+# `npm:`/`workspace:` aliases (they contain a colon) and not a semver (no leading digit/^/~/*)
+_NPM_SHORTHAND = re.compile(r"^[\w.-]+/[\w.-]+(#.+)?$")
 _PRIVATE_REPO_TYPES = {"vcs", "git", "gitlab", "github", "bitbucket"}
+
+
+def _is_private_npm(spec: str) -> bool:
+    s = spec.strip()
+    if _NPM_PRIVATE.match(s):
+        return True
+    return ":" not in s and bool(_NPM_SHORTHAND.match(s))
 
 
 def _npm_private(content: str) -> list:
@@ -25,7 +35,7 @@ def _npm_private(content: str) -> list:
     out = []
     for section in ("dependencies", "devDependencies"):
         for pkg, spec in (data.get(section) or {}).items():
-            if isinstance(spec, str) and _NPM_PRIVATE.match(spec.strip()):
+            if isinstance(spec, str) and _is_private_npm(spec):
                 out.append({"pkg": pkg, "via": spec.strip()})
     return out
 

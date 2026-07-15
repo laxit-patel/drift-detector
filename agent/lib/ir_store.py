@@ -6,6 +6,11 @@ import hashlib
 import json
 from pathlib import Path
 
+# Per-repo cache schema. BUMP when the record shape changes so pre-upgrade caches are
+# invalidated (a stale cache without new fields would silently under-report — e.g. a repo
+# scanned before privateSources/versionSource existed would look "clean").
+_CACHE_SCHEMA = 2
+
 
 def _ir_path(state_dir: str) -> Path:
     return Path(state_dir) / "inventory.json"
@@ -13,7 +18,7 @@ def _ir_path(state_dir: str) -> Path:
 
 def _repo_path(state_dir: str, path: str, head_sha: str) -> Path:
     key = hashlib.sha256(path.encode("utf-8")).hexdigest()[:16]
-    return Path(state_dir) / "repos" / f"{key}@{head_sha}.json"
+    return Path(state_dir) / f"repos_v{_CACHE_SCHEMA}" / f"{key}@{head_sha}.json"
 
 
 def _write(p: Path, doc: dict) -> None:

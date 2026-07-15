@@ -50,3 +50,11 @@ def test_preflight_cli_reports_private_sources(tmp_path, capsys):
     out = capsys.readouterr().out
     assert rc == 0 and "private package sources needing access" in out
     assert "git.topsdemo.in" in out and "GitLab auth" in out
+
+
+def test_npm_bare_github_shorthand_flagged_but_not_semver_or_aliases(tmp_path):
+    (tmp_path / "package.json").write_text(
+        '{"dependencies": {"lib": "myorg/private-lib#v2", "axios": "^1.0",'
+        ' "aliased": "npm:@scope/x@1", "ws": "workspace:*", "tag": "latest"}}')
+    flagged = {p["pkg"] for p in __import__("agent.lib.private_sources", fromlist=["detect"]).detect(str(tmp_path))["packages"]}
+    assert flagged == {"lib"}          # github shorthand only; semver/npm:/workspace:/dist-tag excluded
