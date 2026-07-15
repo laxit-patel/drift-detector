@@ -46,12 +46,16 @@ Check your machine any time:
 /drift-detector audit <folder>        # after a scan of that folder
 ```
 
-Reads the folder's existing `inventory.json` and checks it against **OSV.dev**
-(known CVEs per package version) and **endoflife.date** (EOL runtimes/frameworks),
-classifying each finding **DEPRECATED** (act now) / **REVIEW** (assess) with a cited
-source. Needs network on the run (still zero LLM tokens); degrades gracefully offline.
-Versions checked are the **declared manifest floor** — verify against your lockfile
-before acting (conservative: it may over-report, never under-reports).
+Reads the folder's existing `inventory.json` and checks it against three sources,
+classifying each finding **DEPRECATED** (act now) / **REVIEW** (assess), with a cited source:
+- **OSV.dev** — known CVEs per package version (**lockfile-exact** where a lockfile exists, else the declared floor);
+- **endoflife.date** — EOL runtimes/frameworks;
+- **`agent/vendor_sunsets.yaml`** — a **curated vendor-API-sunset catalog** joined against your
+  endpoint inventory, so it flags *"Amazon SP-API v0 retires 2026-09-30 — called at these `file:line`"* —
+  the thing package/CVE scanners can't see. Extend it with your vendors' announcements (each entry cites a source).
+
+The report **leads with the delta** (🆕 new · ✅ resolved since last scan); accepted findings can be
+muted. Needs network on the run (still zero LLM tokens); degrades gracefully offline.
 
 ### Autonomous & scheduled
 
