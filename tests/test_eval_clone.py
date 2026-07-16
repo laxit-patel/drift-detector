@@ -46,3 +46,22 @@ def test_refuses_a_dirty_tree(tmp_path):
         return ""
     with pytest.raises(RuntimeError, match="dirty|uncommitted"):
         clone.sync_corpus([_entry()], str(tmp_path), git=fake_git)
+
+
+def test_git_status_failure_aborts_not_treated_as_clean(tmp_path):
+    # pre-create the dir so it's treated as existing (fetch path)
+    (tmp_path / "ebay" / "ebay-sdk-php" / ".git").mkdir(parents=True)
+    checked_out = []
+
+    def failing_git(args, cwd=None):
+        if "status" in args:
+            raise RuntimeError("git status failed: permission denied")
+        if "checkout" in args:
+            checked_out.append(args)
+        if "rev-parse" in args:
+            return "a" * 40
+        return ""
+
+    with pytest.raises(RuntimeError, match="status|permission"):
+        clone.sync_corpus([_entry()], str(tmp_path), git=failing_git)
+    assert checked_out == []          # never reached checkout -> no silent discard

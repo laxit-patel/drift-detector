@@ -1,5 +1,7 @@
 """Pin-verifying clone of the corpus into <sandbox>/<category>/<name>. Git is injected
-(git(args, cwd=None) -> stdout). Reproducibility is enforced: after checkout, HEAD must
+(git(args, cwd=None) -> stdout on success; RAISES on non-zero exit — callers must not
+return "" to signal failure, since "" is also the legitimate result of a clean
+`git status --porcelain`). Reproducibility is enforced: after checkout, HEAD must
 equal the declared sha (hard-fail on mismatch = corpus drift), and a dirty tree is refused.
 Clones are third-party public code and are never committed."""
 from __future__ import annotations
@@ -11,7 +13,9 @@ def _default_git(args, cwd=None) -> str:  # pragma: no cover - real git subproce
     import subprocess
     cmd = ["git"] + (["-C", cwd] if cwd else []) + args
     proc = subprocess.run(cmd, capture_output=True, text=True, timeout=300)
-    return proc.stdout.strip() if proc.returncode == 0 else ""
+    if proc.returncode != 0:
+        raise RuntimeError(f"git {' '.join(args)} failed (exit {proc.returncode}): {proc.stderr.strip()}")
+    return proc.stdout.strip()
 
 
 def _dest(sandbox_root, entry) -> str:
