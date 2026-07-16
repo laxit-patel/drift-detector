@@ -38,7 +38,9 @@ def run_category(category, *, now, sandbox_root, corpus_path, no_clone=False,
 
     cat_root = os.path.join(sandbox_root, category)
     state_dir = os.path.join(eval_home(), "runs", now, category, "_state")
-    scan_res = scan(cat_root, state_dir, now, engine="semgrep")
+    # engine=None lets scan_folder resolve the venv's semgrep by path (resolve_engine);
+    # passing the bare name "semgrep" would exec via PATH and fail outside an activated venv.
+    scan_res = scan(cat_root, state_dir, now)
     inventory = scan_res["doc"]
     audit_doc = audit(inventory, now, osv_query=_NOOP_OSV, eol_check=_NOOP_EOL)
 
