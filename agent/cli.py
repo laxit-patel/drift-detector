@@ -52,6 +52,7 @@ def _cmd_audit(args) -> int:
     from agent.lib.audit_render import render_audit_md
     from agent.lib.cyclonedx import build_bom
     from agent.lib.sarif import build_sarif
+    from agent.lib.dashboard_render import render_dashboard
 
     with open(args.in_json, encoding="utf-8") as fh:
         doc = json.load(fh)
@@ -78,6 +79,9 @@ def _cmd_audit(args) -> int:
     if getattr(args, "out_json", None):
         with open(args.out_json, "w", encoding="utf-8") as fh:
             json.dump(audit, fh, ensure_ascii=False, indent=2, sort_keys=True)
+    if getattr(args, "out_html", None):
+        with open(args.out_html, "w", encoding="utf-8") as fh:
+            fh.write(render_dashboard(doc, audit, args.now))
     c = audit["counts"]
     print(f"✓ audit: 🔴 {c.get('DEPRECATED', 0)} action-required · 🟠 {c.get('REVIEW', 0)} review · "
           f"across {c.get('reposAffected', 0)} repos")
@@ -260,6 +264,7 @@ def main(argv: list[str]) -> int:
     pa.add_argument("--out-bom")
     pa.add_argument("--out-sarif")
     pa.add_argument("--out-json")
+    pa.add_argument("--out-html")
     pa.add_argument("--offline", action="store_true")
     pa.add_argument("--progress", action="store_true")
     pa.set_defaults(func=_cmd_audit)

@@ -13,6 +13,7 @@ from agent.inventory_scan import scan_folder
 from agent.audit import audit_inventory
 from agent.lib.inventory_diff import render_diff_md
 from agent.lib.audit_render import render_audit_md
+from agent.lib.dashboard_render import render_dashboard
 from agent.lib.cyclonedx import build_bom
 from agent.lib.sarif import build_sarif
 from agent.lib.chat import build_chat_card, post_chat
@@ -65,6 +66,7 @@ def run_pipeline(roots, state_dir, now, *, chat_webhook=None, pull=False,
     _write_json(os.path.join(state_dir, "bom.json"), build_bom(doc, audit["findings"], now))
     _write_json(os.path.join(state_dir, "findings.sarif"), build_sarif(doc, audit["findings"]))
     _write_json(os.path.join(state_dir, "audit.json"), audit)
+    _write(os.path.join(state_dir, "dashboard.html"), render_dashboard(doc, audit, now))
 
     delivered = []
     if chat_webhook:
