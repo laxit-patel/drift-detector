@@ -698,7 +698,9 @@ def test_thirty_findings_render_as_one_action_saying_thirty():
     findings = [_cve("r", "python/torch", severity="CRITICAL", fixed="2.8.0") for _ in range(30)]
     md = render_audit_md(_audit(findings))
     assert "Fixes 30 advisories" in md
-    assert md.count("| 1 |") == 1              # one row in the fix queue, not 30
+    queue_rows = [l for l in md.splitlines() if l.startswith("| 1 |")]
+    assert len(queue_rows) == 1                # exactly one numbered row in the fix queue...
+    assert "| 2 |" not in md                   # ...and no second one. 30 findings, 1 job.
 
 
 def test_truncation_is_announced_never_silent():
@@ -716,9 +718,13 @@ def test_review_only_actions_are_not_in_the_fix_queue():
 
 
 def test_action_without_a_fix_shows_prose_not_a_broken_command():
-    md = render_audit_md(_audit([_cve("r", "npm/x", fixed=None)]))
-    assert "None" not in md
-    assert "review advisory" in md or "upgrade to >= None" not in md
+    # OSV knows the vuln but no fixed version exists yet (13 such findings in the real run)
+    unfixed = _cve("r", "npm/x", fixed=None)
+    unfixed["recommendation"] = "review advisory"
+    md = render_audit_md(_audit([unfixed]))
+    assert "review advisory" in md
+    assert "npm install" not in md          # never a command without a version to install
+    assert "None" not in md                 # and never a half-formed string
 
 
 def test_sunset_action_renders_its_call_sites():
@@ -739,12 +745,16 @@ def test_coverage_note_admits_the_transitive_gap():
     assert "Only manifest-declared (direct) dependencies are audited" in md
 
 
-def test_delta_section_lists_actions():
+def test_delta_counts_new_actions_not_new_findings():
+    # 5 new advisories against one package = ONE new job to do. The delta line must say so,
+    # or the weekly "what changed" number keeps overstating the work.
     findings = [_cve("r", "npm/axios") for _ in range(5)]
     md = render_audit_md(_audit(findings, delta={"new": findings, "resolved": [],
                                                  "persisting": [], "mutedCount": 0}))
-    assert "5 new" in md
-    assert md.count("npm/axios") < 5           # rolled up, not one line per finding
+    assert "🆕 1 new" in md
+    assert "## 🆕 New since last scan" in md
+    new_bullets = [l for l in md.splitlines() if l.startswith("- ") and "npm/axios" in l]
+    assert len(new_bullets) == 1               # one bullet, not five
 
 
 def test_empty_audit_renders_cleanly():
