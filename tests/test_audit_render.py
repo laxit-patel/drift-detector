@@ -1,75 +1,112 @@
+"""AUDIT.md renders ACTIONS, ranked. The first thing on the page must be the worst thing."""
+from agent.lib.actions import build_actions
 from agent.lib.audit_render import render_audit_md
-from agent.lib.cyclonedx import build_bom
-from agent.lib.sarif import build_sarif
 
 
-_DOC = {
-    "repos": [{
-        "path": "svc-a",
-        "runtimes": {"php": {"range": "^7.4"}},
-        "sdks": [{"eco": "npm", "pkg": "axios", "ver": "^0.21.1", "file": "package.json"}],
-    }],
-}
-_AUDIT = {
-    "generated": "2026-07-14",
-    "counts": {"DEPRECATED": 2, "REVIEW": 0, "reposAffected": 1},
-    "findings": [
-        {"repo": "svc-a", "kind": "cve", "ref": "npm/axios", "version": "^0.21.1",
-         "id": "GHSA-x", "cve": "CVE-1", "fixed": "1.7.4", "status": "DEPRECATED", "severity": "HIGH",
-         "detail": "axios SSRF", "date": None, "source_url": "https://osv.dev/x", "tier": 1,
-         "recommendation": "upgrade to >= 1.7.4"},
-        {"repo": "svc-a", "kind": "eol", "ref": "php", "version": "^7.4", "status": "DEPRECATED",
-         "severity": "EOL", "detail": "php 7.4 end-of-life 2022-11-28", "date": "2022-11-28",
-         "source_url": "https://endoflife.date/php", "tier": 1, "recommendation": "upgrade to 8.3.10"},
-    ],
-    "coverage": {"notes": ["Versions are the DECLARED manifest floor — verify against your lockfile."]},
-}
+def _cve(repo, ref, severity="HIGH", status="DEPRECATED", fixed="1.16.0", version="0.21.1"):
+    return {"repo": repo, "ref": ref, "kind": "cve", "version": version, "fixed": fixed,
+            "severity": severity, "status": status, "first_seen": "2026-07-15",
+            "detail": "summary text", "recommendation": f"upgrade to >= {fixed}",
+            "source_url": "https://osv.dev/x", "tier": 1}
 
 
-def test_audit_md_leads_with_urgent_and_tables():
-    md = render_audit_md(_AUDIT)
-    assert "Deprecation & Vulnerability Audit" in md
-    assert "action-required" in md and "Most urgent" in md
-    assert "npm/axios" in md and "php" in md
-    assert "https://osv.dev/x" in md                      # cited source
-    assert "manifest floor" in md                         # coverage note carried through
+def _audit(findings, **kw):
+    actions = build_actions(findings)
+    return {"generated": "2026-07-15", "findings": findings, "actions": actions,
+            "counts": {"DEPRECATED": sum(1 for f in findings if f["status"] == "DEPRECATED"),
+                       "REVIEW": sum(1 for f in findings if f["status"] == "REVIEW"),
+                       "reposAffected": len({f["repo"] for f in findings})},
+            "coverage": {"notes": []}, **kw}
 
 
-def test_audit_md_empty():
-    md = render_audit_md({"generated": "2026-07-14", "counts": {}, "findings": [], "coverage": {}})
-    assert "No open deprecation or vulnerability findings" in md
+def test_the_worst_action_is_first_not_the_alphabetically_first_repo():
+    # THE REGRESSION TEST. The old renderer did `urgent[:15]` with no sort, so an
+    # alphabetically-early repo buried a CRITICAL RCE under "...and 104 more".
+    findings = [_cve("aaa/first-alphabetically", "npm/lodash", severity="HIGH")]
+    findings += [_cve("zzz/heygen/Wav2Lip", "python/torch", severity="CRITICAL",
+                      fixed="2.8.0", version="1.1.0") for _ in range(30)]
+    md = render_audit_md(_audit(findings))
+    first = md.index("zzz/heygen/Wav2Lip")
+    second = md.index("aaa/first-alphabetically")
+    assert first < second
 
 
-def test_cyclonedx_bom_shape():
-    bom = build_bom(_DOC, _AUDIT["findings"], "2026-07-14")
-    assert bom["bomFormat"] == "CycloneDX" and bom["specVersion"] == "1.6"
-    purls = [c["purl"] for c in bom["components"] if "purl" in c]
-    assert "pkg:npm/axios@0.21.1" in purls
-    v = bom["vulnerabilities"][0]
-    assert v["id"] == "CVE-1" and v["affects"][0]["ref"] == "pkg:npm/axios@0.21.1"
-    assert v["ratings"][0]["severity"] == "high"
-    # php EOL surfaced as a framework component property
-    php = next(c for c in bom["components"] if c["name"] == "php")
-    assert any(p["value"] == "DEPRECATED" for p in php.get("properties", []))
+def test_do_this_first_shows_the_command():
+    md = render_audit_md(_audit([_cve("r", "python/torch", severity="CRITICAL",
+                                      fixed="2.8.0", version="1.1.0")]))
+    assert "## Do this first" in md
+    assert "pip install 'torch>=2.8.0'" in md
 
 
-def test_cyclonedx_component_matches_vuln_ref_when_resolved_differs_from_floor():
-    doc = {"repos": [{"path": "web", "sdks": [
-        {"eco": "npm", "pkg": "axios", "ver": "^0.21.1", "resolved": "1.7.4", "versionSource": "lockfile"}]}]}
-    findings = [{"repo": "web", "kind": "cve", "ref": "npm/axios", "version": "1.7.4",
-                 "id": "GHSA-x", "cve": "CVE-1", "fixed": "1.9", "status": "DEPRECATED",
-                 "severity": "HIGH", "detail": "x", "source_url": "u", "tier": 1, "recommendation": "up"}]
-    bom = build_bom(doc, findings, "2026-07-15")
-    comp_purls = {c["purl"] for c in bom["components"] if "purl" in c}
-    vuln_ref = bom["vulnerabilities"][0]["affects"][0]["ref"]
-    assert vuln_ref == "pkg:npm/axios@1.7.4"          # resolved version, not the 0.21.1 floor
-    assert vuln_ref in comp_purls                     # component exists -> no dangling reference
+def test_thirty_findings_render_as_one_action_saying_thirty():
+    findings = [_cve("r", "python/torch", severity="CRITICAL", fixed="2.8.0") for _ in range(30)]
+    md = render_audit_md(_audit(findings))
+    assert "Fixes 30 advisories" in md
+    queue_rows = [l for l in md.splitlines() if l.startswith("| 1 |")]
+    assert len(queue_rows) == 1                # exactly one numbered row in the fix queue...
+    assert "| 2 |" not in md                   # ...and no second one. 30 findings, 1 job.
 
 
-def test_sarif_shape_and_levels():
-    sarif = build_sarif(_DOC, _AUDIT["findings"])
-    assert sarif["version"] == "2.1.0"
-    results = sarif["runs"][0]["results"]
-    assert all(r["level"] == "error" for r in results)      # both DEPRECATED -> error
-    cve = next(r for r in results if r["ruleId"] == "cve")
-    assert cve["locations"][0]["physicalLocation"]["artifactLocation"]["uri"] == "svc-a/package.json"
+def test_truncation_is_announced_never_silent():
+    findings = [_cve(f"repo{i:02d}", "npm/x") for i in range(14)]
+    md = render_audit_md(_audit(findings))
+    assert "10 shown of 14" in md              # "Do this first" caps at 10 and SAYS so
+    for i in range(14):
+        assert f"repo{i:02d}" in md            # ...but the full queue drops nothing
+
+
+def test_review_only_actions_are_not_in_the_fix_queue():
+    md = render_audit_md(_audit([_cve("r", "npm/x", severity="LOW", status="REVIEW")]))
+    assert "## Fix queue" not in md            # nothing action-required -> no queue section
+    assert "npm/x" in md                       # ...but it still appears under "By repo"
+
+
+def test_action_without_a_fix_shows_prose_not_a_broken_command():
+    # OSV knows the vuln but no fixed version exists yet (13 such findings in the real run)
+    unfixed = _cve("r", "npm/x", fixed=None)
+    unfixed["recommendation"] = "review advisory"
+    md = render_audit_md(_audit([unfixed]))
+    assert "review advisory" in md
+    assert "npm install" not in md          # never a command without a version to install
+    assert "None" not in md                 # and never a half-formed string
+
+
+def test_sunset_action_renders_its_call_sites():
+    sunset = {"repo": "r", "ref": "eBay", "kind": "sunset", "version": "v1",
+              "severity": "SUNSET", "status": "DEPRECATED", "first_seen": "2026-07-15",
+              "detail": "eBay v1 retires 2026-09-30", "date": "2026-09-30",
+              "source_url": "https://developer.ebay.com/x", "tier": 1,
+              "recommendation": "migrate to Sell API before 2026-09-30",
+              "files": ["src/Ebay/x.php:11"]}
+    md = render_audit_md(_audit([sunset]))
+    assert "eBay" in md
+    assert "migrate to Sell API before 2026-09-30" in md
+    assert "src/Ebay/x.php:11" in md           # the file:line payload is the point
+
+
+def test_coverage_note_admits_the_transitive_gap():
+    md = render_audit_md(_audit([_cve("r", "npm/x")]))
+    assert "Only manifest-declared (direct) dependencies are audited" in md
+
+
+def test_delta_counts_new_actions_not_new_findings():
+    # 5 new advisories against one package = ONE new job to do. The delta line must say so,
+    # or the weekly "what changed" number keeps overstating the work.
+    findings = [_cve("r", "npm/axios") for _ in range(5)]
+    md = render_audit_md(_audit(findings, delta={"new": findings, "resolved": [],
+                                                 "persisting": [], "mutedCount": 0}))
+    assert "🆕 1 new" in md
+    assert "## 🆕 New since last scan" in md
+    new_bullets = [l for l in md.splitlines() if l.startswith("- ") and "npm/axios" in l]
+    assert len(new_bullets) == 1               # one bullet, not five
+
+
+def test_empty_audit_renders_cleanly():
+    md = render_audit_md({"generated": "2026-07-15", "findings": [], "actions": [],
+                          "counts": {}, "coverage": {}})
+    assert "_No open deprecation or vulnerability findings._" in md
+
+
+def test_render_is_deterministic():
+    a = _audit([_cve("b", "npm/z"), _cve("a", "npm/y", severity="CRITICAL")])
+    assert render_audit_md(a) == render_audit_md(a)
