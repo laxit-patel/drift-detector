@@ -191,6 +191,16 @@ def test_projection_carries_every_field_the_ui_reads():
         assert k in ep, k
 
 
+def test_apis_filter_selects_classified_endpoints_only():
+    # Regression guard: the "APIs used" tile's count is distinct classified vendors, and its
+    # click-through filter must show ONLY classified endpoints — otherwise it and "Unknown
+    # hosts" don't cleanly partition the endpoint rows (apis would fall through to "all").
+    html = render_dashboard(_inv(), _audit([_cve()]), "2026-07-15")
+    js = html.split("<script>")[-1]
+    assert 'f==="apis"' in js
+    assert "return e.classified" in js
+
+
 def test_source_href_uses_attribute_safe_escaping():
     # Regression guard for the Task 1 attribute-XSS fix: actionDetail() builds an <a href="...">
     # from scan-controlled source URLs. That interpolation MUST go through escA (which escapes

@@ -213,7 +213,8 @@ _CLIENT_JS = r"""
     var f = state.filter;
     return DATA.endpoints.filter(function(e){
       if(f==="unknown") return !e.classified;
-      return true;   // "apis" -> all endpoints (classified ones carry the vendor)
+      if(f==="apis")    return e.classified;
+      return true;
     });
   }
   function matchesQ(text){ return !state.q || text.toLowerCase().indexOf(state.q)>-1; }
