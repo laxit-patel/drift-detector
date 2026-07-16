@@ -76,36 +76,52 @@ the existing `findings` key; `findings` is unchanged so SARIF/BOM/MCP consumers 
 {
   "repo": "backup/Projects/heygen/backend/Wav2Lip",
   "ref": "python/torch",
-  "eco": "python",
-  "pkg": "torch",
-  "kind": "cve",                  # or "eol" — from the findings; mixed -> "cve"
+  "eco": "python",                # None when `ref` has no "/" (sunset refs are a bare vendor name)
+  "pkg": "torch",                 # == ref when eco is None
+  "kind": "cve",                  # "cve" | "eol" | "sunset"; mixed group -> "cve"
   "current_version": "1.1.0",
-  "fix_version": "2.8.0",         # max of all findings' `fixed`, by semver_key
+  "fix_version": "2.8.0",         # max of all findings' `fixed`, by semver_key; None if none carry one
   "command": "pip install 'torch>=2.8.0'",   # None when not derivable (see below)
+  "recommendation": "upgrade to >= 2.8.0",   # prose from the highest-ranked finding; the fallback
+                                             # shown when fix_version is None (e.g. sunset's
+                                             # "migrate to Sell API before 2026-09-30")
   "worst": "CRITICAL",            # max severity across findings, by severity_rank
   "status": "DEPRECATED",         # DEPRECATED if any finding is; else REVIEW
   "finding_count": 30,
-  "critical_count": 4,            # findings at CRITICAL, for the "(4 RCE)" style summary
+  "critical_count": 4,            # findings at CRITICAL, for the "(4 critical)" summary
   "first_seen": "2026-07-15",     # min across findings — how long this has been open
+  "files": [],                    # union of findings' `files`, order-stable, capped at 6.
+                                  # Only sunset findings carry `files` (audit.py:63); [] otherwise.
   "fixes": [ ...the finding dicts... ],
   "sources": ["https://…", …]     # deduped source_urls, order-stable
 }
 ```
 
+`eco`/`pkg` derive from `ref` by splitting on the **first** `/` only:
+`composer/aws/aws-sdk-php` → `("composer", "aws/aws-sdk-php")`. A `ref` with **no** `/` — which
+is every sunset finding, whose `ref` is a bare vendor name like `eBay` (`audit.py:59`) — yields
+`eco=None, pkg=ref`. Never assume a `/` is present.
+
 ### Rollup rules
 
-- Group findings by `(repo, ref)`. Both fields are present on all 320 findings.
+- Group findings by `(repo, ref)`. Both fields are present on all 320 findings (verified).
 - `fix_version` = `max((f["fixed"] for f in group if f.get("fixed")), key=semver_key)`, else `None`.
   This is the load-bearing computation: `python/torch` carries **16 distinct** `fixed` values and
   `npm/axios` carries **8**. The maximum satisfies every advisory in the group at once.
   A string sort gets this wrong (`"1.10.0" < "1.7.4"`); that exact bug has already occurred once in
   `facade.py` and is the reason `semver_key` exists.
-- `worst` = `max(f["severity"], key=severity_rank)`.
+- `worst` = the severity of the highest-ranked finding, using
+  `severity_rank(f["severity"], f["status"])`. The `status` argument is required — without it,
+  EOL and SUNSET findings rank as MODERATE even when past due.
 - `status` = `"DEPRECATED"` if any finding in the group is `DEPRECATED`, else `"REVIEW"`.
+- `recommendation` = the `recommendation` of that same highest-ranked finding.
 - `first_seen` = `min(f["first_seen"])` (ISO date strings; lexicographic min is correct for ISO-8601).
-- An action with `fix_version is None` (all advisories unfixed — 13 findings in the real run have
-  no `fixed`) is still emitted, with `command: None` and `fix_version: None`. The report shows it
-  as "no fix available — review advisory". It must not be silently dropped.
+- `files` = order-stable union of `f.get("files") or []` across the group, capped at 6. Only
+  sunset findings carry `files`; the key is absent on cve/eol findings, so `.get` is required.
+- An action with `fix_version is None` is still emitted, with `command: None`. Three real cases:
+  13 CVE findings in the real run have no `fixed`; every sunset finding lacks `fixed` entirely;
+  and an EOL product with no `recommended`. The report shows `recommendation` instead. Such an
+  action must never be silently dropped.
 
 ### Ranking
 
@@ -126,19 +142,39 @@ Extracted verbatim from `facade.py:14`, plus the EOL rule this spec adds:
 ```python
 _SEV_RANK = {"CRITICAL": 4, "HIGH": 3, "MODERATE": 2, "MEDIUM": 2, "LOW": 1, "UNKNOWN": 0, "": 0}
 
+# Severities with no CVSS score. Ranked by overdue-ness instead: the audit already decided
+# past-due vs approaching when it set `status`, so reuse that rather than re-deriving it.
+_DATED_SEVERITIES = {"EOL", "SUNSET"}
+
+
 def severity_rank(severity, status=None):
-    """Rank a finding's severity. EOL has no CVSS score, so it is ranked by overdue-ness:
-    past its EOL date (audit marks these DEPRECATED) ranks as HIGH; approaching (REVIEW)
-    ranks as MODERATE."""
-    if severity == "EOL":
+    """Rank a finding's severity, descending-comparable.
+
+    EOL (dead runtime/framework) and SUNSET (retired vendor API) carry no CVSS score. They are
+    ranked by overdue-ness: past its date (the audit marks these DEPRECATED) ranks as HIGH;
+    approaching or unconfirmed (REVIEW) ranks as MODERATE.
+    """
+    sev = str(severity or "").upper()
+    if sev in _DATED_SEVERITIES:
         return _SEV_RANK["HIGH"] if status == "DEPRECATED" else _SEV_RANK["MODERATE"]
-    return _SEV_RANK.get(str(severity or "").upper(), 0)
+    return _SEV_RANK.get(sev, 0)
 ```
 
 Rationale, confirmed with the user: `php 7.4` has been end-of-life since 2022-11-28. With no CVSS
 score it currently ranks below a LOW CVE. Ranking past-due EOL as HIGH matches how a team actually
 triages it. The `DEPRECATED`/`REVIEW` split already exists on EOL findings (`audit.py:138`,
 `res["status"]`), so this needs no new data and no new judgement.
+
+**`SUNSET` gets the same rule, and this is load-bearing.** `audit.py:58-64` emits a third finding
+kind — `kind: "sunset"`, `severity: "SUNSET"` — from the vendor-sunset catalog joined against
+code endpoints. That is the product's differentiator (the "these 26 lines stop working on ⟨date⟩"
+layer). `vendor_sunsets.status_for()` already resolves it to `DEPRECATED` (past the retirement
+date, version confirmed) or `REVIEW` (future date, or version unconfirmed), so the same
+overdue-ness mapping applies with no new data. Without this branch `severity_rank("SUNSET")`
+falls through to `0` and sunsets rank below a LOW CVE — reproducing the exact bug this spec exists
+to fix. The real 2026-07-15 run produced no sunset findings (the catalog has no matching eBay
+entry yet), so tests must cover this with hand-built fixtures; live data would not catch a
+regression here.
 
 `semver_key` moves unchanged from `facade.py:17`:
 
@@ -173,12 +209,16 @@ eco `composer`, pkg `aws/aws-sdk-php`).
 | `npm` | `npm install {pkg}@^{fix_version}` |
 | `composer` | `composer require {pkg}:^{fix_version}` |
 | `python` | `pip install '{pkg}>={fix_version}'` |
-| anything else | `None` — no command rendered |
+| anything else, or `eco is None` | `None` — no command rendered |
 
-`kind == "eol"` actions never get a command: upgrading a language runtime or framework major is
-not a one-liner. They render the target version only (e.g. `php ^7.4 → 8.5.8`).
+`command` is `None` — never a partially-formed string — whenever **any** of these hold:
 
-When `fix_version is None`, `command` is `None`. Never emit a command with a `None` version in it.
+- `kind != "cve"`. An `eol` action means upgrading a language runtime or framework major; a
+  `sunset` action means migrating to a different vendor API. Neither is a one-liner, and emitting
+  `pip install 'php>=8.5.8'` would be actively wrong. These render `fix_version` (e.g.
+  `php ^7.4 → 8.5.8`) or, when absent, the prose `recommendation`.
+- `fix_version is None`. Never emit a command containing `None`.
+- `eco is None` (the `ref` had no `/`) or `eco` is not in the table above.
 
 ## Changes to `agent/audit.py`
 
@@ -271,19 +311,32 @@ Unit tests only; no network, consistent with the repo's injected-seam pattern.
 - `severity_rank`: CRITICAL > HIGH > MODERATE > LOW > UNKNOWN.
 - EOL past-due (`status="DEPRECATED"`) ranks equal to HIGH; EOL approaching (`REVIEW`) ranks
   equal to MODERATE; a past-due EOL outranks a LOW CVE.
+- **SUNSET past-due (`status="DEPRECATED"`) ranks equal to HIGH; SUNSET unconfirmed/approaching
+  (`REVIEW`) ranks equal to MODERATE; a past-due SUNSET outranks a LOW CVE.** Guards the moat
+  layer, which no live fixture currently exercises.
+- Severity matching is case-insensitive and `None`-safe: `severity_rank(None) == 0`.
 - `facade.py` behaviour is unchanged after the import swap (its existing tests must still pass).
 
 **`tests/test_actions.py`**
 - 16 `fixed` values including `2.8.0` and `1.10.0` → `fix_version == "2.8.0"` (max, not last, not
   string-max). This is the torch case, from real data.
 - Findings for two different repos with the same `ref` produce two actions, not one.
-- An action with no `fixed` anywhere → `fix_version is None`, `command is None`, still emitted.
+- An action with no `fixed` anywhere → `fix_version is None`, `command is None`, still emitted,
+  and `recommendation` carries the prose fallback.
 - `worst` picks CRITICAL out of a mixed group; `status` is DEPRECATED if any finding is.
 - Ranking: a DEPRECATED/MODERATE action with 30 findings outranks a DEPRECATED/MODERATE action
   with 1; a CRITICAL outranks both; ties break stably by `(repo, ref)`.
-- Command mapping per eco, including `composer/aws/aws-sdk-php` splitting on the first `/` only.
-- `kind == "eol"` → `command is None`.
-- Rendering the same input twice is byte-identical.
+- Command mapping per eco, including `composer/aws/aws-sdk-php` splitting on the first `/` only
+  (→ `composer require aws/aws-sdk-php:^3.371.4`).
+- `kind == "eol"` → `command is None`, `fix_version` still populated.
+- **A sunset finding (`kind="sunset"`, `severity="SUNSET"`, `ref="eBay"`, no `fixed`, with
+  `files=["src/Ebay/x.php:11"]`) → one action with `eco is None`, `pkg == "eBay"`,
+  `command is None`, `fix_version is None`, `recommendation` = the migrate prose, and `files`
+  preserved.** This is the eBay/moat path.
+- `files` is `[]` for cve/eol actions (the key is absent on those findings — `.get`, not `[]`).
+- `files` unions across a group order-stably and caps at 6.
+- `build_actions([])` returns `[]` — no crash on an empty audit.
+- Calling `build_actions` twice on the same input returns equal, identically-ordered results.
 
 **`tests/test_audit.py`** (extend)
 - An EOL finding carries structured `fixed` equal to the endoflife `recommended` value.
