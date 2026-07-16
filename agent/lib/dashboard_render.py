@@ -192,6 +192,11 @@ _CLIENT_JS = r"""
   // quotes escaped, or a scan string like `HIGH" onmouseover="alert(1)` breaks out of the
   // attribute. Use escA for every attribute-context interpolation built from scan data.
   function escA(s){ return esc(s).replace(/"/g,"&quot;").replace(/'/g,"&#39;"); }
+  // Scheme allow-list for URLs rendered as a clickable href. escA only escapes HTML
+  // metacharacters; it does NOT validate the scheme, so a scan-controlled source_url of
+  // `javascript:...` would otherwise render as a clickable link that executes on click.
+  // Only http/https URLs become links; anything else falls back to escaped plain text.
+  function safeUrl(u){ u = String(u==null?"":u); return /^https?:\/\//i.test(u) ? u : null; }
 
   // ---- which rows does the current filter/mode select? ----
   function actionsFor(){
@@ -247,7 +252,8 @@ _CLIENT_JS = r"""
     if(a.cves && a.cves.length){ h+='<ul>'+a.cves.map(function(c){
       return '<li>'+esc(c.id)+' — '+esc(c.title)+'</li>'; }).join("")+'</ul>'; }
     if(a.sources && a.sources.length){ h+='<div>'+a.sources.map(function(u){
-      return '<a href="'+escA(u)+'" rel="noopener">source ↗</a>'; }).join(" · ")+'</div>'; }
+      var s = safeUrl(u);
+      return s ? '<a href="'+escA(s)+'" rel="noopener">source ↗</a>' : esc(u); }).join(" · ")+'</div>'; }
     return h;
   }
   function renderEndpoints(list){

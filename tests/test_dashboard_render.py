@@ -195,12 +195,61 @@ def test_source_href_uses_attribute_safe_escaping():
     # Regression guard for the Task 1 attribute-XSS fix: actionDetail() builds an <a href="...">
     # from scan-controlled source URLs. That interpolation MUST go through escA (which escapes
     # quotes), not esc (text-only escaping) — otherwise a malicious source_url containing a
-    # `"` can break out of the href attribute. Reverting escA(u) -> esc(u) must fail this test.
+    # `"` can break out of the href attribute. Reverting escA(s) -> esc(s) must fail this test.
     html = render_dashboard(_inv(), _audit([_cve()]), "2026-07-15")
     js = html.split("<script>")[-1]
     assert "escA" in js
-    assert '<a href="\'+escA(u)' in js
+    assert '<a href="\'+escA(s)' in js
+    assert '<a href="\'+esc(s)' not in js
     assert '<a href="\'+esc(u)' not in js
+
+
+def test_source_links_are_scheme_restricted_to_http():
+    # Regression guard for the javascript:-URL residual-XSS fix: escA escapes HTML
+    # metacharacters but does NOT validate the URL scheme, so a compromised/malicious
+    # upstream advisory feed (OSV / endoflife / vendor-sunset registry) could supply a
+    # source_url of `javascript:...` that renders as a clickable, code-executing link.
+    # A safeUrl() scheme allow-list must gate every href built from a.sources.
+    html = render_dashboard(_inv(), _audit([_cve()]), "2026-07-15")
+    js = html.split("<script>")[-1]
+    assert "safeUrl" in js
+    assert "https?:" in js or "http" in js            # an http(s) allow-list is present
+    # and the sources renderer routes the URL through the guard before ever building an href
+    assert "safeUrl(u)" in js
+    # a non-http(s) URL must NOT be handed to escA and turned into a clickable href at all —
+    # it must fall back to plain escaped text instead (the ternary's else-branch is esc(u))
+    assert '<a href="\'+escA(s)' in js
+    assert ": esc(u)" in js
+
+
+@pytest.mark.skipif(not shutil.which("node"), reason="node not installed (optional JS smoke)")
+def test_node_smoke_safe_url_rejects_javascript_scheme(tmp_path):
+    # Actually execute the real safeUrl() implementation extracted from the emitted JS (not
+    # a reimplementation) and prove it rejects a javascript: source_url while accepting
+    # http(s) ones — the guard the sources renderer routes every href through.
+    html = render_dashboard(_inv(), _audit([_cve()]), "2026-07-15")
+    js = html.split("<script>")[-1].rsplit("</script>", 1)[0]
+    m = re.search(r"function safeUrl\(u\)\{[^}]*\}", js)
+    assert m, "safeUrl() not found in emitted JS"
+    harness = tmp_path / "run_safeurl.js"
+    harness.write_text(textwrap.dedent(f"""
+        {m.group(0)}
+        console.log(JSON.stringify({{
+            javascript: safeUrl("javascript:alert(1)"),
+            data: safeUrl("data:text/html,<script>alert(1)</script>"),
+            bare: safeUrl("evil.example/x"),
+            https: safeUrl("https://osv.dev/x"),
+            http: safeUrl("http://endoflife.date/php")
+        }}));
+    """))
+    out = subprocess.run(["node", str(harness)], capture_output=True, text=True, timeout=20)
+    assert out.returncode == 0, out.stderr
+    result = json.loads(out.stdout.strip())
+    assert result["javascript"] is None
+    assert result["data"] is None
+    assert result["bare"] is None
+    assert result["https"] == "https://osv.dev/x"
+    assert result["http"] == "http://endoflife.date/php"
 
 
 @pytest.mark.skipif(not shutil.which("node"), reason="node not installed (optional JS smoke)")
