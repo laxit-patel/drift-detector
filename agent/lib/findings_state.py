@@ -12,6 +12,8 @@ import hashlib
 import json
 import os
 
+from agent.lib.actions import build_actions
+
 STATE_NAME = "findings-state.json"
 BASELINE_NAME = "audit-baseline.json"
 
@@ -102,4 +104,5 @@ def apply_lifecycle(audit: dict, state_dir: str, now: str) -> dict:
         "reposAffected": len({f["repo"] for f in active}),
         "new": len(new), "resolved": len(resolved), "muted": len(muted),
     }
+    audit["actions"] = build_actions(active)      # ranked jobs; `findings` stays untouched for SARIF/BOM
     return audit
