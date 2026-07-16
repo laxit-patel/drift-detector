@@ -36,9 +36,16 @@ def _sunset_findings(repo: dict, sun_index: dict, now: str) -> list:
         if not vendor_eps:
             continue
         for entry in entries:
+            edomain = entry.get("domain")            # optional: scope to a specific dead host
             cver = entry.get("version")
             files, confirmed = [], False
             for e in vendor_eps:
+                if edomain:                          # domain-scoped: the host IS the API
+                    if e.get("domain") != edomain:
+                        continue                     # a different host of the same vendor -> skip
+                    confirmed = True                 # host match confirms it's the retired API
+                    files += e.get("files", [])
+                    continue
                 ev = e.get("version")
                 if cver == "*" or (ev and ev != "?" and str(ev) == str(cver)):
                     confirmed = True
@@ -49,14 +56,19 @@ def _sunset_findings(repo: dict, sun_index: dict, now: str) -> list:
                 continue
             files = list(dict.fromkeys(files))[:6]
             status = vendor_sunsets.status_for(entry.get("retires"), now, confirmed=confirmed)
-            vlabel = "(all versions)" if cver == "*" else (str(cver) if confirmed else f"{cver}?")
+            if edomain:
+                vlabel = edomain
+            elif cver == "*":
+                vlabel = "(all versions)"
+            else:
+                vlabel = str(cver) if confirmed else f"{cver}?"
             when = f"retires {entry['retires']}" if entry.get("retires") else "deprecated"
             verify = "" if confirmed else " — version undetermined, verify"
             rec = f"migrate to {entry['replacement']}" if entry.get("replacement") else "plan migration"
             if entry.get("retires"):
                 rec += f" before {entry['retires']}"
             out.append({
-                "repo": path, "kind": "sunset", "ref": vendor, "version": cver,
+                "repo": path, "kind": "sunset", "ref": vendor, "version": cver, "domain": edomain,
                 "status": status, "severity": "SUNSET",
                 "detail": f"{vendor} {vlabel} {when}{verify} · used at " + ", ".join(files),
                 "date": entry.get("retires"), "source_url": entry.get("source", ""), "tier": 1,

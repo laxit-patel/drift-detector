@@ -6,6 +6,10 @@
 #   • `vendor` must match the name in agent/vendors.yaml (e.g. "Amazon SP-API", "Shopify").
 #   • `version`: the API version string as it appears in your code/URLs (e.g. v0, v3, 2023-01),
 #     or "*" for a whole-API retirement (any usage of that vendor is flagged).
+#   • `domain`: OPTIONAL — scope the entry to a specific host (e.g. svcs.ebay.com). Use this when a
+#     vendor shares one version string across a DEAD legacy API and a LIVE one (eBay's "v1" is used
+#     by both the retired Finding API on svcs.ebay.com AND the live OAuth/REST on api.ebay.com).
+#     A domain-scoped entry flags ONLY that host, and the host match is itself the confirmation.
 #   • `retires`: YYYY-MM-DD. Omit if the API is already deprecated with no fixed date
 #     (it will be flagged as action-required without a date).
 #   • `replacement` and `note` are optional but make the finding actionable.
@@ -27,3 +31,19 @@
   replacement: Amazon SP-API
   source: https://developer-docs.amazon.com/sp-api/docs/migrating-from-amazon-mws
   note: Amazon Marketplace Web Service (MWS) is deprecated; all usage should migrate to SP-API. Confirm the current cut-off date for your marketplace.
+
+# eBay legacy "traditional" APIs — deprecated 2024-01-04, DECOMMISSIONED 2025-02-05 (already dead).
+# Domain-scoped so the live OAuth/REST host (api.ebay.com) and modern Sell/Buy APIs are NOT flagged.
+# Source: eBay Developers Program API Deprecation Status + Q3 2024 newsletter.
+- vendor: eBay
+  domain: svcs.ebay.com
+  retires: "2025-02-05"
+  replacement: Browse API
+  source: https://developer.ebay.com/develop/get-started/api-deprecation-status
+  note: eBay Finding API (svcs.ebay.com) decommissioned 2025-02-05; migrate to the RESTful Browse API.
+- vendor: eBay
+  domain: open.api.ebay.com
+  retires: "2025-02-05"
+  replacement: Browse API
+  source: https://developer.ebay.com/develop/get-started/api-deprecation-status
+  note: eBay Shopping API (open.api.ebay.com) decommissioned 2025-02-05; migrate to the RESTful Browse API.

@@ -24,6 +24,8 @@ def fingerprint(f: dict) -> str:
         ident = f.get("id") or f.get("cve") or ""          # version-independent (a fix resolves it)
     elif kind == "sunset":
         ident = f"{f.get('ref')}|{f.get('version')}"       # a specific API version's retirement
+        if f.get("domain"):                                # domain-scoped: keep hosts distinct
+            ident += f"|{f.get('domain')}"
     else:                                                   # eol: the product line
         ident = f.get("ref", "")
     raw = f"{f.get('repo')}|{kind}|{f.get('ref')}|{ident}"
