@@ -7,23 +7,30 @@ from __future__ import annotations
 
 from collections import Counter
 
+from agent.lib.actions import build_actions
 from agent.lib.http_util import default_http
 
 
 def build_chat_card(audit: dict, now: str, *, folder: str | None = None) -> dict:
     c = audit.get("counts", {})
     delta = audit.get("delta")
-    findings = [f for f in audit.get("findings", []) if not f.get("suppressed")]
-    dep = Counter(f["repo"] for f in findings if f.get("status") == "DEPRECATED")
+    actions = audit.get("actions")
+    if actions is None:
+        actions = build_actions([f for f in audit.get("findings", []) if not f.get("suppressed")])
+    urgent = [a for a in actions if a["status"] == "DEPRECATED"]
+
+    dep = Counter(a["repo"] for a in urgent)
     worst = "<br>".join(f"• <b>{repo}</b> — {n}" for repo, n in dep.most_common(5)) or "—"
-    fixes = [f for f in findings if f.get("status") == "DEPRECATED" and f.get("recommendation")]
-    top = "<br>".join(f"• {f['ref']} {f['version']} → {f['recommendation']}" for f in fixes[:5]) or "—"
+    top = "<br>".join(
+        f"• {a['ref']} {a['current_version']} → {a['fix_version'] or a['recommendation']}"
+        f" ({a['finding_count']})" for a in urgent[:5]) or "—"
 
     sections = []
     if delta is not None:
-        newf, res = delta.get("new", []), delta.get("resolved", [])
-        change = (f"🆕 <b>{len(newf)} new</b> · ✅ {len(res)} resolved · ⏳ {len(delta.get('persisting', []))} still open")
-        section_new = "<br>".join(f"• {f['ref']} {f['version']} in {f['repo']}" for f in newf[:5]) or "—"
+        new_actions = build_actions(delta.get("new", []))
+        change = (f"🆕 <b>{len(new_actions)} new</b> · ✅ {len(delta.get('resolved', []))} resolved"
+                  f" · ⏳ {len(delta.get('persisting', []))} still open")
+        section_new = "<br>".join(f"• {a['ref']} in {a['repo']}" for a in new_actions[:5]) or "—"
         sections.append({"header": "Since last scan", "widgets": [
             {"textParagraph": {"text": change}},
             {"textParagraph": {"text": "<b>New:</b><br>" + section_new}}]})
@@ -39,8 +46,9 @@ def build_chat_card(audit: dict, now: str, *, folder: str | None = None) -> dict
         "card": {
             "header": {
                 "title": f"Drift Audit — {now}",
-                "subtitle": f"🔴 {c.get('DEPRECATED', 0)} action-required · "
-                            f"🟠 {c.get('REVIEW', 0)} review · {c.get('reposAffected', 0)} repos",
+                "subtitle": f"🔴 {len(urgent)} fixes needed · "
+                            f"🟠 {len(actions) - len(urgent)} review · "
+                            f"{c.get('reposAffected', 0)} repos",
             },
             "sections": sections,
         },

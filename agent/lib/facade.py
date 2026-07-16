@@ -6,16 +6,10 @@ from __future__ import annotations
 
 import json
 import os
-import re
 
 from agent.lib import osv, eol
 from agent.lib.http_util import default_http
-
-_SEV_RANK = {"CRITICAL": 4, "HIGH": 3, "MODERATE": 2, "MEDIUM": 2, "LOW": 1, "UNKNOWN": 0, "": 0}
-
-
-def _semver_key(s: str):
-    return [int(p) for p in re.findall(r"\d+", str(s))] or [0]
+from agent.lib.ranking import severity_rank, semver_key, is_version
 
 
 def _read_json(path):
@@ -78,8 +72,9 @@ def check_dependency(ecosystem: str, name: str, version: str, *, http=None) -> d
         vulns = osv.query_package(ecosystem, name, version, http=http or default_http)
     except Exception as exc:
         return {**base, "checked": False, "error": f"OSV unavailable: {exc}"}
-    worst = max((v.get("severity", "") for v in vulns), key=lambda s: _SEV_RANK.get(str(s).upper(), 0), default=None)
-    fixes = sorted({v["fixed"] for v in vulns if v.get("fixed")}, key=_semver_key)   # numeric, not string sort
+    worst = max((v.get("severity", "") for v in vulns), key=severity_rank, default=None)
+    fixes = sorted({v["fixed"] for v in vulns if v.get("fixed") and is_version(v["fixed"])},
+                   key=semver_key)   # numeric, not string sort
     return {
         **base, "checked": True,
         "vulnerable": bool(vulns), "count": len(vulns), "worst_severity": worst,
