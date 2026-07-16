@@ -36,9 +36,14 @@ def load_corpus(path: str) -> list:
         if not _SHA_RE.match(e["sha"]):
             raise ValueError(f"{where}: sha must be a 40-hex commit, got {e['sha']!r}")
         expect = e.get("expect") or {}
+        if not isinstance(expect, dict):
+            raise ValueError(f"{where}: expect must be a mapping, got {expect!r}")
         if not expect.get("vendor"):
             raise ValueError(f"{where}: missing required expect.vendor")
-        bad = [g for g in (e.get("known_gaps") or []) if g not in TAXONOMY]
+        gaps = e.get("known_gaps") or []
+        if not isinstance(gaps, list):
+            raise ValueError(f"{where}: known_gaps must be a list, got {gaps!r}")
+        bad = [g for g in gaps if g not in TAXONOMY]
         if bad:
             raise ValueError(f"{where}: known_gaps not in taxonomy: {bad}")
         out.append(e)

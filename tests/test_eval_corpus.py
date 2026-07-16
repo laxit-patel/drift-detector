@@ -62,7 +62,28 @@ def test_rejects_known_gap_outside_taxonomy(tmp_path):
         corpus.load_corpus(_write(tmp_path, bad))
 
 
+def test_rejects_non_mapping_expect(tmp_path):
+    bad = _VALID.replace(
+        "expect: { vendor: eBay, sdk_keywords: [ebay], sunset_host: svcs.ebay.com }",
+        "expect: eBay")
+    with pytest.raises(ValueError, match="expect"):
+        corpus.load_corpus(_write(tmp_path, bad))
+
+
+def test_rejects_non_list_known_gaps(tmp_path):
+    bad = _VALID.replace("known_gaps: [sdk-only-no-callsite]",
+                         "known_gaps: sdk-only-no-callsite")
+    # note: matches "must be a list" specifically (not just "known_gaps"),
+    # because the unfixed code's char-by-char iteration also raises a
+    # ValueError whose message happens to contain the word "known_gaps" —
+    # a loose match would pass against both the buggy and fixed code.
+    with pytest.raises(ValueError, match="must be a list"):
+        corpus.load_corpus(_write(tmp_path, bad))
+
+
 def test_taxonomy_is_the_documented_closed_set():
-    assert "sdk-only-no-callsite" in corpus.TAXONOMY
-    assert "uncatalogued-vendor" in corpus.TAXONOMY
-    assert len(corpus.TAXONOMY) == 9
+    assert corpus.TAXONOMY == frozenset({
+        "url-split-version", "sdk-only-no-callsite", "uncatalogued-vendor",
+        "wrong-host-attribution", "config-driven-url", "env-var-host",
+        "private-source", "scan-error", "label-wrong",
+    })
