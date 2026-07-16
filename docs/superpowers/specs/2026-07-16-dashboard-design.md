@@ -69,6 +69,10 @@ The two halves come from two sources already on disk per run:
 
 **Tile counts are derived, not re-counted from findings.** Critical = actions where `worst == "CRITICAL"`; Fixes = actions where `status == "DEPRECATED"`; EOL = actions where `kind == "eol"`; Sunsets = actions where `kind == "sunset"`; APIs used = distinct classified vendors across endpoints; Unknown hosts = endpoints where `classified` is false (or `vendor == "Unknown"`). All computed in Python and embedded, so the JS never disagrees with the numbers.
 
+**Tiles count ACTIONS, not findings — this is load-bearing.** On the real run, the 10 critical *advisories* roll up to **3** critical *actions* (torch + mongoose in two repos). The Critical tile therefore reads 3, because clicking it filters the panel to exactly those 3 action rows. A tile that said 10 while its drill-down showed 3 rows would resurrect the exact findings-vs-actions confusion the action model was built to remove. Every tile count must equal the number of rows its filter produces. Tiles are overlapping lenses, not a partition — a critical DEPRECATED eol action is counted by Critical, Fixes, and EOL alike; that is expected.
+
+`render_dashboard` must tolerate an `audit` that lacks `actions` by falling back to `build_actions([f for f in audit["findings"] if not f.get("suppressed")])` — identical to the fallback already in `audit_render.render_audit_md`. This is not hypothetical: audits written before the action model shipped (including the real `~/drift-report-2026-07-15/audit.json`) carry only `findings`.
+
 ## Structure of the generated HTML
 
 ```
@@ -115,6 +119,6 @@ Pure Python + string assertions on the generated HTML; no browser, no network.
 
 ## Success criteria
 
-Running the pipeline over the real `~/drift-report-2026-07-15` data produces a `dashboard.html` that opens from `file://` with: the exposure header showing 50 fixes / 35 repos / the week delta; the two tile-groups with the real counts (10 critical; ~11 APIs used; 68 unknown hosts; **0 sunsets** — the catalog has no matching vendor entry yet, so the tile honestly reads 0 and lights up once an entry is added); a fix queue whose first row is the `torch` CRITICAL and whose rows expand to the copy-paste command + CVEs; and clicking the APIs/Unknown tiles switches the panel to the endpoint/call-site view. No network access, no external file, works with the browser offline.
+Running the pipeline over the real `~/drift-report-2026-07-15` data (its `audit.json` predates the action model, so the renderer's `build_actions` fallback applies) produces a `dashboard.html` that opens from `file://` with: 90 actions / 50 urgent in the blob; the exposure header showing 50 fixes / 35 repos / the week delta; tile counts of **3 critical · 50 fixes · 34 EOL · 0 sunsets · 10 APIs used · 68 unknown hosts**; a fix queue whose first row is the `torch` action (`1.1.0 → 2.10.0`) expanding to the copy-paste command + CVEs; and clicking the APIs/Unknown tiles switches the panel to the endpoint/call-site view. No network access, no external file, works with the browser offline.
 
 Note on the Sunsets tile reading 0: this is correct behaviour, not a gap. The eBay endpoints (13 groups) are detected and appear under the integration view; they become *sunset actions* only when a dated retirement entry exists in `vendor_sunsets.yaml`. Wiring that entry is a separate, already-teed-up follow-up — the dashboard must render 0 sunsets truthfully until then, and the test suite must cover both the 0-sunset and the has-sunset case (the latter with a fixture, since live data has none).
