@@ -138,6 +138,7 @@ def audit_inventory(doc: dict, now: str, *, http=None,
             if res and res["status"] != "OK":
                 findings.append({
                     "repo": path, "kind": "eol", "ref": product, "version": spec,
+                    "fixed": res.get("recommended"),
                     "status": res["status"], "severity": "EOL",
                     "detail": f"{product} {res['cycle']} end-of-life {res.get('eol_date') or ''}".strip(),
                     "date": res.get("eol_date"), "source_url": res["source_url"], "tier": 1,

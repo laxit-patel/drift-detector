@@ -74,3 +74,31 @@ def test_cve_deduped_within_repo():
     ]}]}
     out = audit_inventory(doc, "2026-07-14", http=lambda *a, **k: {}, osv_query=_fake_osv, eol_check=_fake_eol)
     assert len([f for f in out["findings"] if f["kind"] == "cve"]) == 1   # not 2
+
+
+def test_eol_finding_carries_structured_fixed_version():
+    # the renderer must never parse "upgrade to 8.5.8" back out of prose
+    def eol_check(product, floor_, now, **kw):
+        return {"status": "DEPRECATED", "cycle": "7.4", "eol_date": "2022-11-28",
+                "recommended": "8.5.8", "source_url": "https://endoflife.date/php"}
+
+    doc = {"repos": [{"path": "r", "sdks": [], "runtimes": {"php": {"range": "^7.4"}}}]}
+    out = audit_inventory(doc, "2026-07-14", http=lambda *a, **k: {},
+                          osv_query=lambda *a, **k: [], eol_check=eol_check)
+    eol_findings = [f for f in out["findings"] if f["kind"] == "eol"]
+    assert len(eol_findings) == 1
+    assert eol_findings[0]["fixed"] == "8.5.8"                       # structured
+    assert eol_findings[0]["recommendation"] == "upgrade to 8.5.8"   # prose still there
+
+
+def test_eol_finding_fixed_is_none_when_no_recommendation():
+    def eol_check(product, floor_, now, **kw):
+        return {"status": "DEPRECATED", "cycle": "7.4", "eol_date": "2022-11-28",
+                "recommended": None, "source_url": "https://endoflife.date/php"}
+
+    doc = {"repos": [{"path": "r", "sdks": [], "runtimes": {"php": {"range": "^7.4"}}}]}
+    out = audit_inventory(doc, "2026-07-14", http=lambda *a, **k: {},
+                          osv_query=lambda *a, **k: [], eol_check=eol_check)
+    eol_findings = [f for f in out["findings"] if f["kind"] == "eol"]
+    assert eol_findings[0]["fixed"] is None
+    assert eol_findings[0]["recommendation"] == "upgrade to a supported release"
