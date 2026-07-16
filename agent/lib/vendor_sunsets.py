@@ -19,11 +19,16 @@ def load_sunsets(path: str | None = None) -> list:
         raw = yaml.safe_load(fh) or []
     out = []
     for s in raw:
-        if not (isinstance(s, dict) and s.get("vendor") and s.get("version") is not None):
-            continue                      # need a vendor and a version (or "*"); skip footguns
+        # need a vendor plus either a version (or "*") OR a domain scope; skip footguns
+        if not (isinstance(s, dict) and s.get("vendor")
+                and (s.get("version") is not None or s.get("domain"))):
+            continue
         s = dict(s)
         # YAML parses an unquoted date/number as a date/int — coerce so it stays JSON-serializable
-        s["version"] = str(s["version"])
+        if s.get("version") is not None:
+            s["version"] = str(s["version"])
+        if s.get("domain") is not None:
+            s["domain"] = str(s["domain"])
         if s.get("retires") is not None:
             s["retires"] = str(s["retires"])
         out.append(s)

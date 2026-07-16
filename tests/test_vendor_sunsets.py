@@ -71,6 +71,73 @@ def test_non_matching_version_not_flagged():
     assert not any(x["kind"] == "sunset" for x in out["findings"])  # they're on v3, not v0
 
 
+def _doc_hosts(vendor, endpoints):
+    # endpoints: list of (domain, version, [files])
+    return {"repos": [{"path": "svc", "endpoints": [
+        {"vendor": vendor, "domain": d, "version": v, "files": f} for d, v, f in endpoints]}]}
+
+
+def test_domain_scoped_entry_flags_only_the_matching_host():
+    # eBay's dead Finding API (svcs.ebay.com) shares version "v1" with the LIVE OAuth/REST host
+    # (api.ebay.com). A domain-scoped entry must flag only the dead host.
+    sun = [{"vendor": "eBay", "domain": "svcs.ebay.com", "retires": "2025-02-05",
+            "replacement": "Browse API", "source": "https://developer.ebay.com/x"}]
+    doc = _doc_hosts("eBay", [
+        ("svcs.ebay.com", "v1", ["src/Ebay/find.php:37"]),        # dead Finding API
+        ("api.ebay.com", "v1", ["src/Ebay/oauth.php:6"])])        # live OAuth/REST — same version!
+    out = audit_inventory(doc, "2026-07-15", sunsets=sun, **_NOOP)
+    sunsets = [x for x in out["findings"] if x["kind"] == "sunset"]
+    assert len(sunsets) == 1
+    f = sunsets[0]
+    assert f["status"] == "DEPRECATED"                            # past 2025-02-05, host-confirmed
+    assert f["files"] == ["src/Ebay/find.php:37"]                 # ONLY the dead host's call-site
+    assert "src/Ebay/oauth.php:6" not in f["files"]               # live host NOT flagged
+    assert "svcs.ebay.com" in f["detail"]
+    assert "migrate to Browse API before 2025-02-05" in f["recommendation"]
+
+
+def test_domain_scoped_entry_ignores_repo_without_that_host():
+    sun = [{"vendor": "eBay", "domain": "svcs.ebay.com", "retires": "2025-02-05", "source": "u"}]
+    doc = _doc_hosts("eBay", [("api.ebay.com", "v1", ["a.php:1"])])   # only the live host
+    out = audit_inventory(doc, "2026-07-15", sunsets=sun, **_NOOP)
+    assert not any(x["kind"] == "sunset" for x in out["findings"])    # nothing dead here
+
+
+def test_two_domain_entries_same_vendor_are_distinct_findings():
+    from agent.lib.findings_state import fingerprint
+    sun = [{"vendor": "eBay", "domain": "svcs.ebay.com", "retires": "2025-02-05", "source": "u"},
+           {"vendor": "eBay", "domain": "open.api.ebay.com", "retires": "2025-02-05", "source": "u"}]
+    doc = _doc_hosts("eBay", [
+        ("svcs.ebay.com", "v1", ["find.php:1"]),
+        ("open.api.ebay.com", None, ["shop.php:2"])])
+    out = audit_inventory(doc, "2026-07-15", sunsets=sun, **_NOOP)
+    sunsets = [x for x in out["findings"] if x["kind"] == "sunset"]
+    assert len(sunsets) == 2                                       # both hosts, not collapsed
+    fps = {fingerprint(f) for f in sunsets}
+    assert len(fps) == 2                                          # distinct fingerprints (no collision)
+
+
+def test_loader_accepts_domain_only_entry_without_version(tmp_path):
+    p = tmp_path / "s.yaml"
+    p.write_text("- { vendor: eBay, domain: svcs.ebay.com, retires: 2025-02-05, source: u }\n")
+    loaded = vs.load_sunsets(str(p))
+    assert len(loaded) == 1
+    assert loaded[0]["domain"] == "svcs.ebay.com"
+    assert loaded[0]["retires"] == "2025-02-05"                   # coerced to str
+
+
+def test_real_catalog_has_accurate_ebay_finding_and_shopping_sunsets():
+    cat = vs.load_sunsets()
+    ebay = [s for s in cat if s["vendor"] == "eBay"]
+    domains = {s.get("domain") for s in ebay}
+    assert "svcs.ebay.com" in domains          # Finding API
+    assert "open.api.ebay.com" in domains      # Shopping API
+    for s in ebay:
+        assert s["retires"] == "2025-02-05"    # the real decommission date
+        assert s.get("source")                 # every entry cites a source
+        assert "api.ebay.com" != s.get("domain")   # never target the LIVE host
+
+
 def test_sunset_findings_get_precise_sarif_locations():
     sun = [{"vendor": "Amazon SP-API", "version": "v0", "retires": "2020-01-01", "source": "u"}]
     doc = _doc("Amazon SP-API", "v0", ["orders/client.js:17"])
