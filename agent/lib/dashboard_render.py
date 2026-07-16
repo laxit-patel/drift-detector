@@ -175,26 +175,132 @@ margin-left:6px;padding:1px 6px}
 @media print{:root{--bg:#fff;--panel:#fff;--text:#000}.tile,#theme-toggle{border-color:#999}}
 """
 
-# Minimal bootstrap: render every action as a row on load. Task 2 replaces this with the
-# full interactive behaviour (filters, search, accordion, theme). Kept tiny + dependency-free
-# so Task 1's output is a valid, data-complete, deterministic document on its own.
+# Full interactive behaviour: clickable tile filters, search, inline-accordion row
+# drill-down, and a theme toggle. All data is already embedded in the #drift-data JSON
+# blob; this reads it and renders client-side. No server, no CDN.
 _CLIENT_JS = r"""
 (function(){
   var DATA = JSON.parse(document.getElementById("drift-data").textContent);
   var body = document.querySelector("#panel tbody");
-  function esc(s){var d=document.createElement("div");d.textContent=(s==null?"":String(s));return d.innerHTML;}
+  var empty = document.getElementById("empty");
+  var search = document.getElementById("search");
+  var state = { filter: null, mode: "actions", q: "" };
+
+  function esc(s){ var d=document.createElement("div"); d.textContent=(s==null?"":String(s)); return d.innerHTML; }
   // Attribute-context escaper: esc() is only safe between tags (text nodes). Any value
-  // interpolated inside an HTML attribute (e.g. class="...") must also have quotes escaped,
-  // or a scan string like `HIGH" onmouseover="alert(1)` breaks out of the attribute.
+  // interpolated inside an HTML attribute (e.g. class="...", href="...") must also have
+  // quotes escaped, or a scan string like `HIGH" onmouseover="alert(1)` breaks out of the
+  // attribute. Use escA for every attribute-context interpolation built from scan data.
   function escA(s){ return esc(s).replace(/"/g,"&quot;").replace(/'/g,"&#39;"); }
-  function actionRow(a){
-    var tr=document.createElement("tr");tr.className="row";
-    var tgt=a.fix_version?(esc(a.current_version)+" → "+esc(a.fix_version)):esc(a.recommendation||"review");
-    tr.innerHTML='<td>'+esc(a.repo)+'</td><td>'+esc(a.ref)+'</td><td>'+tgt+
-      '</td><td>'+esc(a.finding_count)+'</td><td class="sev-'+escA(a.worst)+'">'+esc(a.worst)+'</td>';
-    return tr;
+
+  // ---- which rows does the current filter/mode select? ----
+  function actionsFor(){
+    var f = state.filter;
+    return DATA.actions.filter(function(a){
+      if(f==="critical") return a.worst==="CRITICAL";
+      if(f==="fixes")    return a.status==="DEPRECATED";
+      if(f==="eol")      return a.kind==="eol";
+      if(f==="sunsets")  return a.kind==="sunset";
+      return true;
+    });
   }
-  DATA.actions.forEach(function(a){ body.appendChild(actionRow(a)); });
-  document.getElementById("empty").hidden = DATA.actions.length>0;
+  function endpointsFor(){
+    var f = state.filter;
+    return DATA.endpoints.filter(function(e){
+      if(f==="unknown") return !e.classified;
+      return true;   // "apis" -> all endpoints (classified ones carry the vendor)
+    });
+  }
+  function matchesQ(text){ return !state.q || text.toLowerCase().indexOf(state.q)>-1; }
+
+  // ---- row builders (textContent/DOM only — never innerHTML with scan data) ----
+  function detailCell(html){ var tr=document.createElement("tr"); var td=document.createElement("td");
+    td.colSpan=5; td.className="detail"; td.innerHTML=html; tr.appendChild(td); return tr; }
+
+  function renderActions(list){
+    list.forEach(function(a){
+      if(!matchesQ((a.repo||"")+" "+(a.ref||""))) return;
+      var tr=document.createElement("tr"); tr.className="row";
+      var tgt = a.fix_version ? esc(a.current_version)+" → "+esc(a.fix_version)
+                              : esc(a.recommendation||"review");
+      tr.innerHTML='<td>'+esc(a.repo)+'</td><td>'+esc(a.ref)+'</td><td>'+tgt+
+        '</td><td>'+esc(a.finding_count)+'</td><td class="sev-'+escA(a.worst)+'">'+esc(a.worst)+'</td>';
+      var open=false, det=null;
+      tr.addEventListener("click", function(){
+        open=!open;
+        if(open){ det=detailCell(actionDetail(a)); tr.after(det);
+                  var b=det.querySelector(".copy"); if(b) b.addEventListener("click", function(ev){
+                    ev.stopPropagation(); navigator.clipboard && navigator.clipboard.writeText(a.command); });
+        } else if(det){ det.remove(); det=null; }
+      });
+      body.appendChild(tr);
+    });
+  }
+  function actionDetail(a){
+    var h="";
+    if(a.command){ h+='<div><span class="cmd">'+esc(a.command)+'</span>'
+      +'<button class="copy">copy</button></div>'; }
+    else if(a.recommendation){ h+='<div>'+esc(a.recommendation)+'</div>'; }
+    h+='<div>Clears '+esc(a.finding_count)+' advisor'+(a.finding_count==1?'y':'ies')
+      +(a.critical_count?(' ('+esc(a.critical_count)+' critical)'):'')+'</div>';
+    if(a.files && a.files.length){ h+='<div>Used at: '+a.files.map(esc).join(", ")+'</div>'; }
+    if(a.cves && a.cves.length){ h+='<ul>'+a.cves.map(function(c){
+      return '<li>'+esc(c.id)+' — '+esc(c.title)+'</li>'; }).join("")+'</ul>'; }
+    if(a.sources && a.sources.length){ h+='<div>'+a.sources.map(function(u){
+      return '<a href="'+escA(u)+'" rel="noopener">source ↗</a>'; }).join(" · ")+'</div>'; }
+    return h;
+  }
+  function renderEndpoints(list){
+    list.forEach(function(e){
+      if(!matchesQ((e.repo||"")+" "+(e.domain||"")+" "+(e.vendor||""))) return;
+      var tr=document.createElement("tr"); tr.className="row";
+      tr.innerHTML='<td>'+esc(e.repo)+'</td><td>'+esc(e.domain)+'</td><td>'+esc(e.vendor)+
+        '</td><td>'+esc(e.version||"?")+'</td><td>'+esc(e.file_count)+'</td>';
+      var open=false, det=null;
+      tr.addEventListener("click", function(){
+        open=!open;
+        if(open){ det=detailCell((e.files||[]).map(esc).join("<br>")||"—"); tr.after(det); }
+        else if(det){ det.remove(); det=null; }
+      });
+      body.appendChild(tr);
+    });
+  }
+
+  function render(){
+    body.innerHTML="";
+    if(state.mode==="endpoints"){ renderEndpoints(endpointsFor()); }
+    else { renderActions(actionsFor()); }
+    empty.hidden = body.children.length>0;
+  }
+
+  // ---- tiles ----
+  Array.prototype.forEach.call(document.querySelectorAll(".tile"), function(t){
+    t.setAttribute("aria-pressed","false");
+    t.addEventListener("click", function(){
+      var f=t.dataset.filter;
+      var active = state.filter===f;
+      Array.prototype.forEach.call(document.querySelectorAll(".tile"),
+        function(x){ x.setAttribute("aria-pressed","false"); });
+      if(active){ state.filter=null; state.mode="actions"; }
+      else { state.filter=f; state.mode=(f==="apis"||f==="unknown"||f==="sunsets")?
+               (f==="sunsets"?"actions":"endpoints"):"actions"; t.setAttribute("aria-pressed","true"); }
+      render();
+    });
+  });
+
+  // ---- search ----
+  search.addEventListener("input", function(){ state.q=search.value.toLowerCase(); render(); });
+
+  // ---- theme ----
+  var root=document.documentElement;
+  var saved=null; try{ saved=localStorage.getItem("drift-theme"); }catch(e){}
+  if(saved){ root.setAttribute("data-theme", saved); }
+  document.getElementById("theme-toggle").addEventListener("click", function(){
+    var next = root.getAttribute("data-theme")==="dark" ? "light" : "dark";
+    root.setAttribute("data-theme", next);
+    try{ localStorage.setItem("drift-theme", next); }catch(e){}
+  });
+
+  render();
 })();
 """

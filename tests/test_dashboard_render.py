@@ -2,6 +2,11 @@
 Pure Python; string/JSON assertions only — no browser, no network."""
 import json
 import re
+import shutil
+import subprocess
+import textwrap
+
+import pytest
 
 from agent.lib.dashboard_render import render_dashboard
 
@@ -155,3 +160,85 @@ def test_no_external_assets():
     assert '<link rel="stylesheet"' not in html.lower()
     assert "@import" not in html.lower()
     assert '<img src="http' not in html.lower()
+
+
+def test_client_js_wires_every_interaction():
+    html = render_dashboard(_inv(), _audit([_cve()]), "2026-07-15")
+    js = html.split('<script>')[-1]
+    # hooks that genuinely live in the JS (data-filter is an HTML attribute, read as dataset.filter)
+    for hook in ("addEventListener", "dataset.filter", "localStorage",
+                 "aria-pressed", "theme-toggle", "search"):
+        assert hook in js, hook
+    # the accordion + copy affordances exist
+    assert "navigator.clipboard" in js or "copy" in js.lower()
+
+
+def test_projection_carries_every_field_the_ui_reads():
+    sunset = {"repo": "ebayapi", "ref": "eBay", "kind": "sunset", "version": "v1",
+              "severity": "SUNSET", "status": "DEPRECATED", "first_seen": "2026-07-15",
+              "detail": "d", "date": "2026-09-30", "recommendation": "migrate before 2026-09-30",
+              "source_url": "https://x", "tier": 1, "files": ["src/Ebay/x.php:111"]}
+    data = _blob(render_dashboard(_inv(), _audit([sunset, _cve()]), "2026-07-15"))
+    a = data["actions"][0]
+    for k in ("repo", "ref", "kind", "current_version", "fix_version", "command",
+              "recommendation", "worst", "status", "finding_count", "cves", "sources", "files"):
+        assert k in a, k
+    # endpoint rows carry what the endpoint view needs
+    eps_inv = _inv([{"domain": "api.ebay.com", "vendor": "eBay", "version": "v1",
+                     "classified": True, "file_count": 1, "files": ["a.php:1"]}])
+    ep = _blob(render_dashboard(eps_inv, _audit([_cve()]), "2026-07-15"))["endpoints"][0]
+    for k in ("repo", "domain", "vendor", "version", "classified", "file_count", "files"):
+        assert k in ep, k
+
+
+def test_source_href_uses_attribute_safe_escaping():
+    # Regression guard for the Task 1 attribute-XSS fix: actionDetail() builds an <a href="...">
+    # from scan-controlled source URLs. That interpolation MUST go through escA (which escapes
+    # quotes), not esc (text-only escaping) — otherwise a malicious source_url containing a
+    # `"` can break out of the href attribute. Reverting escA(u) -> esc(u) must fail this test.
+    html = render_dashboard(_inv(), _audit([_cve()]), "2026-07-15")
+    js = html.split("<script>")[-1]
+    assert "escA" in js
+    assert '<a href="\'+escA(u)' in js
+    assert '<a href="\'+esc(u)' not in js
+
+
+@pytest.mark.skipif(not shutil.which("node"), reason="node not installed (optional JS smoke)")
+def test_node_smoke_executes_client_js_and_renders_rows(tmp_path):
+    # Actually run the embedded JS in a DOM-less shim to prove it parses the blob and
+    # builds the right number of action rows. Skips cleanly when node is absent.
+    html = render_dashboard(_inv(), _audit([_cve(ref="npm/a"), _cve(ref="npm/b")]), "2026-07-15")
+    js = html.split("<script>")[-1].rsplit("</script>", 1)[0]
+    blob = re.search(r'<script id="drift-data"[^>]*>(.*?)</script>', html, re.DOTALL).group(1)
+    harness = tmp_path / "run.js"
+    harness.write_text(textwrap.dedent(f"""
+        // minimal DOM shim: enough for the dashboard JS to render rows and count them.
+        // body.children is a real array (pushed to on appendChild, cleared on innerHTML="")
+        // because render() reads body.children.length to toggle the empty state.
+        let rows = 0;
+        function el(){{ let kids=[]; return {{
+            _cls:"", set className(v){{this._cls=v}}, get className(){{return this._cls}},
+            set innerHTML(v){{ if(v==="") kids=[]; }}, set textContent(v){{this._t=v}},
+            get innerHTML(){{return this._t||""}},
+            get children(){{ return kids; }},
+            appendChild(c){{ kids.push(c); if(this._id==="tbody-marker") rows++; }}, addEventListener(){{}},
+            querySelector(){{ let e=el(); e._id="tbody-marker"; return e; }},
+            querySelectorAll(){{ return []; }}, style:{{}}, dataset:{{}}, hidden:false
+        }} }};
+        const blob = {json.dumps(blob)};
+        global.navigator = {{ clipboard:{{ writeText(){{}} }} }};
+        global.localStorage = {{ getItem(){{return null}}, setItem(){{}} }};
+        global.document = {{
+            getElementById(id){{ if(id==="drift-data") return {{textContent: blob.replace(/\\\\u003c/g,"<")}};
+                                 let e=el(); return e; }},
+            querySelector(){{ let e=el(); e._id="tbody-marker"; return e; }},
+            querySelectorAll(){{ return []; }}, createElement(){{ return el(); }},
+            documentElement:{{ setAttribute(){{}}, getAttribute(){{return "dark"}} }},
+            addEventListener(){{}}
+        }};
+        {js}
+        console.log(rows);
+    """))
+    out = subprocess.run(["node", str(harness)], capture_output=True, text=True, timeout=20)
+    assert out.returncode == 0, out.stderr
+    assert out.stdout.strip() == "2"      # two actions -> two rows rendered by the real JS
