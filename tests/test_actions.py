@@ -147,7 +147,17 @@ def test_output_is_deterministic():
     assert build_actions(findings) == build_actions(findings)
 
 
-def test_apply_lifecycle_attaches_ranked_actions_excluding_muted(tmp_path):
+def test_recommendation_matches_the_fix_version_it_reports():
+    # prose and command must never point at different versions: an action saying
+    # "upgrade to >= 1.5.0" while installing 2.8.0 sends the reader to a vulnerable release.
+    fixes = ["1.5.0", "2.8.0", "1.10.0", "1.7.4"]
+    a = build_actions([_cve(ref="python/torch", version="1.1.0", fixed=f) for f in fixes])[0]
+    assert a["fix_version"] == "2.8.0"
+    assert a["recommendation"] == "upgrade to >= 2.8.0"
+    assert a["command"] == "pip install 'torch>=2.8.0'"
+
+
+def test_apply_lifecycle_attaches_ranked_actions(tmp_path):
     from agent.lib.findings_state import apply_lifecycle
     audit = {"generated": "2026-07-15", "coverage": {},
              "findings": [_cve(repo="a", ref="npm/x", severity="CRITICAL"),
@@ -155,3 +165,19 @@ def test_apply_lifecycle_attaches_ranked_actions_excluding_muted(tmp_path):
     apply_lifecycle(audit, str(tmp_path), "2026-07-15")
     assert [a["ref"] for a in audit["actions"]] == ["npm/x", "npm/y"]   # ranked
     assert len(audit["findings"]) == 2                                   # findings untouched
+
+
+def test_apply_lifecycle_excludes_muted_findings_from_actions(tmp_path):
+    # a finding baselined (accepted-risk) before this run must vanish from `actions` (what the
+    # team acts on) while remaining in `findings` (the untouched record for SARIF/BOM/MCP).
+    from agent.lib.findings_state import add_to_baseline, apply_lifecycle, fingerprint
+
+    muted = _cve(repo="a", ref="npm/muted", severity="CRITICAL")
+    kept = _cve(repo="a", ref="npm/kept", severity="LOW", status="REVIEW")
+    add_to_baseline(str(tmp_path), fingerprint(muted))
+
+    audit = {"generated": "2026-07-15", "coverage": {}, "findings": [muted, kept]}
+    apply_lifecycle(audit, str(tmp_path), "2026-07-15")
+
+    assert [a["ref"] for a in audit["actions"]] == ["npm/kept"]
+    assert {f["ref"] for f in audit["findings"]} == {"npm/muted", "npm/kept"}

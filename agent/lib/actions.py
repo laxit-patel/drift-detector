@@ -64,8 +64,11 @@ def build_actions(findings: list) -> list:
         status = "DEPRECATED" if any(f.get("status") == "DEPRECATED" for f in group) else "REVIEW"
         kind = worst_f.get("kind") if len({f.get("kind") for f in group}) == 1 else "cve"
 
-        fixed = [f["fixed"] for f in group if f.get("fixed")]
-        fix_version = max(fixed, key=semver_key) if fixed else None
+        # recommendation must come from whichever finding actually supplied fix_version, so the
+        # prose and the version can never disagree (fall back to worst_f when nothing has a fix).
+        fixed_findings = [f for f in group if f.get("fixed")]
+        fix_f = max(fixed_findings, key=lambda f: semver_key(f["fixed"])) if fixed_findings else None
+        fix_version = fix_f["fixed"] if fix_f else None
 
         eco, pkg = _split_ref(ref)
         actions.append({
@@ -77,7 +80,7 @@ def build_actions(findings: list) -> list:
             "current_version": worst_f.get("version"),
             "fix_version": fix_version,
             "command": _command(kind, eco, pkg, fix_version),
-            "recommendation": worst_f.get("recommendation"),
+            "recommendation": (fix_f or worst_f).get("recommendation"),
             "worst": worst_f.get("severity"),
             "status": status,
             "finding_count": len(group),
