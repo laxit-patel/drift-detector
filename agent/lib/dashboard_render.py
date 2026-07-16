@@ -183,11 +183,15 @@ _CLIENT_JS = r"""
   var DATA = JSON.parse(document.getElementById("drift-data").textContent);
   var body = document.querySelector("#panel tbody");
   function esc(s){var d=document.createElement("div");d.textContent=(s==null?"":String(s));return d.innerHTML;}
+  // Attribute-context escaper: esc() is only safe between tags (text nodes). Any value
+  // interpolated inside an HTML attribute (e.g. class="...") must also have quotes escaped,
+  // or a scan string like `HIGH" onmouseover="alert(1)` breaks out of the attribute.
+  function escA(s){ return esc(s).replace(/"/g,"&quot;").replace(/'/g,"&#39;"); }
   function actionRow(a){
     var tr=document.createElement("tr");tr.className="row";
     var tgt=a.fix_version?(esc(a.current_version)+" → "+esc(a.fix_version)):esc(a.recommendation||"review");
     tr.innerHTML='<td>'+esc(a.repo)+'</td><td>'+esc(a.ref)+'</td><td>'+tgt+
-      '</td><td>'+esc(a.finding_count)+'</td><td class="sev-'+esc(a.worst)+'">'+esc(a.worst)+'</td>';
+      '</td><td>'+esc(a.finding_count)+'</td><td class="sev-'+escA(a.worst)+'">'+esc(a.worst)+'</td>';
     return tr;
   }
   DATA.actions.forEach(function(a){ body.appendChild(actionRow(a)); });

@@ -131,6 +131,24 @@ def test_xss_scan_strings_are_escaped_on_both_surfaces():
     assert data["actions"][0]["repo"] == evil
 
 
+def test_severity_attribute_uses_attribute_safe_escaping():
+    html = render_dashboard(_inv(), _audit([_cve()]), "2026-07-15")
+    js = html.split("<script>")[-1]
+    assert "escA" in js                                  # an attribute-safe escaper exists
+    assert 'sev-\'+escA(a.worst)' in js                   # and it guards the severity class attribute
+    assert 'class="sev-\'+esc(a.worst)' not in js         # the unsafe text-escaper must not be reinstated there
+
+
+def test_suppressed_findings_are_excluded_from_actions():
+    normal = _cve(ref="npm/keep")
+    muted = _cve(ref="npm/muted")
+    muted["suppressed"] = True
+    data = _blob(render_dashboard(_inv(), _audit([normal, muted]), "2026-07-15"))
+    refs = {a["ref"] for a in data["actions"]}
+    assert "npm/keep" in refs
+    assert "npm/muted" not in refs
+
+
 def test_no_external_assets():
     html = render_dashboard(_inv(), _audit([_cve()]), "2026-07-15")
     assert "<script src" not in html.lower()
