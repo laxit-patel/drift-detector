@@ -9,7 +9,7 @@ import os
 
 from agent.lib import osv, eol
 from agent.lib.http_util import default_http
-from agent.lib.ranking import severity_rank, semver_key
+from agent.lib.ranking import severity_rank, semver_key, is_version
 
 
 def _read_json(path):
@@ -73,7 +73,8 @@ def check_dependency(ecosystem: str, name: str, version: str, *, http=None) -> d
     except Exception as exc:
         return {**base, "checked": False, "error": f"OSV unavailable: {exc}"}
     worst = max((v.get("severity", "") for v in vulns), key=severity_rank, default=None)
-    fixes = sorted({v["fixed"] for v in vulns if v.get("fixed")}, key=semver_key)   # numeric, not string sort
+    fixes = sorted({v["fixed"] for v in vulns if v.get("fixed") and is_version(v["fixed"])},
+                   key=semver_key)   # numeric, not string sort
     return {
         **base, "checked": True,
         "vulnerable": bool(vulns), "count": len(vulns), "worst_severity": worst,

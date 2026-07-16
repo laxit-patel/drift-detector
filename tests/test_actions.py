@@ -24,6 +24,24 @@ def test_fix_version_is_the_semver_max_not_the_string_max():
     assert actions[0]["fix_version"] == "2.8.0"      # not "2.7.0" (last), not "1.9.0" (string max)
 
 
+def test_git_sha_fixed_values_are_ignored_in_fix_version():
+    # OSV returns commit hashes as `fixed` for some advisories; a 40-char hex must never
+    # out-rank a real version and become the recommendation.
+    sha = "767f6aa49fe20a2766b9843d01e3b7f7793df6a3"
+    a = build_actions([_cve(ref="python/torch", fixed="2.10.0"),
+                       _cve(ref="python/torch", fixed=sha),
+                       _cve(ref="python/torch", fixed="2.8.0")])[0]
+    assert a["fix_version"] == "2.10.0"
+    assert a["command"] == "pip install 'torch>=2.10.0'"
+
+
+def test_group_with_only_sha_fixes_has_no_fix_version():
+    sha = "767f6aa49fe20a2766b9843d01e3b7f7793df6a3"
+    a = build_actions([_cve(ref="python/torch", fixed=sha)])[0]
+    assert a["fix_version"] is None
+    assert a["command"] is None
+
+
 def test_same_ref_in_two_repos_is_two_actions():
     actions = build_actions([_cve(repo="a"), _cve(repo="b")])
     assert len(actions) == 2

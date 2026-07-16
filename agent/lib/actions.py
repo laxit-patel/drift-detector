@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from collections import OrderedDict
 
-from agent.lib.ranking import severity_rank, semver_key
+from agent.lib.ranking import severity_rank, semver_key, is_version
 
 _MAX_FILES = 6
 
@@ -66,7 +66,7 @@ def build_actions(findings: list) -> list:
 
         # recommendation must come from whichever finding actually supplied fix_version, so the
         # prose and the version can never disagree (fall back to worst_f when nothing has a fix).
-        fixed_findings = [f for f in group if f.get("fixed")]
+        fixed_findings = [f for f in group if f.get("fixed") and is_version(f["fixed"])]
         fix_f = max(fixed_findings, key=lambda f: semver_key(f["fixed"])) if fixed_findings else None
         fix_version = fix_f["fixed"] if fix_f else None
 

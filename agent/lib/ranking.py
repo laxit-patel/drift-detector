@@ -32,3 +32,17 @@ def semver_key(s):
     """Sortable numeric key for a version string. '1.10.0' > '1.7.4' (a string sort gets this
     backwards, which once recommended a lower, still-vulnerable version)."""
     return [int(p) for p in re.findall(r"\d+", str(s))] or [0]
+
+
+def is_version(s) -> bool:
+    """True if s is a real version string, not a git commit SHA or opaque ref.
+
+    OSV.dev returns a commit hash as `fixed` for some advisories; scraping digits out of a
+    40-char hex SHA yields a huge sort key that beats every real version, so such values must
+    be excluded from fix-version selection.
+    """
+    s = str(s or "").strip()
+    if s[:1] in ("v", "V"):
+        s = s[1:]
+    core = re.split(r"[-+]", s, maxsplit=1)[0]     # drop pre-release/build metadata
+    return bool(core) and all(part.isdigit() for part in core.split("."))
