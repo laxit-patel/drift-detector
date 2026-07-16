@@ -77,3 +77,17 @@ def test_run_pipeline_pull_invokes_git_per_repo(tmp_path, monkeypatch):
                  engine="semgrep", run=_empty_engine, http=lambda *a, **k: {},
                  pull_run=pulled.append)
     assert sorted(Path(p).name for p in pulled) == ["a", "b"]
+
+
+def test_run_pipeline_writes_dashboard_html(tmp_path, monkeypatch):
+    root = tmp_path / "repos"
+    _git_init(root / "web", {"composer.json": '{"require": {"php": "^7.4"}}'})
+    state = tmp_path / "state"
+    import agent.audit as audit_mod
+    monkeypatch.setattr(audit_mod.eol, "check", _fake_eol)
+    run_pipeline(str(root), str(state), "2026-07-15",
+                 engine="semgrep", run=_empty_engine, http=lambda *a, **k: {})
+    dash = state / "dashboard.html"
+    assert dash.exists()
+    assert dash.read_text().startswith("<!doctype html>")
+    assert '<script id="drift-data"' in dash.read_text()
