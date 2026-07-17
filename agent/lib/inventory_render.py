@@ -119,8 +119,10 @@ def _per_repo_section(repos: list, *, max_files: int = 6) -> list:
             shown = ", ".join(f"{s.get('eco')}/{s.get('pkg')} {s.get('ver', '')}".strip() for s in sdks[:12])
             more = "" if len(sdks) <= 12 else f" (+{len(sdks) - 12} more)"
             out.append(f"- **SDKs:** {shown}{more}")
-            out.append(f"- ⚠ **{len(sdks)} SDK package(s)** — SDK-mediated calls (no URL "
-                       f"literal) may not be listed as endpoints.")
+        g = r.get("coverageGrade")
+        if g and g.get("grade") and g["grade"] != "HIGH":
+            out.append(f"- ⚠ **Coverage: {g['grade']}** — {g.get('unattributedPaths', 0)} endpoint-shaped "
+                       f"literal(s) + {g.get('unresolvedSinks', 0)} egress sink(s) the scan couldn't attribute.")
         if not (rts or fws or eps or sdks):
             out.append("- _no third-party usage detected_")
         out.append("")
@@ -182,10 +184,13 @@ def render_inventory_md(doc: dict, diff: dict | None = None) -> str:
         out.append(f"| {eco} | {pkg} | {n} |")
     out.append("")
 
-    if repos:
-        out += _per_repo_section(repos)
-
     cov = doc.get("coverage") or {}
+    grade_map = {g.get("repo"): g for g in (cov.get("residue") or {}).get("byRepo", [])}
+
+    if repos:
+        repos_with_grade = [{**r, "coverageGrade": grade_map.get(r.get("path"))} for r in repos]
+        out += _per_repo_section(repos_with_grade)
+
     reps, eps, pks = cov.get("repos", {}), cov.get("endpoints", {}), cov.get("packages", {})
     out += ["## Coverage", ""]
     out.append(f"- **Repos:** {reps.get('scanned', cov.get('reposScanned', len(repos)))} scanned"

@@ -38,16 +38,16 @@ def _relpath(path: str, repo_root: str) -> str:
         return path
 
 
-def build_endpoints(matches: list, repo_root: str, vendors: list, *, max_files: int = 20) -> list:
+def scan_endpoints(matches: list, repo_root: str, vendors: list, *, max_files: int = 20) -> dict:
     by_tk = {v.techKey: v for v in vendors}
     line_cache: dict = {}
     groups: dict = {}
-    seen_known: set = set()          # (techKey, file:line) — dedup the URL path vs the host-only path
+    seen_known: set = set()
 
     def add(vendor, techKey, host, version, example, rel, lineno):
         loc = f"{rel}:{lineno}"
         if techKey and (techKey, loc) in seen_known:
-            return                    # this known vendor is already recorded at this exact spot
+            return
         if techKey:
             seen_known.add((techKey, loc))
         key = (techKey or f"unknown:{host}", host, version)
@@ -61,26 +61,64 @@ def build_endpoints(matches: list, repo_root: str, vendors: list, *, max_files: 
         if len(rec["files"]) < max_files and loc not in rec["files"]:
             rec["files"].append(loc)
 
-    # URL matches first, so a URL's precise host (api.sandbox.ebay.com) wins the per-(vendor,loc)
-    # dedup over the per-vendor rule's coarser catalog domain (ebay.com); the vendor rule then
-    # only fills host-only references that had no URL.
     for m in sorted(matches, key=lambda x: 0 if x.get("kind") == "url" else 1):
         rel = _relpath(m.get("path", ""), repo_root)
         lineno = int(m.get("line", 0) or 0)
         line = _read_line(repo_root, rel, lineno, line_cache)
         kind = m.get("kind")
-        if kind == "url":                                   # discovery: classify every URL host
+        if kind == "url":
             for url in classify_url.extract_urls(line):
                 host = classify_url.host_of(url)
-                v = classify_url.classify_host(host, vendors)   # known vendor wins even if its
-                if v is None and classify_url.is_ignored(host):  # registrable is on the ignore list
-                    continue                                     # (skip only UNKNOWN boilerplate)
+                v = classify_url.classify_host(host, vendors)
+                if v is None and classify_url.is_ignored(host):
+                    continue
                 add(v.vendor if v else UNKNOWN, v.techKey if v else "", host,
                     classify_url.version_of(url, v), url, rel, lineno)
-        elif kind == "endpoint":                            # recall: host-only reference to a known vendor
+        elif kind == "endpoint":
             v = by_tk.get(m.get("techKey", ""))
             d = classify_url.domain_in_line(line, v.domains) if v else ""
             if v and d:
                 seg = classify_url.segment_at(line, d)
                 add(v.vendor, v.techKey, d, classify_url.version_of(seg, v), seg, rel, lineno)
-    return list(groups.values())
+
+    # --- concat idiom: attribute host-less path literals to the repo's SINGLE classified vendor ---
+    classified_tks = {r["techKey"] for r in groups.values() if r["techKey"]}
+    assembly_files = {_relpath(m.get("path", ""), repo_root)
+                      for m in matches if m.get("kind") == "path-assembly"}
+    attributed_locs: set = set()
+    if len(classified_tks) == 1 and assembly_files:
+        v = by_tk.get(next(iter(classified_tks)))
+        if v is not None:
+            for m in matches:
+                if m.get("kind") != "path-literal":
+                    continue
+                rel = _relpath(m.get("path", ""), repo_root)
+                if rel not in assembly_files:
+                    continue
+                lineno = int(m.get("line", 0) or 0)
+                path = classify_url.path_literal_of(_read_line(repo_root, rel, lineno, line_cache))
+                if not path:
+                    continue
+                add(v.vendor, v.techKey, v.domains[0], classify_url.version_of(path, v), path, rel, lineno)
+                attributed_locs.add(f"{rel}:{lineno}")
+
+    # --- residue: what we could NOT attribute (the conscience) ---
+    residue_paths, residue_sinks = [], []
+    for m in matches:
+        rel = _relpath(m.get("path", ""), repo_root)
+        lineno = int(m.get("line", 0) or 0)
+        loc = f"{rel}:{lineno}"
+        kind = m.get("kind")
+        if kind == "path-literal" and loc not in attributed_locs:
+            path = classify_url.path_literal_of(_read_line(repo_root, rel, lineno, line_cache))
+            if path:
+                residue_paths.append({"sample": path, "loc": loc})
+        elif kind == "sink":
+            residue_sinks.append({"kind": "egress", "loc": loc})
+
+    return {"endpoints": list(groups.values()),
+            "residue": {"pathLiterals": residue_paths, "sinks": residue_sinks}}
+
+
+def build_endpoints(matches: list, repo_root: str, vendors: list, *, max_files: int = 20) -> list:
+    return scan_endpoints(matches, repo_root, vendors, max_files=max_files)["endpoints"]

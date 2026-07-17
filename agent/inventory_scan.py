@@ -13,6 +13,15 @@ from agent.lib.inventory_render import render_inventory_md
 from agent.lib.inventory_diff import diff_inventories
 
 
+def _coverage_grade(attributed: int, unattributed_paths: int, sinks: int) -> str:
+    """Grade a repo's endpoint coverage: HIGH/PARTIAL/LOW based on attribution and residue."""
+    if unattributed_paths and attributed == 0:
+        return "LOW"
+    if unattributed_paths or (attributed == 0 and sinks):
+        return "PARTIAL"
+    return "HIGH"
+
+
 def _rollup_coverage(coverage: dict, repos: list, *, discovered_count: int) -> None:
     """Make the scan say what it did (and didn't) see — repos, endpoint buckets, package
     resolution, and private sources it couldn't scan."""
@@ -35,6 +44,19 @@ def _rollup_coverage(coverage: dict, repos: list, *, discovered_count: int) -> N
          "endpointCount": sum(1 for e in r.get("endpoints", []) if e.get("classified"))}
         for r in repos if len(r.get("sdks", [])) >= 1
     ]
+    res_paths, res_sinks, by_repo = [], [], []
+    for r in repos:
+        rr = r.get("residue") or {"pathLiterals": [], "sinks": []}
+        plist = [{"repo": r.get("path"), **p} for p in rr.get("pathLiterals", [])]
+        slist = [{"repo": r.get("path"), **s} for s in rr.get("sinks", [])]
+        res_paths += plist
+        res_sinks += slist
+        attributed = sum(1 for e in r.get("endpoints", [])
+                         if e.get("vendor") and e["vendor"] != "Unknown")
+        by_repo.append({"repo": r.get("path"), "attributed": attributed,
+                        "unattributedPaths": len(plist), "unresolvedSinks": len(slist),
+                        "grade": _coverage_grade(attributed, len(plist), len(slist))})
+    coverage["residue"] = {"pathLiterals": res_paths, "sinks": res_sinks, "byRepo": by_repo}
 
 
 def scan_folder(root, state_dir, now, *, engine=None, run=None, git=None, progress=None) -> dict:

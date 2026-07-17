@@ -1,5 +1,5 @@
 from agent.lib.vendors import Vendor
-from agent.lib.endpoints import build_endpoints
+from agent.lib.endpoints import build_endpoints, scan_endpoints
 
 
 def _write(tmp_path, rel, text):
@@ -128,3 +128,69 @@ def test_endpoint_files_are_repo_relative(tmp_path):
     (tmp_path / "lib" / "req.php").write_text('"https://api.stripe.com/v1/x";\n')
     eps = build_endpoints([_url(str(tmp_path / "lib" / "req.php"), 1)], str(tmp_path), [_STRIPE])
     assert eps[0]["files"] == ["lib/req.php:1"] and eps[0]["version"] == "v1"
+
+
+def test_path_literal_attributed_when_single_vendor_and_assembly_present(tmp_path):
+    _write(tmp_path, "Configuration.php", "$host = 'https://sellingpartnerapi-na.amazon.com';\n")
+    _write(tmp_path, "OrdersApi.php",
+           "$resource_path = '/orders/2026-01-01/orders';\n"
+           "$url = $this->config->getHost() . $resource_path;\n")
+    matches = [
+        {"kind": "url", "path": "Configuration.php", "line": 1},              # classifies SP-API host
+        {"kind": "path-literal", "path": "OrdersApi.php", "line": 1},
+        {"kind": "path-assembly", "path": "OrdersApi.php", "line": 2},
+    ]
+    out = scan_endpoints(matches, str(tmp_path), [_SP, _STRIPE])
+    eps = out["endpoints"]
+    # the SP-API host endpoint + the attributed path endpoint
+    orders = [e for e in eps if e.get("version") == "2026-01-01"]
+    assert orders and orders[0]["techKey"] == "api:amazon-sp-api"
+    assert "OrdersApi.php:1" in orders[0]["files"]
+    assert out["residue"]["pathLiterals"] == []                              # it was attributed, not residue
+
+
+def test_path_literal_is_residue_when_two_vendors(tmp_path):
+    _write(tmp_path, "cfg.php",
+           "$a = 'https://sellingpartnerapi-na.amazon.com'; $b = 'https://api.stripe.com';\n")
+    _write(tmp_path, "Api.php",
+           "$resource_path = '/orders/2026-01-01/orders';\n"
+           "$url = $this->config->getHost() . $resource_path;\n")
+    matches = [
+        {"kind": "url", "path": "cfg.php", "line": 1},                        # line has BOTH hosts -> 2 vendors
+        {"kind": "path-literal", "path": "Api.php", "line": 1},
+        {"kind": "path-assembly", "path": "Api.php", "line": 2},
+    ]
+    out = scan_endpoints(matches, str(tmp_path), [_SP, _STRIPE])
+    assert not any(e.get("version") == "2026-01-01" for e in out["endpoints"])   # NOT attributed (ambiguous)
+    assert out["residue"]["pathLiterals"] == [{"sample": "/orders/2026-01-01/orders", "loc": "Api.php:1"}]
+
+
+def test_path_literal_is_residue_when_no_assembly_in_file(tmp_path):
+    _write(tmp_path, "Configuration.php", "$host = 'https://sellingpartnerapi-na.amazon.com';\n")
+    _write(tmp_path, "OrdersApi.php",
+           "$resource_path = '/orders/2026-01-01/orders';\n"
+           "$url = $this->config->getHost() . $resource_path;\n")
+    _write(tmp_path, "Const.php", "$VERSIONED = '/feeds/2021-06-30/documents';\n")
+    matches = [
+        {"kind": "url", "path": "Configuration.php", "line": 1},
+        {"kind": "path-literal", "path": "OrdersApi.php", "line": 1},
+        {"kind": "path-assembly", "path": "OrdersApi.php", "line": 2},   # assembly here, NOT in Const.php
+        {"kind": "path-literal", "path": "Const.php", "line": 1},        # no assembly in this file
+    ]
+    out = scan_endpoints(matches, str(tmp_path), [_SP])
+    # OrdersApi.php literal attributed (its file has the assembly); Const.php literal is residue
+    assert any(e.get("version") == "2026-01-01" for e in out["endpoints"])
+    assert out["residue"]["pathLiterals"] == [{"sample": "/feeds/2021-06-30/documents", "loc": "Const.php:1"}]
+
+
+def test_sinks_are_reported_as_residue(tmp_path):
+    matches = [{"kind": "sink", "path": "Client.php", "line": 7}]
+    out = scan_endpoints(matches, str(tmp_path), [_SP])
+    assert out["residue"]["sinks"] == [{"kind": "egress", "loc": "Client.php:7"}]
+
+
+def test_build_endpoints_still_returns_a_list(tmp_path):
+    _write(tmp_path, "x.php", "$u = 'https://api.stripe.com/v1/charges';\n")
+    matches = [{"kind": "url", "path": "x.php", "line": 1}]
+    eps = build_endpoints(matches, str(tmp_path), [_STRIPE])
+    assert isinstance(eps, list) and eps[0]["techKey"] == "api:stripe"

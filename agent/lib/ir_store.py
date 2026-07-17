@@ -9,7 +9,7 @@ from pathlib import Path
 # Per-repo cache schema. BUMP when the record shape changes so pre-upgrade caches are
 # invalidated (a stale cache without new fields would silently under-report — e.g. a repo
 # scanned before privateSources/versionSource existed would look "clean").
-_CACHE_SCHEMA = 2
+_CACHE_SCHEMA = 3
 
 
 def _ir_path(state_dir: str) -> Path:

@@ -101,6 +101,21 @@ def domain_in_line(line: str, domains) -> str:
     return ""
 
 
+_VERSION_SEG = re.compile(r"/(v[0-9][0-9.]*|[0-9]{4}-[0-9]{2}-[0-9]{2})(/|$)")
+
+
+def path_literal_of(line: str) -> str:
+    """The first quoted string on `line` that is a version-bearing resource path
+    ('/orders/2026-01-01/orders'). Excludes full URLs (those go through the url path)."""
+    for m in re.finditer(r"""['"](/[^'"]*)['"]""", line):
+        s = m.group(1)
+        if "://" in s:
+            continue
+        if _VERSION_SEG.search(s):
+            return s
+    return ""
+
+
 def segment_at(line: str, token: str) -> str:
     """The literal token containing `token` (up to the next quote/space/backtick) — so version/example
     for a host-only reference aren't contaminated by neighbouring text on the line."""
