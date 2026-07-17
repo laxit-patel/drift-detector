@@ -23,8 +23,11 @@ def _inv(repos, errored=()):
             "coverage": {"reposErrored": [{"repo": r, "reason": "boom"} for r in errored]}}
 
 
-def _ep(vendor="eBay", classified=True, version="v1", domain="api.ebay.com"):
-    return {"vendor": vendor, "classified": classified, "version": version, "domain": domain}
+def _ep(vendor="eBay", classified=True, version="v1", domain="api.ebay.com",
+        example="https://api.ebay.com/sell/inventory/v1/item"):
+    # example URL carries a version by default (matches version="v1"); override to test the metric
+    return {"vendor": vendor, "classified": classified, "version": version,
+            "domain": domain, "example": example}
 
 
 def _audit(findings=()):
@@ -84,13 +87,51 @@ def test_noise_counts_only_unknown_endpoints():
     assert sc["summary"]["noise"]["max"] == 2
 
 
-def test_version_rate_over_classified_and_zero_is_none():
-    inv = _inv([_repo("r", endpoints=[_ep(version="v1"), _ep(version=None)])])
-    sc = score([_entry(repo="o/r")], inv, _audit())
-    assert sc["repos"][0]["version_rate"] == 0.5
-    inv2 = _inv([_repo("r2", endpoints=[_ep(vendor="Unknown", classified=False)])])
-    sc2 = score([_entry(repo="o/r2")], inv2, _audit())
-    assert sc2["repos"][0]["version_rate"] is None            # no classified endpoints, no div-by-zero
+def test_url_has_version_detects_only_real_version_segments():
+    from agent.eval.score import _url_has_version
+    assert _url_has_version("https://svcs.ebay.com/services/search/FindingService/v1")
+    assert _url_has_version("https://api.ebay.com/sell/inventory/v1/item")
+    assert _url_has_version("https://mws.amazonservices.com/Orders/2013-09-01")   # date version
+    # NOT versions:
+    assert not _url_has_version("https://auth.ebay.com/oauth2/authorize")         # oauth2 != v-segment
+    assert not _url_has_version("https://api.ebay.com/ws/api.dll")                # legacy, no version
+    assert not _url_has_version("https://api.ebay.com/sell/account")              # version is in code, not URL
+    assert not _url_has_version("https://s3.amazonaws.com/bucket/key")            # s3 host, not a version
+    assert not _url_has_version("")
+    assert not _url_has_version(None)
+
+
+def test_version_rate_is_over_url_versionable_not_all_classified():
+    # 2 endpoints have a version in the URL (both extracted); 1 has NO URL version (excluded).
+    # Honest rate = 2/2 = 100%, NOT 2/3 — the versionless endpoint isn't an extraction failure.
+    eps = [_ep(version="v1", example="https://api.ebay.com/sell/inventory/v1/x"),
+           _ep(version="v1", example="https://svcs.ebay.com/services/selling/v1/y"),
+           _ep(version=None, example="https://api.ebay.com/ws/api.dll")]     # no URL version
+    sc = score([_entry(repo="o/r")], _inv([_repo("r", endpoints=eps)]), _audit())
+    r = sc["repos"][0]
+    assert r["version_rate"] == 1.0
+    assert r["no_url_version"] == 1
+    assert sc["summary"]["version_rate"] == 1.0
+    assert sc["summary"]["versionable"] == 2
+    assert sc["summary"]["no_url_version"] == 1
+
+
+def test_url_versioned_but_not_extracted_counts_as_a_real_miss():
+    # the URL HAS /v1/ but the scanner returned version=None -> a genuine extraction miss -> hurts the rate
+    eps = [_ep(version="v1", example="https://api.ebay.com/sell/inventory/v1/x"),
+           _ep(version=None, example="https://api.ebay.com/buy/browse/v1/item")]  # url has v1, not extracted
+    sc = score([_entry(repo="o/r")], _inv([_repo("r", endpoints=eps)]), _audit())
+    assert sc["repos"][0]["version_rate"] == 0.5                # 1 of 2 versionable extracted
+    assert sc["repos"][0]["no_url_version"] == 0
+
+
+def test_version_rate_none_when_no_versionable_endpoints():
+    eps = [_ep(version=None, example="https://api.ebay.com/ws/api.dll"),
+           _ep(vendor="Unknown", classified=False, example="https://x.io/y")]
+    sc = score([_entry(repo="o/r")], _inv([_repo("r", endpoints=eps)]), _audit())
+    assert sc["repos"][0]["version_rate"] is None              # nothing URL-versionable, no div-by-zero
+    assert sc["repos"][0]["no_url_version"] == 1               # the classified, versionless one
+    assert sc["summary"]["version_rate"] is None
 
 
 def test_sunset_hit_matches_host():

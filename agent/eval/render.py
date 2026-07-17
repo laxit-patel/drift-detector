@@ -16,7 +16,8 @@ def render_scorecard(sc: dict) -> str:
     lines.append(f"         endpoint {rc['endpoint']} · sdk-only {rc['sdk_only']} · "
                  f"known-miss {rc['known_miss']} · holdout {rc['holdout']}")
     lines.append(f"noise    median {s['noise']['median']} · max {s['noise']['max']} unknown hosts/repo  (info)")
-    lines.append(f"version  {_pct(s['version_rate'])} of classified endpoints carry a version  (info)")
+    lines.append(f"version  {_pct(s['version_rate'])} of {s.get('versionable', 0)} URL-versionable "
+                 f"endpoints extracted · {s.get('no_url_version', 0)} have no URL version  (info)")
     lines.append(f"sunset   {s['sunset_match']['hit']}/{s['sunset_match']['expected']} expected fired  (info)")
     lines.append(f"errored  {s['errored']}")
     lines += ["", "repo                                   detect  via       noise  ver   sunset"]
