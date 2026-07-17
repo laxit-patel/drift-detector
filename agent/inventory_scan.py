@@ -29,6 +29,12 @@ def _rollup_coverage(coverage: dict, repos: list, *, discovered_count: int) -> N
     coverage["packages"] = {"total": len(pkgs), "lockfileResolved": resolved,
                             "floorOnly": len(pkgs) - resolved}
     coverage["privateSources"] = private
+    coverage["sdkMediated"] = [
+        {"repo": r.get("path"),
+         "sdkCount": len(r.get("sdks", [])),
+         "endpointCount": sum(1 for e in r.get("endpoints", []) if e.get("classified"))}
+        for r in repos if len(r.get("sdks", [])) >= 1
+    ]
 
 
 def scan_folder(root, state_dir, now, *, engine=None, run=None, git=None, progress=None) -> dict:

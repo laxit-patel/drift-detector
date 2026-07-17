@@ -143,3 +143,25 @@ def test_cli_inventory_scan_progress_to_stderr(tmp_path, monkeypatch, capsys):
     assert "deterministic static-analysis" in captured.err     # expectation-setting banner
     assert "⚙" in captured.err                                 # per-phase log on stderr
     assert "✓" in captured.out                                 # timed summary on stdout
+
+
+def test_coverage_sdkmediated_lists_repos_with_sdks():
+    from agent.inventory_scan import _rollup_coverage
+    repos = [
+        {"path": "a", "sdks": [{"eco": "composer", "pkg": "dts/ebay-sdk-php"}],
+         "endpoints": [{"classified": True}, {"classified": False}]},
+        {"path": "b", "sdks": [], "endpoints": [{"classified": True}]},          # no SDKs -> absent
+        {"path": "c", "sdks": [{"eco": "npm", "pkg": "x"}, {"eco": "npm", "pkg": "y"}],
+         "endpoints": []},
+    ]
+    # _rollup_coverage MUTATES the coverage dict in place and returns None. The dict must be
+    # pre-seeded with the keys it reads (reposScanned/reposErrored), matching how scan_folder seeds it.
+    coverage = {"reposScanned": 3, "reposErrored": [], "manifestsUnparsed": []}
+    _rollup_coverage(coverage, repos, discovered_count=3)
+    sm = coverage["sdkMediated"]
+    assert {m["repo"] for m in sm} == {"a", "c"}                       # b (0 SDKs) absent
+    a = next(m for m in sm if m["repo"] == "a")
+    assert a["sdkCount"] == 1 and a["endpointCount"] == 1              # 1 classified of 2 endpoints
+    c = next(m for m in sm if m["repo"] == "c")
+    assert c["sdkCount"] == 2 and c["endpointCount"] == 0
+    assert "privateSources" in coverage                               # existing key unchanged
