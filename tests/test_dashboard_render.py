@@ -262,6 +262,62 @@ def test_node_smoke_safe_url_rejects_javascript_scheme(tmp_path):
     assert result["http"] == "http://endoflife.date/php"
 
 
+def test_permalink_github_blob_shape():
+    from agent.lib.dashboard_render import _permalink
+    assert _permalink("https://github.com/o/r", "SHA", "src/x.php:37") == \
+        "https://github.com/o/r/blob/SHA/src/x.php#L37"
+
+
+def test_permalink_gitlab_dash_blob_shape():
+    from agent.lib.dashboard_render import _permalink
+    assert _permalink("https://gitlab.com/o/r", "SHA", "src/x.php:37") == \
+        "https://gitlab.com/o/r/-/blob/SHA/src/x.php#L37"
+
+
+def test_permalink_self_hosted_gitlab_via_env(monkeypatch):
+    from agent.lib.dashboard_render import _permalink
+    monkeypatch.setenv("DRIFT_GITLAB_HOSTS", "git.topsdemo.in")
+    assert _permalink("https://git.topsdemo.in/rushikesh/ebayapi", "SHA", "src/config/ebay.php:39") == \
+        "https://git.topsdemo.in/rushikesh/ebayapi/-/blob/SHA/src/config/ebay.php#L39"
+
+
+def test_permalink_unknown_host_and_missing_bits_are_none(monkeypatch):
+    from agent.lib.dashboard_render import _permalink
+    monkeypatch.delenv("DRIFT_GITLAB_HOSTS", raising=False)
+    assert _permalink("https://bitbucket.org/o/r", "SHA", "src/x.php:1") is None   # unknown host
+    assert _permalink(None, "SHA", "src/x.php:1") is None                          # no remote
+    assert _permalink("https://github.com/o/r", None, "src/x.php:1") is None       # no sha
+
+
+def test_permalink_missing_line_omits_anchor():
+    from agent.lib.dashboard_render import _permalink
+    assert _permalink("https://github.com/o/r", "SHA", "src/x.php") == \
+        "https://github.com/o/r/blob/SHA/src/x.php"
+
+
+def test_projection_rewrites_files_to_loc_href_dicts():
+    # a sunset action whose repo has a github remote -> each file becomes {loc, href}
+    from agent.lib.dashboard_render import _build_projection
+    inv = {"repos": [{"path": "r", "remote_url": "https://github.com/o/r", "head_sha": "SHA",
+                      "endpoints": []}]}
+    audit = {"actions": [{"repo": "r", "ref": "eBay", "kind": "sunset", "status": "DEPRECATED",
+                          "worst": "SUNSET", "finding_count": 1, "files": ["src/x.php:37"],
+                          "fixes": [], "sources": []}]}
+    proj = _build_projection(inv, audit)
+    f = proj["actions"][0]["files"][0]
+    assert f == {"loc": "src/x.php:37", "href": "https://github.com/o/r/blob/SHA/src/x.php#L37"}
+
+
+def test_projection_files_href_none_for_local_repo():
+    from agent.lib.dashboard_render import _build_projection
+    inv = {"repos": [{"path": "r", "remote_url": None, "head_sha": "SHA", "endpoints": []}]}
+    audit = {"actions": [{"repo": "r", "ref": "eBay", "kind": "sunset", "status": "DEPRECATED",
+                          "worst": "SUNSET", "finding_count": 1, "files": ["src/x.php:37"],
+                          "fixes": [], "sources": []}]}
+    f = _build_projection(inv, audit)["actions"][0]["files"][0]
+    assert f == {"loc": "src/x.php:37", "href": None}
+
+
 @pytest.mark.skipif(not shutil.which("node"), reason="node not installed (optional JS smoke)")
 def test_node_smoke_executes_client_js_and_renders_rows(tmp_path):
     # Actually run the embedded JS in a DOM-less shim to prove it parses the blob and

@@ -9,6 +9,8 @@ from __future__ import annotations
 
 import html
 import json
+import os
+import re
 
 from agent.lib.actions import build_actions
 
@@ -49,8 +51,39 @@ def _endpoints_of(inventory: dict) -> list:
     return out
 
 
+def _gitlab_hosts() -> set:
+    return {h.strip() for h in os.environ.get("DRIFT_GITLAB_HOSTS", "").split(",") if h.strip()}
+
+
+def _permalink(remote_url, head_sha, loc) -> str | None:
+    """Build a GitHub/GitLab blob permalink pinned to head_sha, or None (plain text).
+    A self-hosted GitLab host isn't guessable from the URL — it's allow-listed via
+    $DRIFT_GITLAB_HOSTS. Unknown host -> None (never a guessed/broken link)."""
+    if not remote_url or not head_sha or not loc:
+        return None
+    path, _, line = str(loc).rpartition(":")
+    if not path or not line.isdigit():        # no "path:line" split -> whole loc is the path
+        path, line = str(loc), ""
+    m = re.match(r"^https://([\w.-]+)/(.+)$", remote_url)
+    if not m:
+        return None
+    host, owner_repo = m.group(1), m.group(2)
+    anchor = f"#L{line}" if line else ""
+    if host == "github.com":
+        return f"https://github.com/{owner_repo}/blob/{head_sha}/{path}{anchor}"
+    if host == "gitlab.com" or "gitlab" in host or host in _gitlab_hosts():
+        return f"https://{host}/{owner_repo}/-/blob/{head_sha}/{path}{anchor}"
+    return None
+
+
 def _build_projection(inventory: dict, audit: dict) -> dict:
+    repo_meta = {r.get("path"): {"remote_url": r.get("remote_url"), "head_sha": r.get("head_sha")}
+                 for r in inventory.get("repos", [])}
     actions = [_project_action(a) for a in _actions_of(audit)]
+    for a in actions:
+        rm = repo_meta.get(a["repo"], {})
+        a["files"] = [{"loc": loc, "href": _permalink(rm.get("remote_url"), rm.get("head_sha"), loc)}
+                      for loc in a["files"]]
     endpoints = _endpoints_of(inventory)
     counts = {
         "critical": sum(1 for a in actions if a["worst"] == "CRITICAL"),
