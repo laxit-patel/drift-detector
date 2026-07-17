@@ -99,7 +99,9 @@ def test_coverage_shows_private_sources_loudly():
     assert "tops/ebay-wrapper" in md and "git.topsdemo.in" in md
 
 
-def test_per_repo_flags_sdk_undercount():
+def test_per_repo_no_longer_flags_sdk_undercount():
+    # Spec B's blanket "N SDK package(s) ... may not be listed as endpoints" per-repo caveat
+    # is replaced by the coverage-grade line (see below) — merely having SDKs no longer warns.
     doc = {"generated": "2026-07-17", "repos": [
         {"path": "with-sdk", "sdks": [{"eco": "composer", "pkg": "dts/ebay-sdk-php", "ver": "^18"}],
          "endpoints": [], "runtimes": {}, "frameworks": {}},
@@ -108,9 +110,32 @@ def test_per_repo_flags_sdk_undercount():
          "runtimes": {}, "frameworks": {}},
     ]}
     md = render_inventory_md(doc)
-    # the SDK repo carries the undercount caveat; the no-SDK repo does not
-    assert "may not be listed as endpoints" in md
+    assert "may not be listed as endpoints" not in md
+    assert "SDK-mediated" not in md
     with_block = md.split("### with-sdk")[1].split("###")[0]
-    no_block = md.split("### no-sdk")[1].split("###")[0]
-    assert "⚠" in with_block and "SDK-mediated" in with_block
-    assert "⚠" not in no_block
+    assert "⚠" not in with_block
+
+
+def test_per_repo_shows_coverage_grade_line():
+    # a repo carrying a coverage grade + residue counts renders the grade, not the old SDK line
+    doc = {"generated": "2026-07-17", "repos": [
+        {"path": "amazonspapi", "sdks": [{"eco": "composer", "pkg": "dts/foo", "ver": "^1"}],
+         "endpoints": [], "runtimes": {}, "frameworks": {}},
+    ], "coverage": {"residue": {"byRepo": [
+        {"repo": "amazonspapi", "attributed": 0, "unattributedPaths": 262,
+         "unresolvedSinks": 3, "grade": "LOW"}]}}}
+    md = render_inventory_md(doc)
+    block = md.split("### amazonspapi")[1].split("###")[0]
+    assert "LOW" in block and "262" in block
+    assert "may not be listed as endpoints" not in block
+
+
+def test_per_repo_high_grade_shows_no_warning():
+    doc = {"generated": "2026-07-17", "repos": [
+        {"path": "clean-repo", "sdks": [], "endpoints": [], "runtimes": {}, "frameworks": {}},
+    ], "coverage": {"residue": {"byRepo": [
+        {"repo": "clean-repo", "attributed": 10, "unattributedPaths": 0,
+         "unresolvedSinks": 0, "grade": "HIGH"}]}}}
+    md = render_inventory_md(doc)
+    block = md.split("### clean-repo")[1].split("## Coverage")[0]
+    assert "⚠ **Coverage:" not in block

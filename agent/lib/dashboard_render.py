@@ -86,6 +86,7 @@ def _build_projection(inventory: dict, audit: dict) -> dict:
                       for loc in a["files"]]
     endpoints = _endpoints_of(inventory)
     cov = inventory.get("coverage") or {}
+    residue = cov.get("residue") or {}
     private = []
     for p in cov.get("privateSources", []):
         for pkg in p.get("packages", []):
@@ -112,6 +113,8 @@ def _build_projection(inventory: dict, audit: dict) -> dict:
         "private": private,
         "sdkMediated": cov.get("sdkMediated", []),
         "coverageNotes": (audit.get("coverage") or {}).get("notes", []),
+        "coverageGrades": residue.get("byRepo", []),
+        "residueSamples": residue.get("pathLiterals", []),
     }
 
 
@@ -405,6 +408,13 @@ _CLIENT_JS = r"""
     var cov=document.getElementById("coverage"); if(!cov) return;
     var h="";
     (DATA.coverageNotes||[]).forEach(function(n){ h+='<div class="note">'+esc(n)+'</div>'; });
+    var grades=(DATA.coverageGrades||[]).filter(function(g){return g.grade!=="HIGH";});
+    if(grades.length){
+      h+='<div class="note">Coverage — repos where calls may be unattributed:</div><ul>';
+      grades.forEach(function(g){ h+='<li>'+esc(g.repo)+': <b>'+esc(g.grade)+'</b> ('
+        +esc(g.unattributedPaths)+' path-literals, '+esc(g.unresolvedSinks)+' sinks)</li>'; });
+      h+='</ul>';
+    }
     var sm=DATA.sdkMediated||[];
     if(sm.length){
       h+='<div class="note">'+esc(sm.length)+' repo(s) use SDK client(s) — calls routed through an '

@@ -472,6 +472,29 @@ def test_safeurl_still_http_only():
     assert "/^https?:\\/\\//i" in js                            # safeUrl allow-list unchanged
 
 
+def test_dashboard_coverage_section_shows_grades():
+    inv = {"repos": [], "coverage": {"residue": {
+        "pathLiterals": [{"repo": "amazonspapi", "sample": "/orders/2026-01-01/orders", "loc": "OrdersApi.php:44"}],
+        "sinks": [], "byRepo": [{"repo": "amazonspapi", "attributed": 0, "unattributedPaths": 262,
+                                 "unresolvedSinks": 3, "grade": "LOW"}]}}}
+    audit = {"actions": [], "coverage": {"notes": []}}
+    html = render_dashboard(inv, audit, "2026-07-17")
+    assert 'id="coverage"' in html
+    data = _blob(html)
+    assert any(g["repo"] == "amazonspapi" and g["grade"] == "LOW" for g in data.get("coverageGrades", []))
+    assert "amazonspapi" in html and "LOW" in html
+
+
+def test_dashboard_coverage_grade_xss_escaped():
+    inv = {"repos": [], "coverage": {"residue": {
+        "pathLiterals": [{"repo": "r", "sample": "/x/v0/</script><b>pwn", "loc": "a.php:1"}],
+        "sinks": [], "byRepo": [{"repo": "r</script>", "attributed": 0, "unattributedPaths": 1,
+                                 "unresolvedSinks": 0, "grade": "LOW"}]}}}
+    html = render_dashboard(inv, {"actions": [], "coverage": {}}, "2026-07-17")
+    assert "<script><b>pwn" not in html
+    assert "r</script>" not in html.split('id="drift-data"')[0]
+
+
 def test_ssh_repository_url_renders_as_escaped_text_not_link():
     from agent.lib.dashboard_render import render_dashboard
     # Private source with ssh:// repository URL must NOT be linked, only rendered as escaped text
