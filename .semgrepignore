@@ -1,1 +1,7 @@
+# Semgrep's built-in defaults ignore tests/ dirs. The Project Insight eval
+# fixture lives under tests/fixtures/insight/ and is scanned by the REAL engine
+# in tests/test_insight_fixture.py — un-ignore tests/ so those scans see it.
+# Scoped to THIS repo's tree only: semgrep resolves .semgrepignore relative to
+# the scan target's root, so external target-repo scans are unaffected
+# (verified empirically). Do not delete — the fixture test depends on it.
 !tests/
