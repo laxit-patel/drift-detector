@@ -1,0 +1,51 @@
+# Drift Detector eval corpus — eBay (Phase 1).
+#
+# Real public PHP repos pinned at a SHA for reproducibility. Category-by-construction:
+# every repo here is an eBay integration, so it MUST detect vendor eBay (classified endpoint
+# OR sdk keyword). Clones land in ~/Projects/sandbox/ebay/ and are NEVER committed.
+# See eval/taxonomy.md for the known_gaps failure-mode enum. Extend/re-pin deliberately.
+
+- repo: davidtsadler/ebay-sdk-php
+  url: https://github.com/davidtsadler/ebay-sdk-php.git
+  sha: "744dc96f3a82b14a494ed5f8b05708c87bc297ea"
+  license: Apache-2.0
+  category: ebay
+  expect: { vendor: eBay, sdk_keywords: [ebay] }
+  holdout: false
+  fetched_at: "2026-07-16"
+
+- repo: davidtsadler/ebay-sdk-examples
+  url: https://github.com/davidtsadler/ebay-sdk-examples.git
+  sha: "88867beab4960a4691c075d90b39afbb5e53a7d3"
+  license: Apache-2.0
+  category: ebay
+  expect: { vendor: eBay, sdk_keywords: [ebay] }
+  holdout: false
+  fetched_at: "2026-07-16"
+
+- repo: hkonnet/laravel-ebay
+  url: https://github.com/hkonnet/laravel-ebay.git
+  sha: "e3ecf81ba04f8a43442ed79e7b5c7965dd153c4e"
+  license: MIT
+  category: ebay
+  expect: { vendor: eBay, sdk_keywords: [ebay] }
+  holdout: true
+  fetched_at: "2026-07-16"
+
+- repo: seeker1983/ebay-amazon-sync-tool
+  url: https://github.com/seeker1983/ebay-amazon-sync-tool.git
+  sha: "4214a29c769034f94ece68a53c223445ab59960b"
+  license: NOASSERTION
+  category: ebay
+  expect: { vendor: eBay, sdk_keywords: [ebay], sunset_host: svcs.ebay.com }
+  holdout: false
+  fetched_at: "2026-07-16"
+
+- repo: rishiv3/ebayAddItem
+  url: https://github.com/rishiv3/ebayAddItem.git
+  sha: "17594bdccb71681d41e1828af89d4526c7f15e76"
+  license: NOASSERTION
+  category: ebay
+  expect: { vendor: eBay, sdk_keywords: [ebay] }
+  holdout: false
+  fetched_at: "2026-07-16"
