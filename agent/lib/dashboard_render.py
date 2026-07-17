@@ -9,6 +9,8 @@ from __future__ import annotations
 
 import html
 import json
+import os
+import re
 
 from agent.lib.actions import build_actions
 
@@ -49,8 +51,39 @@ def _endpoints_of(inventory: dict) -> list:
     return out
 
 
+def _gitlab_hosts() -> set:
+    return {h.strip() for h in os.environ.get("DRIFT_GITLAB_HOSTS", "").split(",") if h.strip()}
+
+
+def _permalink(remote_url, head_sha, loc) -> str | None:
+    """Build a GitHub/GitLab blob permalink pinned to head_sha, or None (plain text).
+    A self-hosted GitLab host isn't guessable from the URL — it's allow-listed via
+    $DRIFT_GITLAB_HOSTS. Unknown host -> None (never a guessed/broken link)."""
+    if not remote_url or not head_sha or not loc:
+        return None
+    path, _, line = str(loc).rpartition(":")
+    if not path or not line.isdigit():        # no "path:line" split -> whole loc is the path
+        path, line = str(loc), ""
+    m = re.match(r"^https://([\w.-]+)/(.+)$", remote_url)
+    if not m:
+        return None
+    host, owner_repo = m.group(1), m.group(2)
+    anchor = f"#L{line}" if line else ""
+    if host == "github.com":
+        return f"https://github.com/{owner_repo}/blob/{head_sha}/{path}{anchor}"
+    if host == "gitlab.com" or "gitlab" in host or host in _gitlab_hosts():
+        return f"https://{host}/{owner_repo}/-/blob/{head_sha}/{path}{anchor}"
+    return None
+
+
 def _build_projection(inventory: dict, audit: dict) -> dict:
+    repo_meta = {r.get("path"): {"remote_url": r.get("remote_url"), "head_sha": r.get("head_sha")}
+                 for r in inventory.get("repos", [])}
     actions = [_project_action(a) for a in _actions_of(audit)]
+    for a in actions:
+        rm = repo_meta.get(a["repo"], {})
+        a["files"] = [{"loc": loc, "href": _permalink(rm.get("remote_url"), rm.get("head_sha"), loc)}
+                      for loc in a["files"]]
     endpoints = _endpoints_of(inventory)
     counts = {
         "critical": sum(1 for a in actions if a["worst"] == "CRITICAL"),
@@ -171,6 +204,8 @@ border:1px solid var(--line);background:var(--panel);color:var(--text)}
 color:var(--accent);display:inline-block}
 .copy{cursor:pointer;border:1px solid var(--line);background:none;color:var(--text);border-radius:4px;
 margin-left:6px;padding:1px 6px}
+.callsite{padding:2px 0;font-family:ui-monospace,monospace;font-size:12px}
+.copy-loc{cursor:pointer;border:1px solid var(--line);background:none;color:var(--text);border-radius:4px;margin-left:6px;font-size:11px}
 .empty{padding:24px 18px;opacity:.7}
 @media print{:root{--bg:#fff;--panel:#fff;--text:#000}.tile,#theme-toggle{border-color:#999}}
 """
@@ -237,6 +272,10 @@ _CLIENT_JS = r"""
         if(open){ det=detailCell(actionDetail(a)); tr.after(det);
                   var b=det.querySelector(".copy"); if(b) b.addEventListener("click", function(ev){
                     ev.stopPropagation(); navigator.clipboard && navigator.clipboard.writeText(a.command); });
+                  det.querySelectorAll(".copy-loc").forEach(function(b){
+                    b.addEventListener("click", function(ev){ ev.stopPropagation();
+                      if(navigator.clipboard) navigator.clipboard.writeText(b.getAttribute("data-loc")); });
+                  });
         } else if(det){ det.remove(); det=null; }
       });
       body.appendChild(tr);
@@ -249,7 +288,20 @@ _CLIENT_JS = r"""
     else if(a.recommendation){ h+='<div>'+esc(a.recommendation)+'</div>'; }
     h+='<div>Clears '+esc(a.finding_count)+' advisor'+(a.finding_count==1?'y':'ies')
       +(a.critical_count?(' ('+esc(a.critical_count)+' critical)'):'')+'</div>';
-    if(a.files && a.files.length){ h+='<div>Used at: '+a.files.map(esc).join(", ")+'</div>'; }
+    if(a.files && a.files.length){
+      h+='<div class="usedat"><b>Used at:</b>';
+      a.files.forEach(function(f){
+        if(f.href){
+          var u=safeUrl(f.href);
+          h+='<div class="callsite">'+(u? '<a href="'+escA(u)+'" rel="noopener">'+esc(f.loc)+'</a>'
+                                        : esc(f.loc))+'</div>';
+        } else {
+          h+='<div class="callsite">'+esc(f.loc)
+            +' <button class="copy-loc" data-loc="'+escA(f.loc)+'">copy</button></div>';
+        }
+      });
+      h+='</div>';
+    }
     if(a.cves && a.cves.length){ h+='<ul>'+a.cves.map(function(c){
       return '<li>'+esc(c.id)+' — '+esc(c.title)+'</li>'; }).join("")+'</ul>'; }
     if(a.sources && a.sources.length){ h+='<div>'+a.sources.map(function(u){

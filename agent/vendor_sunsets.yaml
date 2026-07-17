@@ -39,11 +39,13 @@
   domain: svcs.ebay.com
   retires: "2025-02-05"
   replacement: Browse API
-  source: https://developer.ebay.com/develop/get-started/api-deprecation-status
+  # Text fragment deep-links to the Finding API row on eBay's deprecation-status table
+  # (scrolls/highlights in modern browsers; degrades to the plain page otherwise).
+  source: "https://developer.ebay.com/develop/get-started/api-deprecation-status#:~:text=Finding%20API"
   note: eBay Finding API (svcs.ebay.com) decommissioned 2025-02-05; migrate to the RESTful Browse API.
 - vendor: eBay
   domain: open.api.ebay.com
   retires: "2025-02-05"
   replacement: Browse API
-  source: https://developer.ebay.com/develop/get-started/api-deprecation-status
+  source: "https://developer.ebay.com/develop/get-started/api-deprecation-status#:~:text=Shopping%20API"
   note: eBay Shopping API (open.api.ebay.com) decommissioned 2025-02-05; migrate to the RESTful Browse API.
