@@ -145,6 +145,37 @@ def test_cli_inventory_scan_progress_to_stderr(tmp_path, monkeypatch, capsys):
     assert "✓" in captured.out                                 # timed summary on stdout
 
 
+def test_coverage_grade_thresholds():
+    from agent.inventory_scan import _coverage_grade
+
+    assert _coverage_grade(attributed=0, unattributed_paths=262, sinks=0) == "LOW"
+    assert _coverage_grade(attributed=5, unattributed_paths=3, sinks=0) == "PARTIAL"
+    assert _coverage_grade(attributed=0, unattributed_paths=0, sinks=2) == "PARTIAL"   # sinks only
+    assert _coverage_grade(attributed=5, unattributed_paths=0, sinks=0) == "HIGH"
+    assert _coverage_grade(attributed=0, unattributed_paths=0, sinks=0) == "HIGH"      # nothing to miss
+
+
+def test_rollup_builds_residue_and_grade():
+    from agent.inventory_scan import _rollup_coverage
+
+    repos = [
+        {"path": "amazonspapi",
+         "endpoints": [{"vendor": "Amazon SP-API"}],
+         "residue": {"pathLiterals": [{"sample": "/orders/2026-01-01/orders", "loc": "OrdersApi.php:44"}],
+                     "sinks": [{"kind": "egress", "loc": "Client.php:7"}]}},
+        {"path": "clean", "endpoints": [{"vendor": "Stripe"}],
+         "residue": {"pathLiterals": [], "sinks": []}},
+    ]
+    coverage = {"reposScanned": 2, "reposErrored": [], "manifestsUnparsed": []}
+    _rollup_coverage(coverage, repos, discovered_count=2)
+    res = coverage["residue"]
+    assert len(res["pathLiterals"]) == 1 and len(res["sinks"]) == 1
+    by = {r["repo"]: r for r in res["byRepo"]}
+    assert by["amazonspapi"]["grade"] == "PARTIAL"      # has 1 attributed endpoint + residue
+    assert by["amazonspapi"]["unattributedPaths"] == 1 and by["amazonspapi"]["unresolvedSinks"] == 1
+    assert by["clean"]["grade"] == "HIGH"
+
+
 def test_coverage_sdkmediated_lists_repos_with_sdks():
     from agent.inventory_scan import _rollup_coverage
     repos = [
