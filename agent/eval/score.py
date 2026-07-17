@@ -81,7 +81,12 @@ def score(entries: list, inventory: dict, audit: dict) -> dict:
         # version-rate is measured ONLY over endpoints whose URL actually carries a version — so
         # the scanner isn't penalized for APIs that have no URL version (Trading/Shopping/OAuth) or
         # whose version lives only in code. A URL-versioned endpoint with version=None is a real miss.
-        versionable = [e for e in classified if _url_has_version(e.get("example"))]
+        # versionable = the URL detector finds a version OR the scanner already extracted one.
+        # The `or version is not None` clause guarantees the denominator is a superset of the
+        # numerator regardless of any regex mismatch (e.g. a dotted `v2.1` the detector is stricter
+        # about) — so a real extraction is never miscounted as "no URL version".
+        versionable = [e for e in classified
+                       if _url_has_version(e.get("example")) or e.get("version") is not None]
         repo_versioned = sum(1 for e in versionable if e.get("version") is not None)
         no_url_version = len(classified) - len(versionable)
         versionable_total += len(versionable)

@@ -125,6 +125,17 @@ def test_url_versioned_but_not_extracted_counts_as_a_real_miss():
     assert sc["repos"][0]["no_url_version"] == 0
 
 
+def test_extracted_version_is_always_versionable_even_if_detector_is_stricter():
+    # the scanner extracted a DOTTED version ("v2.1") the URL-detector's v\d+ regex doesn't match;
+    # the `or version is not None` clause must still count it as versionable+extracted, never as
+    # "no URL version" (denominator must be a superset of the numerator).
+    eps = [_ep(version="v2.1", example="https://api.vendor.com/thing/v2.1/x")]
+    sc = score([_entry(repo="o/r")], _inv([_repo("r", endpoints=eps)]), _audit())
+    assert sc["repos"][0]["version_rate"] == 1.0
+    assert sc["repos"][0]["no_url_version"] == 0
+    assert sc["summary"]["versionable"] == 1
+
+
 def test_version_rate_none_when_no_versionable_endpoints():
     eps = [_ep(version=None, example="https://api.ebay.com/ws/api.dll"),
            _ep(vendor="Unknown", classified=False, example="https://x.io/y")]
