@@ -448,7 +448,10 @@ def test_dashboard_has_private_tile_mode_and_coverage_section():
     # the Coverage section renders the coverage note AND names the sdkMediated repo
     assert 'id="coverage"' in html
     assert "OSV.dev" in html                                    # coverageNotes now rendered
-    assert "svc" in html and "may undercount" in html.lower() or "undercount" in js.lower()
+    assert "svc" in html and "undercount" in html.lower()       # sdkMediated repo + undercount msg in HTML
+    data = _blob(html)
+    assert any(m.get("repo") == "svc" and m.get("sdkCount") == 3 for m in data.get("sdkMediated", [])),\
+        "sdkMediated data with repo='svc' and sdkCount=3 must be present in the JSON blob"
 
 
 def test_private_source_xss_escaped():
@@ -467,3 +470,12 @@ def test_safeurl_still_http_only():
     html = render_dashboard({"repos": [], "coverage": {}}, {"actions": [], "coverage": {}}, "2026-07-17")
     js = html.split("<script>")[-1]
     assert "/^https?:\\/\\//i" in js                            # safeUrl allow-list unchanged
+
+
+def test_ssh_repository_url_renders_as_escaped_text_not_link():
+    from agent.lib.dashboard_render import render_dashboard
+    # Private source with ssh:// repository URL must NOT be linked, only rendered as escaped text
+    inv = _inv_with_private([{"repo": "r", "packages": [], "repositories": ["ssh://git@internal/x.git"]}])
+    html = render_dashboard(inv, {"actions": [], "coverage": {}}, "2026-07-17")
+    assert 'href="ssh://' not in html                           # never linked with href
+    assert "ssh://git@internal/x.git" in html                   # present as text
