@@ -97,3 +97,20 @@ def test_coverage_shows_private_sources_loudly():
     assert "30 lockfile-exact · 10 declared-floor-only" in md
     assert "private package sources the scan can't see" in md
     assert "tops/ebay-wrapper" in md and "git.topsdemo.in" in md
+
+
+def test_per_repo_flags_sdk_undercount():
+    doc = {"generated": "2026-07-17", "repos": [
+        {"path": "with-sdk", "sdks": [{"eco": "composer", "pkg": "dts/ebay-sdk-php", "ver": "^18"}],
+         "endpoints": [], "runtimes": {}, "frameworks": {}},
+        {"path": "no-sdk", "sdks": [], "endpoints": [
+            {"vendor": "eBay", "version": "v1", "files": ["a.php:1"], "domain": "svcs.ebay.com"}],
+         "runtimes": {}, "frameworks": {}},
+    ]}
+    md = render_inventory_md(doc)
+    # the SDK repo carries the undercount caveat; the no-SDK repo does not
+    assert "may not be listed as endpoints" in md
+    with_block = md.split("### with-sdk")[1].split("###")[0]
+    no_block = md.split("### no-sdk")[1].split("###")[0]
+    assert "⚠" in with_block and "SDK-mediated" in with_block
+    assert "⚠" not in no_block

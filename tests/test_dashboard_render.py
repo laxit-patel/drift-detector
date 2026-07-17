@@ -399,3 +399,83 @@ def test_call_site_loc_is_xss_escaped():
     inv, audit = _sunset_inv_audit(None, files=['a<script>alert(1)</script>:1'])
     out = render_dashboard(inv, audit, "2026-07-17")
     assert "<script>alert(1)</script>" not in out                 # not literal in the HTML
+
+
+def _inv_with_private(private, sdkmediated=()):
+    return {"repos": [], "coverage": {"privateSources": list(private),
+                                      "sdkMediated": list(sdkmediated)}}
+
+
+def test_projection_flattens_private_sources_and_counts():
+    from agent.lib.dashboard_render import _build_projection
+    inv = _inv_with_private([
+        {"repo": "r", "packages": [{"pkg": "@acme/secret", "via": "git+ssh://x"}],
+         "repositories": ["https://git.internal/pkg.git"]},
+    ], sdkmediated=[{"repo": "r", "sdkCount": 2, "endpointCount": 0}])
+    proj = _build_projection(inv, {"actions": []})
+    assert proj["counts"]["private"] == 2                               # 1 package + 1 repo
+    rows = proj["private"]
+    assert {r["kind"] for r in rows} == {"package", "repo"}
+    pkg = next(r for r in rows if r["kind"] == "package")
+    assert pkg == {"repo": "r", "source": "@acme/secret", "kind": "package", "via": "git+ssh://x"}
+    repo = next(r for r in rows if r["kind"] == "repo")
+    assert repo["source"] == "https://git.internal/pkg.git" and repo["via"] == ""
+    assert proj["sdkMediated"] == [{"repo": "r", "sdkCount": 2, "endpointCount": 0}]
+
+
+def test_projection_private_empty_when_no_private_sources():
+    from agent.lib.dashboard_render import _build_projection
+    proj = _build_projection({"repos": [], "coverage": {}}, {"actions": []})
+    assert proj["counts"]["private"] == 0 and proj["private"] == [] and proj["sdkMediated"] == []
+
+
+def test_dashboard_has_private_tile_mode_and_coverage_section():
+    from agent.lib.dashboard_render import render_dashboard
+    inv = _inv_with_private(
+        [{"repo": "r", "packages": [{"pkg": "@acme/secret", "via": "git+ssh://x"}],
+          "repositories": ["https://git.internal/pkg.git"]}],
+        sdkmediated=[{"repo": "svc", "sdkCount": 3, "endpointCount": 1}])
+    audit = {"generated": "2026-07-17", "actions": [],
+             "coverage": {"notes": ["Sources: OSV.dev + endoflife.date."]}}
+    html = render_dashboard(inv, audit, "2026-07-17")
+    js = html.split("<script>")[-1]
+    # tile present in the Integrations group
+    assert 'data-filter="private"' in html and "Private / unreachable" in html
+    # a private panel mode exists in the JS
+    assert '"private"' in js and "renderPrivate" in js and "privateFor" in js
+    # the private source strings are embedded (rendered on click)
+    assert "@acme/secret" in html and "git.internal/pkg.git" in html
+    # the Coverage section renders the coverage note AND names the sdkMediated repo
+    assert 'id="coverage"' in html
+    assert "OSV.dev" in html                                    # coverageNotes now rendered
+    assert "svc" in html and "undercount" in html.lower()       # sdkMediated repo + undercount msg in HTML
+    data = _blob(html)
+    assert any(m.get("repo") == "svc" and m.get("sdkCount") == 3 for m in data.get("sdkMediated", [])),\
+        "sdkMediated data with repo='svc' and sdkCount=3 must be present in the JSON blob"
+
+
+def test_private_source_xss_escaped():
+    from agent.lib.dashboard_render import render_dashboard
+    evil = 'a<script>alert(1)</script>&"x'
+    inv = _inv_with_private([{"repo": evil, "packages": [{"pkg": evil, "via": evil}],
+                              "repositories": []}])
+    out = render_dashboard(inv, {"actions": [], "coverage": {}}, "2026-07-17")
+    assert "<script>alert(1)</script>" not in out               # not literal in HTML
+    blob = out.split('id="drift-data" type="application/json">')[1].split("</script>")[0]
+    assert "</script>" not in blob                              # blob can't break out
+
+
+def test_safeurl_still_http_only():
+    from agent.lib.dashboard_render import render_dashboard
+    html = render_dashboard({"repos": [], "coverage": {}}, {"actions": [], "coverage": {}}, "2026-07-17")
+    js = html.split("<script>")[-1]
+    assert "/^https?:\\/\\//i" in js                            # safeUrl allow-list unchanged
+
+
+def test_ssh_repository_url_renders_as_escaped_text_not_link():
+    from agent.lib.dashboard_render import render_dashboard
+    # Private source with ssh:// repository URL must NOT be linked, only rendered as escaped text
+    inv = _inv_with_private([{"repo": "r", "packages": [], "repositories": ["ssh://git@internal/x.git"]}])
+    html = render_dashboard(inv, {"actions": [], "coverage": {}}, "2026-07-17")
+    assert 'href="ssh://' not in html                           # never linked with href
+    assert "ssh://git@internal/x.git" in html                   # present as text

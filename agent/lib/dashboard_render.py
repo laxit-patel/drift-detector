@@ -85,6 +85,14 @@ def _build_projection(inventory: dict, audit: dict) -> dict:
         a["files"] = [{"loc": loc, "href": _permalink(rm.get("remote_url"), rm.get("head_sha"), loc)}
                       for loc in a["files"]]
     endpoints = _endpoints_of(inventory)
+    cov = inventory.get("coverage") or {}
+    private = []
+    for p in cov.get("privateSources", []):
+        for pkg in p.get("packages", []):
+            private.append({"repo": p.get("repo"), "source": pkg.get("pkg"),
+                            "kind": "package", "via": pkg.get("via", "")})
+        for url in p.get("repositories", []):
+            private.append({"repo": p.get("repo"), "source": url, "kind": "repo", "via": ""})
     counts = {
         "critical": sum(1 for a in actions if a["worst"] == "CRITICAL"),
         "fixes": sum(1 for a in actions if a["status"] == "DEPRECATED"),
@@ -93,6 +101,7 @@ def _build_projection(inventory: dict, audit: dict) -> dict:
         "apis": len({e["vendor"] for e in endpoints if e["classified"]}),
         "unknown": sum(1 for e in endpoints if not e["classified"]),
         "reposAffected": (audit.get("counts") or {}).get("reposAffected", 0),
+        "private": len(private),
     }
     return {
         "generated": audit.get("generated", ""),
@@ -100,6 +109,8 @@ def _build_projection(inventory: dict, audit: dict) -> dict:
         "delta": audit.get("delta"),
         "actions": actions,
         "endpoints": endpoints,
+        "private": private,
+        "sdkMediated": cov.get("sdkMediated", []),
         "coverageNotes": (audit.get("coverage") or {}).get("notes", []),
     }
 
@@ -150,13 +161,15 @@ def render_dashboard(inventory: dict, audit: dict, now: str) -> str:
     parts.append(_tile_group("Integrations", [
         ("apis", "APIs used", c["apis"]),
         ("sunsets", "Sunsets", c["sunsets"]),
-        ("unknown", "Unknown hosts", c["unknown"])]))
+        ("unknown", "Unknown hosts", c["unknown"]),
+        ("private", "Private / unreachable", c["private"])]))
     parts.append("</section>")
     # search + panel
     parts.append('<input class="search" id="search" type="search" '
                  'placeholder="Filter by repo, package or vendor…">')
     parts.append('<table id="panel"><tbody></tbody></table>')
     parts.append('<p id="empty" class="empty" hidden>Nothing found.</p>')
+    parts.append('<section id="coverage" class="coverage"></section>')
     # data + behaviour
     parts.append('<script id="drift-data" type="application/json">'
                  + _blob(projection) + "</script>")
@@ -207,6 +220,10 @@ margin-left:6px;padding:1px 6px}
 .callsite{padding:2px 0;font-family:ui-monospace,monospace;font-size:12px}
 .copy-loc{cursor:pointer;border:1px solid var(--line);background:none;color:var(--text);border-radius:4px;margin-left:6px;font-size:11px}
 .empty{padding:24px 18px;opacity:.7}
+.coverage{margin:16px 18px;color:var(--muted,#8a8f98);font-size:12px}
+.coverage h2{font-size:13px;margin:0 0 6px}
+.coverage .note{padding:2px 0}
+.intro{color:var(--muted,#8a8f98);font-style:italic;padding:6px 0}
 @media print{:root{--bg:#fff;--panel:#fff;--text:#000}.tile,#theme-toggle{border-color:#999}}
 """
 
@@ -325,9 +342,30 @@ _CLIENT_JS = r"""
     });
   }
 
+  function privateFor(){
+    return (DATA.private||[]).filter(function(p){ return matchesQ((p.repo||"")+" "+(p.source||"")); });
+  }
+  function renderPrivate(list){
+    if(list.length){
+      var intro=document.createElement("tr"), itd=document.createElement("td");
+      itd.colSpan=5; itd.className="intro";
+      itd.textContent="Sub-dependencies the scan couldn't crawl — private or unreachable.";
+      intro.appendChild(itd); body.appendChild(intro);
+    }
+    list.forEach(function(p){
+      var tr=document.createElement("tr"); tr.className="row";
+      var src=esc(p.source);
+      if(p.kind==="repo"){ var u=safeUrl(p.source); if(u){ src='<a href="'+escA(u)+'" rel="noopener">'+esc(p.source)+'</a>'; } }
+      tr.innerHTML='<td>'+esc(p.repo)+'</td><td>'+src+'</td><td>'+esc(p.kind)+
+        '</td><td>'+esc(p.via||"")+'</td><td></td>';
+      body.appendChild(tr);
+    });
+  }
+
   function render(){
     body.innerHTML="";
     if(state.mode==="endpoints"){ renderEndpoints(endpointsFor()); }
+    else if(state.mode==="private"){ renderPrivate(privateFor()); }
     else { renderActions(actionsFor()); }
     empty.hidden = body.children.length>0;
   }
@@ -341,8 +379,11 @@ _CLIENT_JS = r"""
       Array.prototype.forEach.call(document.querySelectorAll(".tile"),
         function(x){ x.setAttribute("aria-pressed","false"); });
       if(active){ state.filter=null; state.mode="actions"; }
-      else { state.filter=f; state.mode=(f==="apis"||f==="unknown"||f==="sunsets")?
-               (f==="sunsets"?"actions":"endpoints"):"actions"; t.setAttribute("aria-pressed","true"); }
+      else { state.filter=f;
+             state.mode = (f==="apis"||f==="unknown") ? "endpoints"
+                        : (f==="private") ? "private"
+                        : "actions";
+             t.setAttribute("aria-pressed","true"); }
       render();
     });
   });
@@ -359,6 +400,22 @@ _CLIENT_JS = r"""
     root.setAttribute("data-theme", next);
     try{ localStorage.setItem("drift-theme", next); }catch(e){}
   });
+
+  (function(){
+    var cov=document.getElementById("coverage"); if(!cov) return;
+    var h="";
+    (DATA.coverageNotes||[]).forEach(function(n){ h+='<div class="note">'+esc(n)+'</div>'; });
+    var sm=DATA.sdkMediated||[];
+    if(sm.length){
+      h+='<div class="note">'+esc(sm.length)+' repo(s) use SDK client(s) — calls routed through an '
+        +'SDK have no URL literal and aren’t listed as endpoints, so the endpoint count may '
+        +'undercount:</div><ul>';
+      sm.forEach(function(m){ h+='<li>'+esc(m.repo)+' ('+esc(m.sdkCount)+' SDKs, '
+        +esc(m.endpointCount)+' endpoints)</li>'; });
+      h+='</ul>';
+    }
+    cov.innerHTML = h ? ("<h2>Coverage</h2>"+h) : "";
+  })();
 
   render();
 })();
