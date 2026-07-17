@@ -346,10 +346,12 @@ _CLIENT_JS = r"""
     return (DATA.private||[]).filter(function(p){ return matchesQ((p.repo||"")+" "+(p.source||"")); });
   }
   function renderPrivate(list){
-    var intro=document.createElement("tr"), itd=document.createElement("td");
-    itd.colSpan=5; itd.className="intro";
-    itd.textContent="Sub-dependencies the scan couldn't crawl — private or unreachable.";
-    intro.appendChild(itd); body.appendChild(intro);
+    if(list.length){
+      var intro=document.createElement("tr"), itd=document.createElement("td");
+      itd.colSpan=5; itd.className="intro";
+      itd.textContent="Sub-dependencies the scan couldn't crawl — private or unreachable.";
+      intro.appendChild(itd); body.appendChild(intro);
+    }
     list.forEach(function(p){
       var tr=document.createElement("tr"); tr.className="row";
       var src=esc(p.source);
@@ -401,7 +403,7 @@ _CLIENT_JS = r"""
 
   (function(){
     var cov=document.getElementById("coverage"); if(!cov) return;
-    var h="<h2>Coverage</h2>";
+    var h="";
     (DATA.coverageNotes||[]).forEach(function(n){ h+='<div class="note">'+esc(n)+'</div>'; });
     var sm=DATA.sdkMediated||[];
     if(sm.length){
@@ -412,7 +414,7 @@ _CLIENT_JS = r"""
         +esc(m.endpointCount)+' endpoints)</li>'; });
       h+='</ul>';
     }
-    cov.innerHTML=h;
+    cov.innerHTML = h ? ("<h2>Coverage</h2>"+h) : "";
   })();
 
   render();
