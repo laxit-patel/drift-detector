@@ -119,6 +119,8 @@ def _per_repo_section(repos: list, *, max_files: int = 6) -> list:
             shown = ", ".join(f"{s.get('eco')}/{s.get('pkg')} {s.get('ver', '')}".strip() for s in sdks[:12])
             more = "" if len(sdks) <= 12 else f" (+{len(sdks) - 12} more)"
             out.append(f"- **SDKs:** {shown}{more}")
+            out.append(f"- ⚠ **{len(sdks)} SDK package(s)** — SDK-mediated calls (no URL "
+                       f"literal) may not be listed as endpoints.")
         if not (rts or fws or eps or sdks):
             out.append("- _no third-party usage detected_")
         out.append("")
