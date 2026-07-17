@@ -5,7 +5,7 @@ from agent.lib.scan_util import git_meta, _default_git
 from agent.lib.manifest_scan import extract_manifest_records
 from agent.lib.record_routing import partition_records
 from agent.lib.opengrep import run_scan
-from agent.lib.endpoints import build_endpoints
+from agent.lib.endpoints import build_endpoints, scan_endpoints
 from agent.lib.superset import to_superset_repo
 from agent.lib import lockfile, private_sources
 
@@ -19,11 +19,13 @@ def scan_repo(repo_abs, repo_name, repo_id, vendors, rules_path, *,
     partitioned = partition_records(records)
 
     scan = run_scan(repo_abs, rules_path, engine=engine, run=run)
-    endpoints = [e for e in build_endpoints(scan["matches"], repo_abs, vendors) if e.get("domain")]
+    scanned_eps = scan_endpoints(scan["matches"], repo_abs, vendors)
+    endpoints = [e for e in scanned_eps["endpoints"] if e.get("domain")]
 
     record = to_superset_repo(meta, partitioned, endpoints)
     _annotate_resolved(record, repo_abs)
     record["privateSources"] = private_sources.detect(repo_abs)   # what we can't see (say so)
+    record["residue"] = scanned_eps["residue"]
     return record, {"unparsed": unparsed, "opengrepErrors": scan["errors"]}
 
 
