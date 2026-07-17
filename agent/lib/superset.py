@@ -20,6 +20,7 @@ def to_superset_repo(meta: dict, partitioned: dict, endpoints: list) -> dict:
         "id": meta.get("id"), "path": meta.get("path"),
         "ref": meta.get("ref"), "ref_is_default": meta.get("ref_is_default"),
         "last_activity_at": meta.get("last_activity_at"), "head_sha": meta.get("head_sha"),
+        "remote_url": meta.get("remote_url"),
         "runtimes": _runtimes(partitioned.get("runtimes", [])),
         "frameworks": {r.name: {"ver": r.declared_range, "techKey": r.tech_key,
                                 "parseQuality": r.parse_quality}
