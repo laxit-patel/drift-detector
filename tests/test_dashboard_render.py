@@ -357,3 +357,45 @@ def test_node_smoke_executes_client_js_and_renders_rows(tmp_path):
     out = subprocess.run(["node", str(harness)], capture_output=True, text=True, timeout=20)
     assert out.returncode == 0, out.stderr
     assert out.stdout.strip() == "2"      # two actions -> two rows rendered by the real JS
+
+
+def _sunset_inv_audit(remote_url, files=("src/x.php:37", "src/y.php:39")):
+    inv = {"repos": [{"path": "r", "remote_url": remote_url, "head_sha": "SHA", "endpoints": []}]}
+    audit = {"generated": "2026-07-17", "coverage": {},
+             "actions": [{"repo": "r", "ref": "eBay", "kind": "sunset", "status": "DEPRECATED",
+                          "worst": "SUNSET", "finding_count": 1, "recommendation": "migrate",
+                          "files": list(files), "fixes": [], "sources": []}]}
+    return inv, audit
+
+
+def test_call_sites_render_one_per_line_with_blob_link_for_remote():
+    from agent.lib.dashboard_render import render_dashboard
+    inv, audit = _sunset_inv_audit("https://github.com/o/r")
+    js = render_dashboard(inv, audit, "2026-07-17").split("<script>")[-1]
+    # the render emits an <a href> to the pinned blob and does NOT comma-join
+    assert "/blob/SHA/src/x.php#L37" in render_dashboard(inv, audit, "2026-07-17")
+    assert "'Used at: '+a.files.map(esc).join" not in js          # the old inline join is gone
+
+
+def test_local_repo_call_site_is_text_plus_copy_no_href():
+    from agent.lib.dashboard_render import render_dashboard
+    inv, audit = _sunset_inv_audit(None)                          # local repo, no remote
+    html_out = render_dashboard(inv, audit, "2026-07-17")
+    js = html_out.split("<script>")[-1]
+    assert "navigator.clipboard.writeText" in js                  # a copy affordance exists
+    assert "f.href" in js and "f.loc" in js                       # renders the {loc,href} shape
+
+
+def test_no_token_in_rendered_html_even_if_remote_had_one():
+    # belt-and-suspenders: even though Task 1 strips at capture, assert nothing leaks here.
+    from agent.lib.dashboard_render import render_dashboard
+    inv, audit = _sunset_inv_audit("https://github.com/o/r")       # already stripped upstream
+    out = render_dashboard(inv, audit, "2026-07-17")
+    assert "glpat-" not in out and "@github.com" not in out
+
+
+def test_call_site_loc_is_xss_escaped():
+    from agent.lib.dashboard_render import render_dashboard
+    inv, audit = _sunset_inv_audit(None, files=['a<script>alert(1)</script>:1'])
+    out = render_dashboard(inv, audit, "2026-07-17")
+    assert "<script>alert(1)</script>" not in out                 # not literal in the HTML

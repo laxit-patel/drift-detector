@@ -204,6 +204,8 @@ border:1px solid var(--line);background:var(--panel);color:var(--text)}
 color:var(--accent);display:inline-block}
 .copy{cursor:pointer;border:1px solid var(--line);background:none;color:var(--text);border-radius:4px;
 margin-left:6px;padding:1px 6px}
+.callsite{padding:2px 0;font-family:ui-monospace,monospace;font-size:12px}
+.copy-loc{cursor:pointer;border:1px solid var(--line);background:none;color:var(--text);border-radius:4px;margin-left:6px;font-size:11px}
 .empty{padding:24px 18px;opacity:.7}
 @media print{:root{--bg:#fff;--panel:#fff;--text:#000}.tile,#theme-toggle{border-color:#999}}
 """
@@ -270,6 +272,10 @@ _CLIENT_JS = r"""
         if(open){ det=detailCell(actionDetail(a)); tr.after(det);
                   var b=det.querySelector(".copy"); if(b) b.addEventListener("click", function(ev){
                     ev.stopPropagation(); navigator.clipboard && navigator.clipboard.writeText(a.command); });
+                  det.querySelectorAll(".copy-loc").forEach(function(b){
+                    b.addEventListener("click", function(ev){ ev.stopPropagation();
+                      if(navigator.clipboard) navigator.clipboard.writeText(b.getAttribute("data-loc")); });
+                  });
         } else if(det){ det.remove(); det=null; }
       });
       body.appendChild(tr);
@@ -282,7 +288,20 @@ _CLIENT_JS = r"""
     else if(a.recommendation){ h+='<div>'+esc(a.recommendation)+'</div>'; }
     h+='<div>Clears '+esc(a.finding_count)+' advisor'+(a.finding_count==1?'y':'ies')
       +(a.critical_count?(' ('+esc(a.critical_count)+' critical)'):'')+'</div>';
-    if(a.files && a.files.length){ h+='<div>Used at: '+a.files.map(esc).join(", ")+'</div>'; }
+    if(a.files && a.files.length){
+      h+='<div class="usedat"><b>Used at:</b>';
+      a.files.forEach(function(f){
+        if(f.href){
+          var u=safeUrl(f.href);
+          h+='<div class="callsite">'+(u? '<a href="'+escA(u)+'" rel="noopener">'+esc(f.loc)+'</a>'
+                                        : esc(f.loc))+'</div>';
+        } else {
+          h+='<div class="callsite">'+esc(f.loc)
+            +' <button class="copy-loc" data-loc="'+escA(f.loc)+'">copy</button></div>';
+        }
+      });
+      h+='</div>';
+    }
     if(a.cves && a.cves.length){ h+='<ul>'+a.cves.map(function(c){
       return '<li>'+esc(c.id)+' — '+esc(c.title)+'</li>'; }).join("")+'</ul>'; }
     if(a.sources && a.sources.length){ h+='<div>'+a.sources.map(function(u){
