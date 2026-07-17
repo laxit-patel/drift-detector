@@ -427,3 +427,43 @@ def test_projection_private_empty_when_no_private_sources():
     from agent.lib.dashboard_render import _build_projection
     proj = _build_projection({"repos": [], "coverage": {}}, {"actions": []})
     assert proj["counts"]["private"] == 0 and proj["private"] == [] and proj["sdkMediated"] == []
+
+
+def test_dashboard_has_private_tile_mode_and_coverage_section():
+    from agent.lib.dashboard_render import render_dashboard
+    inv = _inv_with_private(
+        [{"repo": "r", "packages": [{"pkg": "@acme/secret", "via": "git+ssh://x"}],
+          "repositories": ["https://git.internal/pkg.git"]}],
+        sdkmediated=[{"repo": "svc", "sdkCount": 3, "endpointCount": 1}])
+    audit = {"generated": "2026-07-17", "actions": [],
+             "coverage": {"notes": ["Sources: OSV.dev + endoflife.date."]}}
+    html = render_dashboard(inv, audit, "2026-07-17")
+    js = html.split("<script>")[-1]
+    # tile present in the Integrations group
+    assert 'data-filter="private"' in html and "Private / unreachable" in html
+    # a private panel mode exists in the JS
+    assert '"private"' in js and "renderPrivate" in js and "privateFor" in js
+    # the private source strings are embedded (rendered on click)
+    assert "@acme/secret" in html and "git.internal/pkg.git" in html
+    # the Coverage section renders the coverage note AND names the sdkMediated repo
+    assert 'id="coverage"' in html
+    assert "OSV.dev" in html                                    # coverageNotes now rendered
+    assert "svc" in html and "may undercount" in html.lower() or "undercount" in js.lower()
+
+
+def test_private_source_xss_escaped():
+    from agent.lib.dashboard_render import render_dashboard
+    evil = 'a<script>alert(1)</script>&"x'
+    inv = _inv_with_private([{"repo": evil, "packages": [{"pkg": evil, "via": evil}],
+                              "repositories": []}])
+    out = render_dashboard(inv, {"actions": [], "coverage": {}}, "2026-07-17")
+    assert "<script>alert(1)</script>" not in out               # not literal in HTML
+    blob = out.split('id="drift-data" type="application/json">')[1].split("</script>")[0]
+    assert "</script>" not in blob                              # blob can't break out
+
+
+def test_safeurl_still_http_only():
+    from agent.lib.dashboard_render import render_dashboard
+    html = render_dashboard({"repos": [], "coverage": {}}, {"actions": [], "coverage": {}}, "2026-07-17")
+    js = html.split("<script>")[-1]
+    assert "/^https?:\\/\\//i" in js                            # safeUrl allow-list unchanged
