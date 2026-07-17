@@ -25,7 +25,9 @@ def test_scan_repo_assembles_manifests_and_endpoints(tmp_path):
          "extra": {"metadata": {"kind": "url"}}}],
         "errors": [], "paths": {"scanned": ["pay.php"]}})
     git = lambda args: {"rev-parse HEAD": "sha1", "rev-parse --abbrev-ref HEAD": "main",
-                        "log -1 --format=%cI": "2026-07-10"}[" ".join(args[2:])]
+                        "log -1 --format=%cI": "2026-07-10",
+                        "remote get-url origin": "https://github.com/acme/web.git",
+                        }.get(" ".join(args[2:]), "")   # .get -> tolerant of new git_meta calls
 
     record, note = scan_repo(str(tmp_path), "acme/web", 1, _VENDORS, "/rules.yaml",
                              engine="semgrep", run=_fake_opengrep(canned), git=git)
