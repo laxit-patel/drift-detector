@@ -147,3 +147,14 @@ def test_sunset_findings_get_precise_sarif_locations():
     loc = r["locations"][0]["physicalLocation"]
     assert loc["artifactLocation"]["uri"] == "svc/orders/client.js"      # repo/path
     assert loc["region"]["startLine"] == 17                             # the :17 line
+
+
+def test_no_more_than_two_entries_share_a_source_url():
+    # genericness guard (#1 from the PM demo): a lazy shared citation (many APIs -> one index
+    # page) regresses loudly. Distinct text-fragment URLs count as distinct sources.
+    import collections
+    from agent.lib import vendor_sunsets as vs
+    cat = vs.load_sunsets()
+    counts = collections.Counter(s.get("source") for s in cat if s.get("source"))
+    offenders = {url: n for url, n in counts.items() if n > 2}
+    assert not offenders, f"more than 2 sunset entries share a source URL: {offenders}"
