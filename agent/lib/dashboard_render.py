@@ -85,6 +85,14 @@ def _build_projection(inventory: dict, audit: dict) -> dict:
         a["files"] = [{"loc": loc, "href": _permalink(rm.get("remote_url"), rm.get("head_sha"), loc)}
                       for loc in a["files"]]
     endpoints = _endpoints_of(inventory)
+    cov = inventory.get("coverage") or {}
+    private = []
+    for p in cov.get("privateSources", []):
+        for pkg in p.get("packages", []):
+            private.append({"repo": p.get("repo"), "source": pkg.get("pkg"),
+                            "kind": "package", "via": pkg.get("via", "")})
+        for url in p.get("repositories", []):
+            private.append({"repo": p.get("repo"), "source": url, "kind": "repo", "via": ""})
     counts = {
         "critical": sum(1 for a in actions if a["worst"] == "CRITICAL"),
         "fixes": sum(1 for a in actions if a["status"] == "DEPRECATED"),
@@ -93,6 +101,7 @@ def _build_projection(inventory: dict, audit: dict) -> dict:
         "apis": len({e["vendor"] for e in endpoints if e["classified"]}),
         "unknown": sum(1 for e in endpoints if not e["classified"]),
         "reposAffected": (audit.get("counts") or {}).get("reposAffected", 0),
+        "private": len(private),
     }
     return {
         "generated": audit.get("generated", ""),
@@ -100,6 +109,8 @@ def _build_projection(inventory: dict, audit: dict) -> dict:
         "delta": audit.get("delta"),
         "actions": actions,
         "endpoints": endpoints,
+        "private": private,
+        "sdkMediated": cov.get("sdkMediated", []),
         "coverageNotes": (audit.get("coverage") or {}).get("notes", []),
     }
 

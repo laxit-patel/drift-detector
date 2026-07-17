@@ -399,3 +399,31 @@ def test_call_site_loc_is_xss_escaped():
     inv, audit = _sunset_inv_audit(None, files=['a<script>alert(1)</script>:1'])
     out = render_dashboard(inv, audit, "2026-07-17")
     assert "<script>alert(1)</script>" not in out                 # not literal in the HTML
+
+
+def _inv_with_private(private, sdkmediated=()):
+    return {"repos": [], "coverage": {"privateSources": list(private),
+                                      "sdkMediated": list(sdkmediated)}}
+
+
+def test_projection_flattens_private_sources_and_counts():
+    from agent.lib.dashboard_render import _build_projection
+    inv = _inv_with_private([
+        {"repo": "r", "packages": [{"pkg": "@acme/secret", "via": "git+ssh://x"}],
+         "repositories": ["https://git.internal/pkg.git"]},
+    ], sdkmediated=[{"repo": "r", "sdkCount": 2, "endpointCount": 0}])
+    proj = _build_projection(inv, {"actions": []})
+    assert proj["counts"]["private"] == 2                               # 1 package + 1 repo
+    rows = proj["private"]
+    assert {r["kind"] for r in rows} == {"package", "repo"}
+    pkg = next(r for r in rows if r["kind"] == "package")
+    assert pkg == {"repo": "r", "source": "@acme/secret", "kind": "package", "via": "git+ssh://x"}
+    repo = next(r for r in rows if r["kind"] == "repo")
+    assert repo["source"] == "https://git.internal/pkg.git" and repo["via"] == ""
+    assert proj["sdkMediated"] == [{"repo": "r", "sdkCount": 2, "endpointCount": 0}]
+
+
+def test_projection_private_empty_when_no_private_sources():
+    from agent.lib.dashboard_render import _build_projection
+    proj = _build_projection({"repos": [], "coverage": {}}, {"actions": []})
+    assert proj["counts"]["private"] == 0 and proj["private"] == [] and proj["sdkMediated"] == []
