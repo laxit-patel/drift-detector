@@ -127,7 +127,9 @@ stack grows. The **audit** (`agent/audit.py`) reads that IR and enriches it via
 OSV.dev + endoflife.date over stdlib HTTP (no extra dependency).
 
 See [docs/PLUGIN.md](docs/PLUGIN.md) for details, and run the test suite with
-`pytest` (needs `pip install -r requirements.txt`).
+`pytest` (needs `pip install -r requirements.txt`). Contributors improving the
+scanner can measure it against real public repos with the evaluation harness —
+see [docs/EVAL.md](docs/EVAL.md) (`bin/drift-eval`).
 
 ## Limits
 

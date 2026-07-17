@@ -2,6 +2,34 @@
 
 All notable changes to the Drift Detector plugin. Dates are YYYY-MM-DD.
 
+## v0.4.0-beta — 2026-07-17
+
+A measurement instrument for the scanner: run it against real code and see what it catches.
+
+### Added
+- **Evaluation / regression harness** (`bin/drift-eval`, contributor tool — see
+  [docs/EVAL.md](docs/EVAL.md)). Clones a **pinned** corpus of real public repos grouped by the
+  integration they use (`eval/corpus.yaml`), scans them, and scores the scanner: **recall is a
+  hard gate** (a repo in `sandbox/ebay/` must detect eBay), plus informational
+  noise / version / sunset metrics. Every miss is tagged by a failure-mode enum so the scorecard
+  doubles as an improvement backlog. Deterministic, zero-LLM; clones and run artifacts live under
+  `~/.drift/` and `~/Projects/sandbox/`, never committed.
+- **Corpus:** eBay (5 repos), Amazon SP-API (5), Walmart (4) — all real, SHA-pinned. First scores:
+  eBay 5/5 recall + the `svcs.ebay.com` Finding-API sunset fired on a real legacy repo; SP-API 5/5;
+  Walmart 4/4.
+- **`~/.drift/` home** for eval + central/demo run artifacts (honors `$DRIFT_HOME`). The plugin's
+  in-place `<folder>/.drift-detector/` behavior is unchanged.
+
+### Fixed / changed
+- **Honest version-rate metric.** Version-extraction rate is now measured only over endpoints whose
+  URL actually carries a version, with a separate "no URL version" count — so the scanner isn't
+  scored down for APIs that have no URL version (a vendor's design choice, not a scanner failure).
+
+### Notes
+- The harness quantified a real boundary: a scanner miss where the API version lives only in SDK
+  code (a class constant assembled at runtime) is deterministically unreachable — it marks where a
+  future cognition layer would earn its place, rather than something to chase with AST rules.
+
 ## v0.3.0-beta — 2026-07-16
 
 The report you actually act on, plus a visual surface and sharper detection.

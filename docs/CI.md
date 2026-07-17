@@ -21,7 +21,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: laxit-patel/drift-detector@v0.3.0-beta
+      - uses: laxit-patel/drift-detector@v0.4.0-beta
         with:
           fail-on-deprecated: ${{ github.event_name == 'pull_request' }}
           chat-webhook: ${{ secrets.DRIFT_CHAT_WEBHOOK }}   # optional
