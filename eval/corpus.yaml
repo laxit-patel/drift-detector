@@ -49,3 +49,92 @@
   expect: { vendor: eBay, sdk_keywords: [ebay] }
   holdout: false
   fetched_at: "2026-07-16"
+
+# ── Amazon SP-API (category: sp) ───────────────────────────────────────────────
+- repo: jlevers/selling-partner-api
+  url: https://github.com/jlevers/selling-partner-api.git
+  sha: "7cecd56b191cbb0710ec55479c77009d92e166a6"
+  license: BSD-3-Clause
+  category: sp
+  expect: { vendor: Amazon SP-API, sdk_keywords: [selling-partner, sp-api, spapi, sellingpartner] }
+  holdout: false
+  fetched_at: "2026-07-17"
+
+- repo: clousale/amazon-sp-api-php
+  url: https://github.com/clousale/amazon-sp-api-php.git
+  sha: "3d04a42cf19c01693b52b3902bdb8090687f317c"
+  license: MIT
+  category: sp
+  expect: { vendor: Amazon SP-API, sdk_keywords: [selling-partner, sp-api, spapi, sellingpartner] }
+  holdout: false
+  fetched_at: "2026-07-17"
+
+- repo: amazon-php/sp-api-sdk
+  url: https://github.com/amazon-php/sp-api-sdk.git
+  sha: "9b95f909f81a58032e6e470af935aa992f2cb31d"
+  license: NOASSERTION
+  category: sp
+  expect: { vendor: Amazon SP-API, sdk_keywords: [selling-partner, sp-api, spapi, sellingpartner] }
+  holdout: true
+  fetched_at: "2026-07-17"
+
+- repo: amzn/selling-partner-api-sdk
+  url: https://github.com/amzn/selling-partner-api-sdk.git
+  sha: "29522e855f59a1a17fd5332d3eaa5ea297b3ef91"
+  license: Apache-2.0
+  category: sp
+  expect: { vendor: Amazon SP-API, sdk_keywords: [selling-partner, sp-api, spapi, sellingpartner] }
+  holdout: false
+  fetched_at: "2026-07-17"
+
+- repo: double-break/spapi-php
+  url: https://github.com/double-break/spapi-php.git
+  sha: "635e2e74f4f7c615a83322595ef8fca64d83e887"
+  license: MIT
+  category: sp
+  expect: { vendor: Amazon SP-API, sdk_keywords: [selling-partner, sp-api, spapi, sellingpartner] }
+  holdout: false
+  fetched_at: "2026-07-17"
+
+# ── Walmart Marketplace (category: walmart) ────────────────────────────────────
+- repo: highsidelabs/walmart-api-php
+  url: https://github.com/highsidelabs/walmart-api-php.git
+  sha: "575b6116d21bfbc484e431a95434dadca0fe7eb8"
+  license: BSD-3-Clause
+  category: walmart
+  expect: { vendor: Walmart, sdk_keywords: [walmart] }
+  holdout: false
+  fetched_at: "2026-07-17"
+
+- repo: keithbrink/walmart-marketplace-laravel-sdk
+  url: https://github.com/keithbrink/walmart-marketplace-laravel-sdk.git
+  sha: "a87531d38c85d102919839de8ed80c7b6caa6bc8"
+  license: MIT
+  category: walmart
+  expect: { vendor: Walmart, sdk_keywords: [walmart] }
+  holdout: true
+  fetched_at: "2026-07-17"
+
+- repo: AdolphYu/laravel-walmart-marketplace
+  url: https://github.com/AdolphYu/laravel-walmart-marketplace.git
+  sha: "824bd566786c31dfc829487eb2efd3c92db02fce"
+  license: MIT
+  category: walmart
+  expect: { vendor: Walmart, sdk_keywords: [walmart] }
+  holdout: false
+  fetched_at: "2026-07-17"
+
+- repo: eolabs-io/walmart-api
+  url: https://github.com/eolabs-io/walmart-api.git
+  sha: "cdcf6fb77683207dda645536ef648d8951554221"
+  license: MIT
+  category: walmart
+  expect: { vendor: Walmart, sdk_keywords: [walmart] }
+  holdout: false
+  fetched_at: "2026-07-17"
+
+# Dropped sandip5678/walmart-php: label-wrong specimen — titled "Walmart Marketplace Integration"
+# but the code calls only baconipsum.com (lorem-ipsum) + a placeholder-image API to make dummy
+# products; it contains no actual Walmart API/SDK. The scanner correctly detects nothing, so this
+# is a bad corpus specimen (not a scanner weakness) — dropped rather than papered over with a
+# known_gap. This is exactly the `label-wrong` failure mode the eval exists to catch.
