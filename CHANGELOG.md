@@ -2,6 +2,57 @@
 
 All notable changes to the Drift Detector plugin. Dates are YYYY-MM-DD.
 
+## v0.6.0-beta — 2026-07-20
+
+**Amazon SP-API is now audited, and the report is now checkable by machine.**
+v0.5.0-beta reported zero sunsets for a repo with 272 Amazon call-sites. That read as
+"clean" and meant "we never loaded Amazon's list". Both halves of this release come
+from that: the data that was missing, and the reason nobody noticed.
+
+### Added
+
+- **8 Amazon SP-API retirements**, fetched from the vendor's own deprecation schedule.
+  On a real SP-API client, **six of the eight have already passed** — including
+  `/fba/inbound/v0` (removed 2025-01-21) with 34 call-sites, plus
+  `/reports/2020-09-04` and `/feeds/2020-09-04` (both removed 2024-06-27).
+  `/orders/v0` (2027-03-27) and `/finances/v0` (2027-08-27) carry live deadlines.
+- **The API-family axis.** Amazon retires per *(family, version)*, not per version:
+  four different APIs share the string `v0` with four different fates. Endpoints now
+  carry `apiPath` (`/products/fees/v0`), catalog entries can scope on `path:`, and the
+  join precedence is operation > path > domain > version. Without this a `version: v0`
+  entry would have dated 78 call-sites identically and invented most of them.
+- **`drift-scan verify --state <dir>`** — mechanical invariants over the report: every
+  tile equals the rows its filter yields, the sunset count is re-derived independently
+  from findings, no two rows render an identical label, every action field is projected
+  or explicitly declared dropped, and the page's embedded data matches `dashboard.json`.
+  Exit 0 clean / 3 violations / 4 nothing to verify.
+- **`dashboard.json`** — the payload the page embeds, written to disk. One object, two
+  sinks, so what a test asserts on is what a reader sees.
+
+### Fixed
+
+- **Sunset actions collapsed by vendor.** Twelve dead eBay operations with eight
+  distinct dates rendered as ONE row and a tile reading `Sunsets 1`; the row also kept
+  only the highest-ranked recommendation, silently discarding the rest. Sunsets now key
+  on the thing being retired, and rows are labelled with it (`eBay GetCategoryFeatures`).
+- **A silently dropped catalog.** `load_sunsets` filtered on `version|domain|operation`,
+  so every `path`-scoped entry was read, discarded without a word, and the audit still
+  reported clean. An unscopeable entry now raises instead of vanishing.
+- **The absorb gate rejected legitimate undated deprecations**, which the catalog format
+  explicitly permits. It now accepts them with an explicit `status: deprecated-no-date`,
+  so "the vendor set no date" and "I could not find the date" stay distinguishable.
+- The dashboard header read `1 repos` on a two-repo scan; it now reads
+  `1 of 2 repos affected`.
+
+### Upgrading
+
+- **Caches invalidate once** (schema 4 → 5, endpoints gained `apiPath`). The first scan
+  after upgrading re-reads every repo. Old `repos_v4/` directories are inert.
+- **A hand-edited `vendor_sunsets.yaml` with a scopeless entry now errors** instead of
+  being skipped. That is deliberate — give the entry a `version`, `domain`, `operation`
+  or `path`.
+- Expect **more findings, not fewer**, on repos using Amazon SP-API.
+
 ## v0.5.0-beta — 2026-07-20
 
 **The release that answers the demo.** The PM asked why the scan "skipped"
