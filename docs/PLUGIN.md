@@ -41,7 +41,7 @@ Git repos under `<folder>` are discovered **recursively** (at any depth). Pass m
 1. checks the engine,
 2. runs the scan (only repos whose git `HEAD` changed since last time are re-analyzed — a
    per-repo commit-SHA cache makes re-runs fast),
-3. writes `<folder>/.drift-detector/{inventory.json, INVENTORY.md, DRIFT.md}`,
+3. writes `<folder>/.drift-detector/{inventory.json, audit.json, dashboard.html}`,
 4. narrates a summary (top APIs by repo count, runtimes/frameworks, what changed since last scan),
 5. answers follow-ups (*"which repos use SP-API?"*, *"who's on an old Node?"*) from
    `inventory.json` — the queryable shape-map — without re-scanning.
@@ -50,7 +50,7 @@ Git repos under `<folder>` are discovered **recursively** (at any depth). Pass m
 
 `/drift-detector <folder>` runs the full **scan → audit** pipeline (the `run` subcommand) and offers
 to install a **cron job** (default Sundays 7am) that re-runs it deterministically — zero LLM tokens —
-and posts a summary to **Google Chat** if a webhook is configured. The agent shows the exact crontab
+on this machine. The agent shows the exact crontab
 line and confirms before touching your crontab; `unschedule <folder>` removes it. Config + `cron.log`
 live in `<folder>/.drift-detector/`.
 
@@ -66,13 +66,8 @@ graceful offline. Checks the **declared manifest floor** version — verify agai
 - **`inventory.json`** — the IR: per-repo `{runtimes, frameworks, sdks, endpoints[{vendor,domain,
   version,file_count,files:[path:line]}]}` + rollups (`unique_apis`, `unique_api_versions`,
   `unique_packages`, `runtimes`) + coverage.
-- **`INVENTORY.md`** — the human report (drift-first: what changed, then APIs/frameworks/runtimes/SDKs,
-  per-repo endpoints at `file:line`, coverage).
-- **`DRIFT.md`** — what changed vs the previous scan (new/removed APIs, SDK version bumps, runtime
-  changes).
-- **`AUDIT.md`** *(audit)* — vulnerability + EOL findings, ranked, per repo, each with a source + fix.
-- **`bom.json`** *(audit)* — CycloneDX 1.6 SBOM (components + vulnerabilities).
-- **`findings.sarif`** *(audit)* — SARIF 2.1.0 for GitHub's Security tab.
+- **`audit.json`** — findings + ranked actions + delta, as data.
+- **`dashboard.html`** — the report: self-contained interactive dashboard (tiles, fix queue, endpoints/sunsets, drift, coverage grade). Opens from `file://`.
 
 ## Notes & limits (v1)
 
@@ -84,5 +79,5 @@ graceful offline. Checks the **declared manifest floor** version — verify agai
 - Extend `agent/vendors.yaml` (vendors) and `agent/frameworks.yaml` (frameworks) as your stack grows.
 - The audit uses Tier-1 sources (OSV + endoflife.date). Deferred: Tier 2 (registry abandoned/deprecated,
   e.g. `fzaninotto/faker`) + Tier 3 (community/early-warning) signals; lockfile-precise versions.
-- Delivery connectors: Google Chat + local reports (shipped). Deferred: email, SARIF auto-upload to
+- Delivery: one local dashboard.html (the only report surface). Deferred: email, code-scanning upload to
   the GitHub Security tab, fleet auto-clone, systemd-timer/launchd (cron is Linux/macOS).
