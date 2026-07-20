@@ -12,6 +12,10 @@
 #
 #   url-assembly     a base host/URL expression concatenated with a path
 #                    -> `base` is an ast-grep pattern for the base expression
+#   url-append       a base assigned, then a path APPENDED with `.=` two statements
+#                    later — url-assembly's single-expression `base . $B` cannot see it
+#                    -> `target` names the variable literally (a metavariable would
+#                       match every string append in the codebase)
 #   operation-marker names the API operation at the call-site, for vendors that
 #                    deprecate per-operation (eBay Trading: one host, ~19 calls)
 #                    -> `marker` (regex over string literals) or `pattern`
@@ -45,3 +49,20 @@
   pattern: "getEbaySession($NAME, $$$)"
   evidence: "rushikesh/ebayapi src/Ebay/EbayCategoryFieldsFeature.php:24"
   note: The call name passed to the session helper becomes X-EBAY-API-CALL-NAME.
+
+- id: php-serviceurl-append
+  family: url-append
+  language: php
+  target: serviceURL
+  evidence: "rushikesh/ebayapi src/Ebay/EbayOrderReturn.php:35"
+  note: >-
+    eBay Post-Order clients assign the base then append the path two statements later
+    ($serviceURL = $this->API_ENDPOINT; ... $serviceURL .= $params['url'];), which the
+    single-expression url-assembly family cannot express.
+
+- id: php-api-endpoint-property
+  family: url-assembly
+  language: php
+  base: "$A->API_ENDPOINT"
+  evidence: "rushikesh/ebayapi src/Ebay/src/Ebay_post_order_api.php:64"
+  note: eBay Post-Order procedural client — $url = $this->API_ENDPOINT . "post-order/v2/...".

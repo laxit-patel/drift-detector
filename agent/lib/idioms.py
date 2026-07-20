@@ -18,10 +18,11 @@ import yaml
 _DEFAULT = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
                         "idioms.yaml")
 
-FAMILIES = frozenset({"url-assembly", "operation-marker"})
+FAMILIES = frozenset({"url-assembly", "url-append", "operation-marker"})
 
 # family -> the rule kind its matches carry, i.e. how endpoints.py will read them
-KIND_BY_FAMILY = {"url-assembly": "path-assembly", "operation-marker": "operation-marker"}
+KIND_BY_FAMILY = {"url-assembly": "path-assembly", "url-append": "path-assembly",
+                  "operation-marker": "operation-marker"}
 
 
 class IdiomError(ValueError):
@@ -38,6 +39,11 @@ def _validate(inst: dict, where: str) -> None:
     if fam not in FAMILIES:
         raise IdiomError(f"{where}: unknown family {fam!r} — families are a closed set "
                          f"({', '.join(sorted(FAMILIES))}); a new one is a code change")
+    if fam == "url-append" and not inst.get("target"):
+        raise IdiomError(f"{where}: url-append needs `target` — the NAME of the variable "
+                         "appended to (e.g. \"serviceURL\" for `$serviceURL .= $path`). "
+                         "Naming it is what keeps the family precise: a bare metavariable "
+                         "would match every string append in the codebase.")
     if fam == "url-assembly" and not inst.get("base"):
         raise IdiomError(f"{where}: url-assembly needs `base` (an ast-grep pattern "
                          "for the base expression, e.g. \"$A->getHost()\")")
@@ -75,6 +81,14 @@ def to_rules(inst: dict, literal_rule, languages: list) -> list:
         for lang in langs:
             docs.append({"id": f"{rid}@{lang}", "language": lang, "metadata": dict(kind),
                          "rule": {"pattern": f'{inst["base"]} . $B'}})
+    elif fam == "url-append":
+        # assemble-then-append: `$base = $this->ENDPOINT;` ... `$base .= $path;`
+        # The two statements are not one expression, so url-assembly's `base . $B`
+        # cannot see it. The target variable is named literally — ast-grep treats
+        # $UPPERCASE as a metavariable, so a lowercase/mixed name matches only itself.
+        for lang in langs:
+            docs.append({"id": f"{rid}@{lang}", "language": lang, "metadata": dict(kind),
+                         "rule": {"pattern": f'${inst["target"]} .= $B'}})
     elif fam == "operation-marker":
         for lang in langs:
             if inst.get("marker"):
