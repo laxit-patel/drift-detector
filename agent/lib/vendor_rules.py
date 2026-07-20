@@ -52,6 +52,81 @@ def _ast_literal_rule(base_id: str, regex: str, lang: str, metadata: dict) -> di
             "rule": {"any": [{"kind": k, "regex": regex} for k in kinds]}}
 
 
+# ── Egress sinks: "this line makes an outbound HTTP call" ──────────────────────────────
+#
+# Until now only PHP had these, so `shapes.verdict()` returned UNKNOWN/no-egress-signal
+# for seven of eight languages — honest, but it meant a JS or Go repo could never be
+# scanned with confidence. These close that.
+#
+# EVERY pattern below was run against a real fixture in that language before being added.
+# That is not ceremony: a pattern that looks correct can match nothing silently (PHP's
+# `kind: string` matched only single-quoted strings and lost nine call-sites, including a
+# vendor host), and a sink rule that matches nothing degrades exactly like having no rule
+# at all — except it also reports coverage it does not have.
+#
+# Deliberately EXCLUDED as too noisy without argument-shape analysis:
+#   php     file_get_contents / fopen — usually filesystem
+#   go      $C.Do($$$)                — sync.Once.Do and every builder .Do() in Go
+#   js      got($$$)                  — a single common word; too easy to shadow
+# The rule is the one PHP already followed: a sink that cries wolf is worse than a gap,
+# because the gap is reported and the false positive is believed.
+#
+# Go needs `context` + `selector`: a bare `http.Get($$$)` is not valid Go at top level, so
+# ast-grep cannot parse the pattern and silently matches nothing. Verified: the bare form
+# returns 0 matches on a file where the call plainly exists.
+EGRESS_SINKS = {
+    "php": [
+        {"pattern": "curl_exec($$$)"},
+        {"pattern": "curl_setopt($$$, CURLOPT_URL, $$$)"},
+        {"pattern": "new \\GuzzleHttp\\Client($$$)"},
+    ],
+    "javascript": [
+        {"pattern": "fetch($$$)"},
+        {"pattern": "axios.$M($$$)"},
+        {"pattern": "axios($$$)"},
+        {"pattern": "new XMLHttpRequest()"},
+        {"pattern": "https.request($$$)"},
+        {"pattern": "http.request($$$)"},
+    ],
+    "typescript": [
+        {"pattern": "fetch($$$)"},
+        {"pattern": "axios.$M($$$)"},
+        {"pattern": "axios($$$)"},
+        {"pattern": "new XMLHttpRequest()"},
+        {"pattern": "https.request($$$)"},
+        {"pattern": "http.request($$$)"},
+    ],
+    "python": [
+        {"pattern": "requests.$M($$$)"},
+        {"pattern": "httpx.$M($$$)"},
+        {"pattern": "urllib.request.urlopen($$$)"},
+    ],
+    "go": [
+        {"pattern": {"context": "func f(){ http.Get($$$) }", "selector": "call_expression"}},
+        {"pattern": {"context": "func f(){ http.Post($$$) }", "selector": "call_expression"}},
+        {"pattern": {"context": "func f(){ http.NewRequest($$$) }", "selector": "call_expression"}},
+    ],
+    "ruby": [
+        {"pattern": "Net::HTTP.$M($$$)"},
+        {"pattern": "RestClient.$M($$$)"},
+        {"pattern": "HTTParty.$M($$$)"},
+        {"pattern": "Faraday.new($$$)"},
+    ],
+    "java": [
+        {"pattern": "HttpClient.newHttpClient()"},
+        {"pattern": "HttpRequest.newBuilder()"},
+        {"pattern": "new URL($$$).openConnection()"},
+        {"pattern": "$T.getForObject($$$)"},
+    ],
+    "csharp": [
+        {"pattern": "new HttpClient()"},
+        {"pattern": "$C.GetAsync($$$)"},
+        {"pattern": "$C.PostAsync($$$)"},
+        {"pattern": "WebRequest.Create($$$)"},
+    ],
+}
+
+
 def build_astgrep_ruleset(vendors: list | None = None,
                           languages: list = DEFAULT_LANGUAGES,
                           idiom_instances: list | None = None) -> list:
@@ -73,12 +148,12 @@ def build_astgrep_ruleset(vendors: list | None = None,
         docs.append(_ast_literal_rule(
             "path-literal", r"/(v[0-9][0-9.]*|[0-9]{4}-[0-9]{2}-[0-9]{2})/", lang,
             {"kind": "path-literal"}))
-    # egress sinks — PHP only, HTTP-unambiguous calls (file_get_contents/fopen are
-    # deliberately excluded: too noisy without argument-shape analysis)
-    docs.append({"id": "php-http-sink@php", "language": "php", "metadata": {"kind": "sink"},
-                 "rule": {"any": [{"pattern": "curl_exec($$$)"},
-                                  {"pattern": "curl_setopt($$$, CURLOPT_URL, $$$)"},
-                                  {"pattern": "new \\GuzzleHttp\\Client($$$)"}]}})
+    # egress sinks — HTTP-unambiguous calls only
+    for lang in langs:
+        alts = EGRESS_SINKS.get(lang)
+        if alts:
+            docs.append({"id": f"{lang}-http-sink@{lang}", "language": lang,
+                         "metadata": {"kind": "sink"}, "rule": {"any": list(alts)}})
     # URL-assembly and operation-marker idioms come from agent/idioms.yaml, so a new
     # shape is a reviewable data change rather than an edit to this file
     for inst in (idiom_instances if idiom_instances is not None else idioms.load_idioms()):
