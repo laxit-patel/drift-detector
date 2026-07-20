@@ -114,6 +114,7 @@ def _build_projection(inventory: dict, audit: dict) -> dict:
         "sdkMediated": cov.get("sdkMediated", []),
         "coverageNotes": (audit.get("coverage") or {}).get("notes", []),
         "coverageGrades": residue.get("byRepo", []),
+        "shapes": cov.get("shapes", []),
         "residueSamples": residue.get("pathLiterals", []),
     }
 
@@ -433,6 +434,17 @@ _CLIENT_JS = r"""
     var cov=document.getElementById("coverage"); if(!cov) return;
     var h="";
     (DATA.coverageNotes||[]).forEach(function(n){ h+='<div class="note">'+esc(n)+'</div>'; });
+    var unknown=(DATA.shapes||[]).filter(function(s){return s.verdict==="UNKNOWN";});
+    if(unknown.length){
+      h+='<div class="note"><b>'+esc(unknown.length)+' repo(s) the scan could not fully read.</b> '
+        +'A repo is only KNOWN when every language present has egress rules AND nothing was '
+        +'left unattributed:</div><ul>';
+      unknown.forEach(function(s){
+        h+='<li>'+esc(s.repo)+' — <b>'+esc(s.verdict)+'</b> ('+esc((s.reasons||[]).join(", "))+')'
+          +'; languages: '+esc(Object.keys(s.languages||{}).join(", "))+'</li>';
+      });
+      h+='</ul>';
+    }
     var grades=(DATA.coverageGrades||[]).filter(function(g){return g.grade!=="HIGH";});
     if(grades.length){
       h+='<div class="note">Coverage — repos where calls may be unattributed:</div><ul>';

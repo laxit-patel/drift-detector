@@ -112,3 +112,20 @@ def write_ruleset(vendors: list | None, path: str, languages: list = DEFAULT_LAN
         _SERIALIZED[key] = text
     with open(path, "w", encoding="utf-8") as fh:
         fh.write(text)
+
+
+def rule_kinds_by_language(vendors: list | None = None,
+                           languages: list = DEFAULT_LANGUAGES) -> dict:
+    """language -> the set of rule kinds we actually emit for it.
+
+    This is what makes "I have no rules here" distinguishable from "I looked and
+    found nothing": the shape verdict reads it to decide whether a language is
+    covered at all. Derived from the real ruleset so it can never drift from it.
+    """
+    out: dict = {}
+    for d in build_astgrep_ruleset(vendors, languages):
+        lang = d.get("language")
+        kind = (d.get("metadata") or {}).get("kind")
+        if lang and kind:
+            out.setdefault(lang, set()).add(kind)
+    return {k: sorted(v) for k, v in out.items()}

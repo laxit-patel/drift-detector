@@ -5,7 +5,8 @@ import os
 
 from agent.lib import engine as engine_mod, ir_store, scan_util
 from agent.lib.vendors import load_vendors
-from agent.lib.vendor_rules import write_ruleset
+from agent.lib.vendor_rules import write_ruleset, rule_kinds_by_language
+from agent.lib import shapes
 from agent.lib.repo_scan import scan_repo
 from agent.lib.repo_discovery import discover_repos
 from agent.lib.inv_rollups import build_rollups
@@ -19,6 +20,15 @@ def _coverage_grade(attributed: int, unattributed_paths: int, sinks: int) -> str
     if unattributed_paths or (attributed == 0 and sinks):
         return "PARTIAL"
     return "HIGH"
+
+
+def _shape_of(abs_: str, name: str, record: dict, rule_kinds: dict,
+              attestations: dict) -> dict:
+    """Build a repo's shape, honoring an attestation only while its residue is unchanged."""
+    residue = record.get("residue") or {}
+    fp = shapes.residue_fingerprint(residue)
+    return shapes.build(abs_, name, record.get("endpoints", []), residue, rule_kinds,
+                        attested=shapes.is_attested(attestations, name, fp))
 
 
 def _rollup_coverage(coverage: dict, repos: list, *, discovered_count: int) -> None:
@@ -56,6 +66,7 @@ def _rollup_coverage(coverage: dict, repos: list, *, discovered_count: int) -> N
                         "unattributedPaths": len(plist), "unresolvedSinks": len(slist),
                         "grade": _coverage_grade(attributed, len(plist), len(slist))})
     coverage["residue"] = {"pathLiterals": res_paths, "sinks": res_sinks, "byRepo": by_repo}
+    coverage["shapes"] = [r["shape"] for r in repos if r.get("shape")]
 
 
 def scan_folder(root, state_dir, now, *, engine=None, run=None, git=None, progress=None) -> dict:
@@ -79,6 +90,10 @@ def scan_folder(root, state_dir, now, *, engine=None, run=None, git=None, progre
     n = len(discovered)
     _p(f"  {n} repo(s) found")
     repos: list = []
+    # what the ruleset can even SEE, per language — the shape verdict needs this to
+    # tell "no rules for this language" apart from "looked and found nothing"
+    rule_kinds = rule_kinds_by_language(vendors)
+    attestations = shapes.load_attestations(state_dir)
     coverage = {"reposScanned": 0, "reposErrored": [], "manifestsUnparsed": []}
     for i, (abs_, name) in enumerate(discovered):
         coverage["reposScanned"] += 1
@@ -89,11 +104,13 @@ def scan_folder(root, state_dir, now, *, engine=None, run=None, git=None, progre
             if cached is not None:
                 _p(f"{tag}  cached (HEAD unchanged)")
                 cached = {**cached, "id": i + 1}
+                cached["shape"] = _shape_of(abs_, name, cached, rule_kinds, attestations)
                 repos.append(cached)
                 continue
             _p(f"{tag}  scan: git · manifests · AST endpoints")
             record, note = scan_repo(abs_, name, i + 1, vendors, rules_path,
                                      engine=engine, run=run, git=git)
+            record["shape"] = _shape_of(abs_, name, record, rule_kinds, attestations)
             repos.append(record)
             if sha:
                 ir_store.save_repo_cache(state_dir, name, sha, record)
