@@ -30,7 +30,8 @@ def _project_action(a: dict) -> dict:
         if f.get("cve") or f.get("id"):
             cves.append({"id": f.get("cve") or f.get("id"), "title": f.get("detail") or ""})
     return {
-        "repo": a.get("repo"), "ref": a.get("ref"), "pkg": a.get("pkg"),
+        "repo": a.get("repo"), "ref": a.get("ref"), "unit": a.get("unit"),
+        "pkg": a.get("pkg"),
         "kind": a.get("kind"), "current_version": a.get("current_version"),
         "fix_version": a.get("fix_version"), "command": a.get("command"),
         "recommendation": a.get("recommendation"), "worst": a.get("worst"),

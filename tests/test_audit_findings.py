@@ -181,3 +181,30 @@ def test_sunsets_without_an_operation_group_by_host():
     actions = build_actions(findings)
     assert len(actions) == 2
     assert {a["unit"] for a in actions} == {"svcs.ebay.com", "webservices.ebay.com"}
+
+
+def test_operation_survives_into_the_rendered_dashboard():
+    """Assert through the RENDER, not just build_actions.
+
+    The per-operation grouping was correct in build_actions and its unit test passed,
+    while the dashboard still showed twelve rows labelled "eBay": _action_view
+    whitelists action fields and silently dropped `unit`. A test one layer below the
+    artifact the user reads cannot see that. This one reads the HTML.
+    """
+    from agent.lib.dashboard_render import render_dashboard
+    findings = [
+        _sunset("ebayapi", "GetCategoryFeatures", "2026-06-04",
+                "migrate to Metadata API", ["src/Ebay/EbayCategoryFieldsFeature.php:72"]),
+        _sunset("ebayapi", "AddDispute", "2023-01-27",
+                "migrate to Post-Order API", ["src/Ebay/EbayOrderCancel.php:17"]),
+    ]
+    from agent.lib.actions import build_actions
+    audit = {"generated": "2026-07-20", "findings": findings,
+             "actions": build_actions(findings), "counts": {"reposAffected": 1}}
+    inventory = {"repos": [{"path": "ebayapi", "endpoints": [], "sdks": []}],
+                 "scope": {"reposScanned": 2}, "coverage": {}}
+    html = render_dashboard(inventory, audit, "2026-07-20")
+    assert "GetCategoryFeatures" in html, "the operation never reached the dashboard"
+    assert "AddDispute" in html
+    # and the header must not imply only one repo was scanned
+    assert "1 of 2 repos affected" in html
