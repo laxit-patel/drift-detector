@@ -95,3 +95,32 @@
   replacement: Taxonomy API getCategorySuggestions
   source: "https://developer.ebay.com/devzone/xml/docs/ReleaseNotesArchive.html#:~:text=Decommissioned%20GetSuggestedCategories%20call"
   note: Trading release 1367 — "Decommissioned GetSuggestedCategories call".
+
+# eBay Large Merchant Services — whole SOAP services, so DOMAIN-scoped. Date read
+# from eBay's Dec-2021 newsletter: "The Large Merchant Services APIs (Bulk Data
+# Exchange, File Transfer, and Merchant Data) will be decommissioned on April 30,
+# 2022." Confirmed by the Q1-2022 newsletter. Verified 2026-07-20.
+- vendor: eBay
+  domain: webservices.ebay.com
+  retires: "2022-04-30"
+  replacement: Sell Feed API
+  source: "https://developer.ebay.com/updates/newsletter/2021_12_news#:~:text=Bulk%20Data%20Exchange"
+  note: Large Merchant Services (Bulk Data Exchange) decommissioned 2022-04-30. The same Merchant Data XML feeds are served by the Sell Feed API as REST tasks.
+- vendor: eBay
+  domain: webservices.sandbox.ebay.com
+  retires: "2022-04-30"
+  replacement: Sell Feed API
+  source: "https://developer.ebay.com/updates/newsletter/2021_12_news#:~:text=Bulk%20Data%20Exchange"
+  note: Large Merchant Services (Bulk Data Exchange (sandbox)) decommissioned 2022-04-30. The same Merchant Data XML feeds are served by the Sell Feed API as REST tasks.
+- vendor: eBay
+  domain: storage.ebay.com
+  retires: "2022-04-30"
+  replacement: Sell Feed API
+  source: "https://developer.ebay.com/updates/newsletter/2021_12_news#:~:text=File%20Transfer"
+  note: Large Merchant Services (File Transfer) decommissioned 2022-04-30. The same Merchant Data XML feeds are served by the Sell Feed API as REST tasks.
+- vendor: eBay
+  domain: storage.sandbox.ebay.com
+  retires: "2022-04-30"
+  replacement: Sell Feed API
+  source: "https://developer.ebay.com/updates/newsletter/2021_12_news#:~:text=File%20Transfer"
+  note: Large Merchant Services (File Transfer (sandbox)) decommissioned 2022-04-30. The same Merchant Data XML feeds are served by the Sell Feed API as REST tasks.

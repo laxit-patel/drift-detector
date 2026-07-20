@@ -130,10 +130,12 @@ def test_real_catalog_has_accurate_ebay_finding_and_shopping_sunsets():
     # DOMAIN-scoped eBay entries: whole hosts that are dead. Operation-scoped
     # entries live on the shared LIVE host and have their own dates, so they are
     # deliberately not covered by this assertion.
-    ebay = [s for s in cat if s["vendor"] == "eBay" and s.get("domain")]
+    ebay = [s for s in cat if s["vendor"] == "eBay"
+            and s.get("domain") in ("svcs.ebay.com", "open.api.ebay.com")]
     domains = {s.get("domain") for s in ebay}
     assert "svcs.ebay.com" in domains          # Finding API
     assert "open.api.ebay.com" in domains      # Shopping API
+    assert len(ebay) == 2
     for s in ebay:
         assert s["retires"] == "2025-02-05"    # the announced decommission date
         assert s.get("source")                 # every entry cites a source
