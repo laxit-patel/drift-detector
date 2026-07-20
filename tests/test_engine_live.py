@@ -5,7 +5,7 @@ import pytest
 
 from agent.lib.vendors import Vendor
 from agent.lib.vendor_rules import write_ruleset
-from agent.lib.opengrep import run_scan
+from agent.lib.engine import run_scan
 from agent.lib.endpoints import build_endpoints
 
 
@@ -34,7 +34,7 @@ def test_live_endpoint_extraction_skips_comments(tmp_path):
                Vendor("Amazon SP-API", "api:amazon-sp-api", ("sellingpartnerapi",),
                       r'/(v[0-9][0-9.]*|[0-9]{4}-[0-9]{2}-[0-9]{2})')]
     rules = tmp_path / "rules.yaml"
-    write_ruleset(vendors, str(rules), engine=_ENGINE)
+    write_ruleset(vendors, str(rules))
 
     res = run_scan(str(tmp_path), str(rules), engine=_ENGINE)
     eps = build_endpoints(res["matches"], str(tmp_path), vendors)
@@ -48,7 +48,7 @@ def test_live_endpoint_extraction_skips_comments(tmp_path):
 def test_astgrep_output_is_normalized_to_the_match_shape(tmp_path):
     """ast-grep reports 0-indexed lines and no metadata; both must be recovered."""
     import json, yaml
-    from agent.lib.opengrep import run_scan
+    from agent.lib.engine import run_scan
     rules = tmp_path / "r.yaml"
     rules.write_text(yaml.safe_dump({"id": "stripe-endpoint@php", "language": "php",
                                      "metadata": {"vendor": "Stripe", "techKey": "api:stripe",
@@ -61,15 +61,3 @@ def test_astgrep_output_is_normalized_to_the_match_shape(tmp_path):
     assert m["line"] == 42                                             # -> 1-indexed
     assert m["checkId"] == "stripe-endpoint"                           # @lang stripped
     assert m["vendor"] == "Stripe" and m["techKey"] == "api:stripe" and m["kind"] == "endpoint"
-
-
-def test_semgrep_dialect_still_parses_its_own_shape(tmp_path):
-    import json
-    from agent.lib.opengrep import run_scan
-    canned = json.dumps({"results": [{"check_id": "x.url-literal", "path": "a.php",
-                                      "start": {"line": 7},
-                                      "extra": {"metadata": {"kind": "url"}}}],
-                         "paths": {"scanned": ["a.php"]}, "errors": []})
-    out = run_scan("/repo", "/rules.yaml", engine="/usr/bin/semgrep", run=lambda a: canned)
-    assert out["matches"][0] == {"checkId": "url-literal", "vendor": "", "techKey": "",
-                                 "kind": "url", "path": "a.php", "line": 7}

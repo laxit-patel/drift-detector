@@ -13,7 +13,7 @@ from pathlib import Path
 import pytest
 
 from agent.lib.vendor_rules import write_ruleset
-from agent.lib.opengrep import run_scan
+from agent.lib.engine import run_scan
 from agent.lib.endpoints import scan_endpoints
 from agent.lib.vendors import load_vendors
 
@@ -33,7 +33,7 @@ _ENGINE = _find_engine()
 
 def _scan(repo_dir, vendors, tmp_path):
     rules = tmp_path / "rules.yaml"
-    write_ruleset(vendors, str(rules), engine=_ENGINE)
+    write_ruleset(vendors, str(rules))
     res = run_scan(str(repo_dir), str(rules), engine=_ENGINE)
     return scan_endpoints(res["matches"], str(repo_dir), vendors)
 

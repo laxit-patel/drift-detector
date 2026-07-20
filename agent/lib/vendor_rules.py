@@ -1,10 +1,12 @@
-"""Render the endpoint rule pack (discover-then-classify + allowlist recall):
+"""Render the ast-grep endpoint rule pack (discover-then-classify + allowlist recall):
 
-- ONE broad, AST-aware rule matches every `http(s)://` URL string literal → we classify each
-  host in Python (agent.lib.classify_url), so un-catalogued vendors still surface.
-- PLUS one rule per catalogued vendor matching its domain string literals → so host-only
-  references with no URL scheme (e.g. `'api.mailgun.net'` in a config) are still caught.
-Both are comment-safe (string-literal `"=~/regex/"`, not raw pattern-regex).
+- ONE broad rule matches every `http(s)://` string literal → we classify each host in
+  Python (agent.lib.classify_url), so un-catalogued vendors still surface.
+- PLUS one rule per catalogued vendor matching its domain literals → host-only
+  references with no scheme (e.g. `'api.mailgun.net'` in a config) are still caught.
+- PLUS the shape rules: versioned resource-path literals, PHP egress sinks, and the
+  getHost()-concat idiom.
+Matching is by tree-sitter node kind, so it is comment-safe by construction.
 """
 from __future__ import annotations
 
@@ -15,52 +17,6 @@ import yaml
 from agent.lib.vendors import vendor_slug
 
 DEFAULT_LANGUAGES = ["php", "js", "ts", "python", "ruby", "go", "java", "csharp"]
-
-
-def _url_rule(languages: list) -> dict:
-    return {"id": "url-literal", "languages": list(languages), "message": "URL literal",
-            "severity": "INFO", "metadata": {"kind": "url"}, "pattern": r'"=~/https?:\/\//"'}
-
-
-def _vendor_rule(v, languages: list) -> dict:
-    return {"id": f"{vendor_slug(v.vendor)}-endpoint", "languages": list(languages),
-            "message": f"{v.vendor} endpoint", "severity": "INFO",
-            "metadata": {"vendor": v.vendor, "techKey": v.techKey, "kind": "endpoint"},
-            "pattern-either": [{"pattern": '"=~/' + re.escape(d) + '/"'} for d in v.domains]}
-
-
-def _path_literal_rule(languages: list) -> dict:
-    # Version-bearing resource-path literals ("/orders/2026-01-01/orders", "/catalog/v0/items").
-    # String-literal (comment-safe) regex, same as the url-literal rule. Classified in Python.
-    return {"id": "path-literal", "languages": list(languages), "message": "resource-path literal",
-            "severity": "INFO", "metadata": {"kind": "path-literal"},
-            "pattern": r'"=~/\/(v[0-9][0-9.]*|[0-9]{4}-[0-9]{2}-[0-9]{2})\//"'}
-
-
-def _sink_rule() -> dict:
-    # PHP HTTP egress sinks — unambiguous only (curl_exec, CURLOPT_URL, Guzzle client).
-    # file_get_contents/fopen deferred (noisy without argument-shape analysis).
-    return {"id": "php-http-sink", "languages": ["php"], "message": "HTTP egress sink",
-            "severity": "INFO", "metadata": {"kind": "sink"},
-            "pattern-either": [
-                {"pattern": "curl_exec(...)"},
-                {"pattern": "curl_setopt($CH, CURLOPT_URL, $U)"},
-                {"pattern": r"new \GuzzleHttp\Client(...)"},
-            ]}
-
-
-def _path_assembly_rule() -> dict:
-    # The concat idiom: a config host getter concatenated with a path variable/literal.
-    return {"id": "path-assembly", "languages": ["php"], "message": "URL assembled from getHost() + path",
-            "severity": "INFO", "metadata": {"kind": "path-assembly"},
-            "pattern": "$URL = $OBJ->getHost() . $PATH"}
-
-
-def build_ruleset(vendors: list | None = None, languages: list = DEFAULT_LANGUAGES) -> dict:
-    rules = [_url_rule(languages)]
-    rules += [_vendor_rule(v, languages) for v in (vendors or [])]
-    rules += [_path_literal_rule(languages), _sink_rule(), _path_assembly_rule()]
-    return {"rules": rules}
 
 
 # ---------------------------------------------------------------- ast-grep ----
@@ -115,7 +71,7 @@ def build_astgrep_ruleset(vendors: list | None = None,
         docs.append(_ast_literal_rule(
             "path-literal", r"/(v[0-9][0-9.]*|[0-9]{4}-[0-9]{2}-[0-9]{2})/", lang,
             {"kind": "path-literal"}))
-    # structural rules — PHP only, same scope as the semgrep pack
+    # structural rules — PHP only
     docs.append({"id": "php-http-sink@php", "language": "php", "metadata": {"kind": "sink"},
                  "rule": {"any": [{"pattern": "curl_exec($$$)"},
                                   {"pattern": "curl_setopt($$$, CURLOPT_URL, $$$)"},
@@ -127,14 +83,21 @@ def build_astgrep_ruleset(vendors: list | None = None,
     return docs
 
 
-def write_ruleset(vendors: list | None, path: str, languages: list = DEFAULT_LANGUAGES,
-                  *, engine: str = "semgrep") -> None:
-    """Write the rule pack in the dialect the resolved engine speaks."""
-    from agent.lib.scan_util import engine_family
-    if engine_family(engine) == "ast-grep":
-        docs = build_astgrep_ruleset(vendors, languages)
-        with open(path, "w", encoding="utf-8") as fh:
-            fh.write("\n---\n".join(yaml.safe_dump(d, sort_keys=False) for d in docs))
-        return
+_SERIALIZED: dict = {}      # (vendors, languages) -> the rendered rule file text
+
+
+def write_ruleset(vendors: list | None, path: str, languages: list = DEFAULT_LANGUAGES) -> None:
+    """Write the rule pack as a multi-document ast-grep rule file.
+
+    One rule per (vendor x language) means ~390 documents, and serializing them
+    costs ~150ms — paid on every scan. The text is a pure function of its inputs,
+    so it is memoized: a process that scans repeatedly renders it once.
+    """
+    key = (tuple((v.vendor, v.techKey, tuple(v.domains)) for v in (vendors or [])),
+           tuple(languages))
+    text = _SERIALIZED.get(key)
+    if text is None:
+        text = yaml.safe_dump_all(build_astgrep_ruleset(vendors, languages), sort_keys=False)
+        _SERIALIZED[key] = text
     with open(path, "w", encoding="utf-8") as fh:
-        yaml.safe_dump(build_ruleset(vendors, languages), fh, sort_keys=False)
+        fh.write(text)

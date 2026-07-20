@@ -16,7 +16,7 @@ def _git_init(d, files):
 
 def _canned(sdks):
     # opengrep finds no endpoints; the diff comes from manifest (sdk) changes
-    return json.dumps({"results": [], "errors": [], "paths": {"scanned": []}})
+    return json.dumps([])
 
 
 def test_scan_returns_diff_vs_prior_ir(tmp_path):

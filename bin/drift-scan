@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # Self-bootstrapping runner for the Drift Detector plugin.
 #
-# Provisions a plugin-local virtualenv (once) with the runtime deps + the scan
-# engine (semgrep), then runs `agent.cli inventory-scan` against it. Designed to
+# Provisions a plugin-local virtualenv (once) with the runtime deps, fetches the
+# ast-grep scan engine (a static binary), then runs `agent.cli inventory-scan`. Designed to
 # work from ANY working directory a teammate invokes it in: the `agent` package
 # is made importable via PYTHONPATH (not cwd), catalog files resolve
 # package-relative, and relative --root/--out paths still resolve against the
@@ -23,7 +23,7 @@ fi
 VENV="$PLUGIN_ROOT/.venv"
 MARKER="$VENV/.drift-deps-ok"
 REQ="$PLUGIN_ROOT/requirements-plugin.txt"
-PYVER="3.12"   # semgrep has well-supported wheels here; tomllib needs >=3.11
+PYVER="3.12"   # tomllib needs >=3.11
 
 _UV_HINT='  • uv (recommended — also provides Python, no system packages needed):
       curl -LsSf https://astral.sh/uv/install.sh | sh
@@ -39,7 +39,7 @@ if [ "${1:-}" = "doctor" ]; then
   echo "  plugin root : $PLUGIN_ROOT"
   ready=0
   if command -v uv >/dev/null 2>&1; then
-    echo "  uv          : $(uv --version 2>/dev/null) — ok (provisions Python + engine)"
+    echo "  uv          : $(uv --version 2>/dev/null) — ok (provisions Python)"
     ready=1
   else
     echo "  uv          : not found"
@@ -67,7 +67,7 @@ if [ "${1:-}" = "doctor" ]; then
     if [ -n "$eng" ]; then
       case "$(basename "$eng")" in
         ast-grep|sg) echo "  engine      : ast-grep ($("$eng" --version 2>/dev/null)) — ok (preferred: static binary)" ;;
-        *)           echo "  engine      : $(basename "$eng") — ok (ast-grep not present; slower but correct)" ;;
+        *)           echo "  engine      : $(basename "$eng") — unexpected (ast-grep is the supported engine)" ;;
       esac
     else
       echo "  engine      : none resolvable — scans will fail"
@@ -99,7 +99,7 @@ esac
 # Prefer uv: it creates a venv without the system python3-venv/ensurepip package
 # and can fetch a suitable Python itself. Fall back to system python3.
 if [ ! -f "$MARKER" ]; then
-  echo "drift-detector: first-run setup — creating venv + installing the scan engine (one-time, may take a minute)…" >&2
+  echo "drift-detector: first-run setup — creating venv (one-time)…" >&2
   if command -v uv >/dev/null 2>&1; then
     uv venv --python "$PYVER" "$VENV" 1>&2
     VIRTUAL_ENV="$VENV" uv pip install -q -r "$REQ" 1>&2
@@ -117,8 +117,8 @@ fi
 
 # ---------- fetch the ast-grep engine (preferred: static binary, ~90x faster) ----------
 # Placed in the venv's bin/ because agent.lib.scan_util.resolve_engine looks there.
-# Best-effort: if the download fails (offline / unsupported platform) the scanner
-# falls back to the pip-installed semgrep, so a failure here is never fatal.
+# ast-grep IS the scan engine: without it, scans cannot run. The failure is
+# reported loudly rather than silently producing an empty inventory.
 if [ ! -x "$VENV/bin/ast-grep" ]; then
   _os="$(uname -s)"; _arch="$(uname -m)"
   case "$_os:$_arch" in
@@ -138,7 +138,7 @@ if [ ! -x "$VENV/bin/ast-grep" ]; then
          && [ -f "$_tmp/ast-grep" ]; then
         mv "$_tmp/ast-grep" "$VENV/bin/ast-grep" && chmod +x "$VENV/bin/ast-grep"
       else
-        echo "drift-detector: ast-grep download failed — using semgrep (slower, still correct)." >&2
+        echo "drift-detector: ast-grep download failed — scans will not run until it is installed." >&2
       fi
       rm -rf "$_tmp"
     fi
@@ -146,7 +146,7 @@ if [ ! -x "$VENV/bin/ast-grep" ]; then
 fi
 
 # Run from the caller's cwd (so relative paths resolve), with the plugin on the
-# import path. The venv's python finds the pip-installed semgrep next to it
+# import path. The venv's python finds ast-grep next to it
 # (agent.lib.scan_util.resolve_engine checks dirname(sys.executable)).
 exec env PYTHONPATH="$PLUGIN_ROOT${PYTHONPATH:+:$PYTHONPATH}" \
   "$VENV/bin/python" -m agent.cli "$SUB" "$@"

@@ -4,7 +4,7 @@ from __future__ import annotations
 from agent.lib.scan_util import git_meta, _default_git
 from agent.lib.manifest_scan import extract_manifest_records
 from agent.lib.record_routing import partition_records
-from agent.lib.opengrep import run_scan
+from agent.lib.engine import run_scan
 from agent.lib.endpoints import build_endpoints, scan_endpoints
 from agent.lib.superset import to_superset_repo
 from agent.lib import lockfile, private_sources
@@ -13,7 +13,7 @@ from agent.lib import lockfile, private_sources
 def scan_repo(repo_abs, repo_name, repo_id, vendors, rules_path, *,
               engine, run, git=_default_git):
     meta = git_meta(repo_abs, run=git)
-    meta.update({"id": repo_id, "path": repo_name, "provenance": {"engine": "opengrep"}})
+    meta.update({"id": repo_id, "path": repo_name, "provenance": {"engine": "ast-grep"}})
 
     records, unparsed = extract_manifest_records(repo_abs, repo_name)
     partitioned = partition_records(records)
@@ -26,7 +26,7 @@ def scan_repo(repo_abs, repo_name, repo_id, vendors, rules_path, *,
     _annotate_resolved(record, repo_abs)
     record["privateSources"] = private_sources.detect(repo_abs)   # what we can't see (say so)
     record["residue"] = scanned_eps["residue"]
-    return record, {"unparsed": unparsed, "opengrepErrors": scan["errors"]}
+    return record, {"unparsed": unparsed, "engineErrors": scan["errors"]}
 
 
 def _annotate_resolved(record, repo_abs):

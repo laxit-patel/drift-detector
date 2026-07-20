@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import os
 
-from agent.lib import ir_store, opengrep, scan_util
+from agent.lib import engine as engine_mod, ir_store, scan_util
 from agent.lib.vendors import load_vendors
 from agent.lib.vendor_rules import write_ruleset
 from agent.lib.repo_scan import scan_repo
@@ -66,13 +66,13 @@ def scan_folder(root, state_dir, now, *, engine=None, run=None, git=None, progre
         if progress:
             progress(msg)
 
-    run = run if run is not None else opengrep._default_run
+    run = run if run is not None else engine_mod._default_run
     git = git if git is not None else scan_util._default_git
     engine = engine or scan_util.resolve_engine()      # fail-loud if absent
     os.makedirs(state_dir, exist_ok=True)
     vendors = load_vendors()
     rules_path = os.path.join(state_dir, "rules.generated.yaml")
-    write_ruleset(vendors, rules_path, engine=engine)
+    write_ruleset(vendors, rules_path)
 
     _p("discovering git repos under " + ", ".join(str(r) for r in roots) + " …")
     discovered = discover_repos(roots)     # [(abs_path, identity)], sorted, deduped

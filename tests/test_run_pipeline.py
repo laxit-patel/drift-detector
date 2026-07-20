@@ -15,7 +15,7 @@ def _git_init(d, files):
 
 
 def _empty_engine(args):
-    return json.dumps({"results": [], "errors": [], "paths": {"scanned": []}})
+    return json.dumps([])
 
 
 def _fake_eol(product, version, now, *, http=None):

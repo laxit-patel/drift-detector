@@ -28,32 +28,15 @@ def test_resolve_engine_raises_when_absent(monkeypatch):
     import agent.lib.scan_util as su
     monkeypatch.setattr(su.shutil, "which", lambda name: None)
     monkeypatch.setattr(su.os.path, "exists", lambda p: False)
-    with pytest.raises(RuntimeError, match="engine"):
+    with pytest.raises(RuntimeError, match="ast-grep"):
         resolve_engine()
 
 
 def test_resolve_engine_finds_on_path(monkeypatch):
     import agent.lib.scan_util as su
     monkeypatch.setattr(su.os.path, "exists", lambda p: False)      # ignore any locally-installed binary
-    monkeypatch.setattr(su.shutil, "which", lambda name: "/usr/bin/semgrep" if name == "semgrep" else None)
-    assert resolve_engine() == "/usr/bin/semgrep"                   # falls back when it's all there is
-
-
-def test_resolve_engine_prefers_ast_grep(monkeypatch):
-    import agent.lib.scan_util as su
-    monkeypatch.setattr(su.os.path, "exists", lambda p: False)
-    both = {"ast-grep": "/usr/bin/ast-grep", "semgrep": "/usr/bin/semgrep"}
-    monkeypatch.setattr(su.shutil, "which", lambda name: both.get(name))
-    assert resolve_engine() == "/usr/bin/ast-grep"    # static binary, ~90x faster
-
-
-def test_engine_family_picks_the_dialect():
-    from agent.lib.scan_util import engine_family
-    assert engine_family("/venv/bin/ast-grep") == "ast-grep"
-    assert engine_family("sg") == "ast-grep"
-    assert engine_family("/usr/bin/semgrep") == "semgrep"
-    assert engine_family("/usr/bin/opengrep") == "semgrep"          # same rule dialect + CLI
-    assert engine_family("") == "semgrep"                           # safe default
+    monkeypatch.setattr(su.shutil, "which", lambda name: "/usr/bin/ast-grep" if name == "ast-grep" else None)
+    assert resolve_engine() == "/usr/bin/ast-grep"
 
 
 # --- normalize_remote: safety-critical git-remote normalizer -------------------
