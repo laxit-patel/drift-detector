@@ -48,17 +48,36 @@ def check_sunsets(entries: list) -> list:
     """Reject any sunset without a citable source and a parseable date."""
     problems = []
     for i, e in enumerate(entries):
-        where = f"sunset #{i} ({e.get('vendor')} {e.get('operation') or e.get('domain') or e.get('version')})"
+        where = (f"sunset #{i} ({e.get('vendor')} "
+                 f"{e.get('operation') or e.get('path') or e.get('domain') or e.get('version')})")
         if not isinstance(e, dict) or not e.get("vendor"):
             problems.append(f"{where}: not a mapping with a vendor")
             continue
         src = str(e.get("source") or "")
         if not src.startswith("http"):
             problems.append(f"{where}: no source URL — a date nobody sourced is not admissible")
-        if not _DATE.match(str(e.get("retires") or "")):
-            problems.append(f"{where}: `retires` must be YYYY-MM-DD, got {e.get('retires')!r}")
-        if not (e.get("operation") or e.get("domain") or e.get("version") is not None):
-            problems.append(f"{where}: needs a scope (operation, domain, or version)")
+        # A dateless entry is legitimate — the catalog format says so ("Omit if the API is
+        # already deprecated with no fixed date"), audit.py renders it as "deprecated"
+        # without a date, and the seed Amazon MWS entry has none. But silence is
+        # ambiguous: "the vendor announced no date" and "I could not find the date" look
+        # identical, and only the first is admissible. Requiring the marker makes the
+        # author state which one it is.
+        retires = str(e.get("retires") or "")
+        if retires:
+            if not _DATE.match(retires):
+                problems.append(f"{where}: `retires` must be YYYY-MM-DD, got {e.get('retires')!r}")
+        elif e.get("status") != "deprecated-no-date":
+            problems.append(
+                f"{where}: no `retires` date. If the vendor announced a deprecation with "
+                f"no cut-off, say so explicitly with `status: deprecated-no-date`. If you "
+                f"simply could not find the date, do not stage the entry — an undated "
+                f"guess is what this gate exists to stop.")
+        if not (e.get("operation") or e.get("path") or e.get("domain")
+                or e.get("version") is not None):
+            problems.append(f"{where}: needs a scope (operation, path, domain, or version)")
+        if e.get("path") and not str(e["path"]).startswith("/"):
+            problems.append(f"{where}: `path` is an API-family prefix and must start with "
+                            f"'/' (e.g. /fba/inbound/v0), got {e['path']!r}")
     return problems
 
 

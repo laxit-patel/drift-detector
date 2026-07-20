@@ -54,7 +54,7 @@ def _rank_key(action):
 
 def _sunset_unit(f) -> str:
     """The thing being retired: an operation, else the host, else the API version."""
-    return f.get("operation") or f.get("domain") or f.get("version") or ""
+    return f.get("operation") or f.get("path") or f.get("domain") or f.get("version") or ""
 
 
 def _group_key(f):

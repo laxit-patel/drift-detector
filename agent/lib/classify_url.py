@@ -122,6 +122,26 @@ def operation_of(line: str) -> str:
     return m.group(1) if m else ""
 
 
+def api_path_of(s: str) -> str:
+    """The API-family prefix of a path or URL, up to and including its version segment:
+    '/products/fees/v0/listings/{SellerSKU}/feesEstimate' -> '/products/fees/v0'.
+
+    Amazon retires SP-API per (family, version), not per version: `/fba/inbound/v0` died
+    2025-01-21 and `/finances/v0` lives until 2027-08-27. Both are "v0", so a catalog
+    entry scoped on the version alone would tag 78 call-sites with one date and invent
+    most of them. This is the same lesson the operation axis taught for eBay — the
+    vendor's unit of retirement has to be expressible, or the audit cannot be stated
+    truthfully. Returns '' when there is no version segment to anchor on.
+    """
+    s = str(s or "")
+    if "://" in s:                                  # drop scheme + host
+        s = "/" + s.split("://", 1)[1].partition("/")[2]
+    m = _VERSION_SEG.search(s if s.startswith("/") else "/" + s)
+    if not m:
+        return ""
+    return (s if s.startswith("/") else "/" + s)[:m.end(1)]
+
+
 def path_literal_of(line: str) -> str:
     """The first quoted string on `line` that is a version-bearing resource path
     ('/orders/2026-01-01/orders'). Excludes full URLs (those go through the url path).

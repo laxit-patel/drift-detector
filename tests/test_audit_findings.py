@@ -208,3 +208,28 @@ def test_operation_survives_into_the_rendered_dashboard():
     assert "AddDispute" in html
     # and the header must not imply only one repo was scanned
     assert "1 of 2 repos affected" in html
+
+
+def test_gate_accepts_a_dateless_deprecation_only_when_declared():
+    """The catalog permits dateless deprecations ("Omit if already deprecated with no
+    fixed date") and the seed Amazon MWS entry has none — but the gate rejected every
+    such entry, so no legitimate undated retirement could ever be absorbed.
+
+    Silence is ambiguous: "the vendor set no date" and "I couldn't find the date" look
+    the same, and only the first is admissible. The marker forces the author to say which.
+    """
+    from agent.absorb import check_sunsets
+    src = "https://developer-docs.amazon.com/sp-api/docs/migrating-from-amazon-mws"
+
+    declared = [{"vendor": "Amazon SP-API", "version": "v0",
+                 "status": "deprecated-no-date", "source": src}]
+    assert check_sunsets(declared) == []
+
+    silent = [{"vendor": "Amazon SP-API", "version": "v0", "source": src}]
+    assert any("deprecated-no-date" in p for p in check_sunsets(silent))
+
+    # a real date still must parse, and a source is still mandatory
+    assert any("YYYY-MM-DD" in p for p in check_sunsets(
+        [{"vendor": "X", "version": "v1", "retires": "soon", "source": src}]))
+    assert any("no source URL" in p for p in check_sunsets(
+        [{"vendor": "X", "version": "v1", "retires": "2026-01-01"}]))

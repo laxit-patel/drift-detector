@@ -51,11 +51,16 @@ def scan_endpoints(matches: list, repo_root: str, vendors: list, *, max_files: i
             return
         if techKey:
             seen_known.add((techKey, loc, operation))
-        key = (techKey or f"unknown:{host}", host, version, operation)
+        # The API FAMILY, e.g. /fba/inbound/v0 — a fourth axis, for vendors that retire
+        # per (family, version). Without it every Amazon "v0" call-site shares one record
+        # and one catalog entry would date 78 sites identically, when in truth 34 of them
+        # died in 2025 and 4 live until 2027.
+        api_path = classify_url.api_path_of(example) if example else ""
+        key = (techKey or f"unknown:{host}", host, version, operation, api_path)
         rec = groups.get(key)
         if rec is None:
             rec = {"vendor": vendor, "domain": host, "version": version, "techKey": techKey,
-                   "operation": operation,
+                   "operation": operation, "apiPath": api_path,
                    # OBSERVED means the vendor was read at this call-site; INFERRED means
                    # it was assigned by the single-classified-vendor heuristic, which is
                    # a guess about the repo, not evidence from the line. A reader must be

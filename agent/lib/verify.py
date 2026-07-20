@@ -71,7 +71,7 @@ def check_accessor_coverage(client_js: str, samples: dict) -> None:
 
 
 def sunset_unit(f: dict) -> str:
-    return f.get("operation") or f.get("domain") or f.get("version") or ""
+    return f.get("operation") or f.get("path") or f.get("domain") or f.get("version") or ""
 
 
 def check_tile_counts(payload: dict, findings: list) -> None:

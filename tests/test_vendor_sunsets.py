@@ -17,11 +17,24 @@ def test_unquoted_date_coerced_to_str_stays_json_serializable(tmp_path):
     json.dumps(out)                                    # must not raise (was: date not serializable)
 
 
-def test_version_less_entry_is_dropped(tmp_path):
+def test_scopeless_entry_raises_rather_than_vanishing(tmp_path):
+    """An unscopeable entry used to be skipped in silence. That hid eight sourced Amazon
+    retirements — the catalog looked clean because it had forgotten what it was taught,
+    which is indistinguishable from having nothing to report."""
+    import pytest
     p = tmp_path / "s.yaml"
     p.write_text("- { vendor: X, source: u }\n- { vendor: Y, version: v1, source: u }\n")
+    with pytest.raises(vs.MalformedSunset) as e:
+        vs.load_sunsets(str(p))
+    assert "no scope" in str(e.value)
+
+
+def test_path_scope_is_a_valid_scope(tmp_path):
+    """`path` scopes an entry to one API family — the axis Amazon retires on."""
+    p = tmp_path / "s.yaml"
+    p.write_text('- { vendor: Amazon SP-API, path: /fba/inbound/v0, retires: "2025-01-21", source: u }\n')
     loaded = vs.load_sunsets(str(p))
-    assert [s["vendor"] for s in loaded] == ["Y"]      # X has no version -> dropped
+    assert loaded[0]["path"] == "/fba/inbound/v0"
 
 
 def test_catalog_loads_and_status():

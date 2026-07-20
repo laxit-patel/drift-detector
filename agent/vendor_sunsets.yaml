@@ -124,3 +124,57 @@
   replacement: Sell Feed API
   source: "https://developer.ebay.com/updates/newsletter/2021_12_news#:~:text=File%20Transfer"
   note: Large Merchant Services (File Transfer (sandbox)) decommissioned 2022-04-30. The same Merchant Data XML feeds are served by the Sell Feed API as REST tasks.
+
+# ── Amazon SP-API ────────────────────────────────────────────────────────────────────
+# Fetched 2026-07-20 from https://developer-docs.amazon/sp-api/docs/sp-api-deprecations
+# (the vendor's own schedule). Dates converted from the page's US format; `retires` is
+# the REMOVAL/EOL date — when calls stop working — not the earlier deprecation notice.
+#
+# Scoped by `path` (API family), NOT by version: SP-API retires per (family, version),
+# and four different APIs share the string "v0" with four different fates —
+# /fba/inbound/v0 stopped working 2025-01-21 while /finances/v0 runs to 2027-08-27.
+# A version-scoped entry would date every v0 call-site identically and invent most of them.
+- vendor: Amazon SP-API
+  path: /reports/2020-09-04
+  retires: '2024-06-27'
+  source: https://developer-docs.amazon/sp-api/docs/sp-api-deprecations#:~:text=Reports
+  note: Reports v2020-09-04 removed 2024-06-27 (deprecated July 2021).
+- vendor: Amazon SP-API
+  path: /feeds/2020-09-04
+  retires: '2024-06-27'
+  source: https://developer-docs.amazon/sp-api/docs/sp-api-deprecations#:~:text=Feeds
+  note: Feeds v2020-09-04 removed 2024-06-27 (deprecated July 2021).
+- vendor: Amazon SP-API
+  path: /fba/smallAndLight/v1
+  retires: '2024-03-27'
+  source: https://developer-docs.amazon/sp-api/docs/sp-api-deprecations#:~:text=FBA%20Small%20and%20Light
+  note: FBA Small and Light programme ended — NA/EU removed 2023-09-26, JP 2024-03-27.
+- vendor: Amazon SP-API
+  path: /orders/v0
+  retires: '2027-03-27'
+  source: https://developer-docs.amazon/sp-api/docs/sp-api-deprecations#:~:text=Orders
+  note: Orders v0 deprecated 2026-01-28, removed 2027-03-27.
+- vendor: Amazon SP-API
+  path: /finances/v0
+  retires: '2027-08-27'
+  source: https://developer-docs.amazon/sp-api/docs/sp-api-deprecations#:~:text=Finances
+  note: Finances v0 deprecated 2025-07-21, removed 2027-08-27.
+- vendor: Amazon SP-API
+  path: /catalog/v0
+  retires: '2026-06-30'
+  source: https://developer-docs.amazon/sp-api/docs/sp-api-deprecations#:~:text=Catalog%20Items
+  note: Catalog Items v0 retired in two waves — listCatalogItems/getCatalogItem removed 2025-04-24, listCatalogCategories
+    removed 2026-06-30. Both dates have passed; the family is gone. Dated at the final removal.
+- vendor: Amazon SP-API
+  path: /fba/inbound/v0
+  retires: '2025-01-21'
+  source: https://developer-docs.amazon/sp-api/docs/sp-api-deprecations#:~:text=Fulfillment%20Inbound
+  note: 'Fulfillment Inbound v0 — Amazon removed MULTIPLE (unnamed) operations 2025-01-21, plus getInboundGuidance
+    2024-03-27. Family-scoped: verify which of your calls are affected. Migration target is Fulfillment
+    Inbound v2024-03-20.'
+- vendor: Amazon SP-API
+  path: /mfn/v0
+  retires: '2024-03-27'
+  source: https://developer-docs.amazon/sp-api/docs/sp-api-deprecations#:~:text=Merchant%20Fulfillment
+  note: 'Merchant Fulfillment v0 — Amazon removed THREE (unnamed) operations 2024-03-27. Family-scoped:
+    verify which of your calls are affected.'
