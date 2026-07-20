@@ -1,7 +1,7 @@
 {
   "name": "drift-detector",
-  "description": "Detect third-party integration drift across a folder of repos — code-level API/SDK/runtime usage (via Opengrep), ranked fix actions, an interactive dashboard, and retired-vendor-API detection. Cheap, deterministic, incremental.",
-  "version": "0.4.0-beta",
+  "description": "Detect third-party integration drift across a folder of repos — code-level API/SDK/runtime usage (via ast-grep), operation-level vendor sunsets, an interactive dashboard, and an honest coverage verdict that says where it is blind. Cheap, deterministic, zero LLM tokens.",
+  "version": "0.5.0-beta",
   "author": {
     "name": "TOPS"
   },
@@ -9,10 +9,11 @@
     "drift",
     "integration",
     "api",
-    "inventory",
-    "sast",
-    "opengrep",
+    "ast-grep",
     "dependencies",
-    "deprecation"
+    "deprecation",
+    "sunset",
+    "coverage",
+    "inventory"
   ]
 }

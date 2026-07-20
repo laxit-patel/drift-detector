@@ -24,7 +24,7 @@ migrate to Browse API"*). Packages are the demo; **retired-API detection is the 
 
 Prerequisite: **`uv`** (recommended — https://docs.astral.sh/uv/) *or* Python ≥ 3.11
 with `venv`, plus internet on the first run. The bundled runner provisions its own
-venv + scan engine — no manual Python or Opengrep/semgrep install.
+venv + scan engine — no manual Python or ast-grep install.
 
 Check your machine any time:
 

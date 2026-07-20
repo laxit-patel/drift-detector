@@ -2,6 +2,64 @@
 
 All notable changes to the Drift Detector plugin. Dates are YYYY-MM-DD.
 
+## v0.5.0-beta — 2026-07-20
+
+**The release that answers the demo.** The PM asked why the scan "skipped"
+`getCategoryFeatures`. The answer was structural: our detection unit was the *host*,
+and eBay retires *operations* — one host, one path, ~19 calls on independent
+lifecycles. There was no way to express "GetCategories is dead, GetItem is alive."
+This release adds that axis, and then makes the tool say plainly where it still
+cannot see.
+
+### ⚠️ Breaking — read before upgrading
+
+- **Reports are now ONE file: `dashboard.html`.** `AUDIT.md`, `INVENTORY.md`,
+  `DRIFT.md`, `bom.json` (CycloneDX) and `findings.sarif` are **no longer written**.
+  The drift delta and the ranked fix queue those carried now live *in* the dashboard.
+  If you had a bookmark or a pipeline reading one of those files, it will find nothing.
+- **Removed surfaces:** the MCP server (`bin/drift-mcp`), the GitLab sync connector,
+  and the GitHub Action (`action.yml`). **CI still works** — `bin/drift-scan run
+  --fail-on-deprecated` and its exit codes (0 ok / 2 error / 3 gate-tripped /
+  4 couldn't-verify) are unchanged and are the interface for any runner.
+- **Engine swapped: semgrep/Opengrep → ast-grep**, a static binary the runner fetches
+  automatically on first scan. No action needed; a leftover semgrep in an old venv is
+  ignored, not used. Scans get substantially faster.
+- **Caches invalidate on upgrade** (schema 3 → 4), so the first scan after upgrading
+  re-reads every repo. Old `repos_v3/` directories are inert and can be deleted.
+
+### Added
+
+- **The operation axis.** Endpoints carry `operation`, sunsets can be scoped to one,
+  and the audit join is operation > domain > version. This is what makes
+  `GetCategoryFeatures` (decommissioned 2026-06-04) reportable at its exact
+  `file:line` while `GetItem` on the same host stays quiet.
+- **Coverage verdicts — KNOWN / UNKNOWN with reasons.** Derived from what the ruleset
+  can actually see per language. A Go-only repo can no longer report a confident
+  grade off zero signal; it reports `UNKNOWN (no-egress-signal)` and routes to a
+  manual pass. **This will look like a regression and is not** — it is the tool
+  admitting a blindness it previously hid.
+- **Residue** — versioned paths and egress calls we matched but could not attribute,
+  listed with `file:line`. The scanner's own conscience; it is what a scout pass reads.
+- **`observed` vs `inferred` attribution.** When only one vendor is present, a bare
+  path is attributed to it — a guess about the *repo*, not evidence from the *line*.
+  That is now labelled. Worth knowing: `amazonspapi` is 2 observed / 18 inferred.
+- **`/drift-deepen <folder>`** — the scout. Investigates only what the scan admits it
+  cannot read, and must pass a deterministic gate (`drift-scan absorb`) that re-scans
+  and rejects any proposal that does not hold up. Dates without a fetched source are
+  refused outright.
+- **`drift-scan recommend`** — per-repo scan profile (auto / hybrid / manual) with a
+  one-line why.
+- **10 dated, sourced vendor sunsets** — 6 eBay Trading operations plus the LMS
+  retirements, each deep-linked to the release note that announced it.
+
+### Fixed
+
+- Seven bugs from a deliberate adversarial self-audit — malformed engine output
+  reading as a clean scan; heredoc URLs lost; orphan operation markers dropped;
+  an unreadable repo reporting KNOWN; the absorb gate passing an over-attributing
+  proposal; attestations bleeding between same-named repos; a grade that could read
+  HIGH beside a verdict of UNKNOWN. Every one was reproduced before it was fixed.
+
 ## v0.4.0-beta — 2026-07-17
 
 A measurement instrument for the scanner: run it against real code and see what it catches.
