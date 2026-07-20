@@ -174,6 +174,7 @@ def render_dashboard(inventory: dict, audit: dict, now: str, *, diff: dict | Non
                  'placeholder="Filter by repo, package or vendor…">')
     parts.append('<table id="panel"><tbody></tbody></table>')
     parts.append('<p id="empty" class="empty" hidden>Nothing found.</p>')
+    parts.append('<section id="drift" class="coverage"></section>')
     parts.append('<section id="coverage" class="coverage"></section>')
     # data + behaviour
     parts.append('<script id="drift-data" type="application/json">'
@@ -405,6 +406,28 @@ _CLIENT_JS = r"""
     root.setAttribute("data-theme", next);
     try{ localStorage.setItem("drift-theme", next); }catch(e){}
   });
+
+  (function(){
+    // Integration drift since the previous scan — what DRIFT.md used to carry.
+    var el=document.getElementById("drift"); if(!el) return;
+    var d=DATA.inventoryDrift; if(!d) return;
+    var h="", added=d.reposAdded||[], removed=d.reposRemoved||[], changes=d.changes||[];
+    if(added.length) h+='<div class="note">Repos added: '+added.map(esc).join(", ")+'</div>';
+    if(removed.length) h+='<div class="note">Repos removed: '+removed.map(esc).join(", ")+'</div>';
+    changes.forEach(function(c){
+      var bits=[];
+      (c.endpointsAdded||[]).forEach(function(e){ bits.push("+ endpoint "+esc(e)); });
+      (c.endpointsRemoved||[]).forEach(function(e){ bits.push("− endpoint "+esc(e)); });
+      (c.sdkVersionChanges||[]).forEach(function(s){
+        bits.push(esc(s.pkg)+" "+esc(s.from)+" → "+esc(s.to)); });
+      (c.sdksAdded||[]).forEach(function(s){ bits.push("+ "+esc(s.pkg)+" "+esc(s.ver)); });
+      (c.sdksRemoved||[]).forEach(function(s){ bits.push("− "+esc(s.pkg)+" "+esc(s.ver)); });
+      (c.runtimeChanges||[]).forEach(function(r){
+        bits.push(esc(r.product)+" "+esc(r.from)+" → "+esc(r.to)); });
+      if(bits.length) h+='<div class="note"><b>'+esc(c.repo)+'</b>: '+bits.join(" · ")+'</div>';
+    });
+    el.innerHTML = h ? ("<h2>Changed since last scan</h2>"+h) : "";
+  })();
 
   (function(){
     var cov=document.getElementById("coverage"); if(!cov) return;
