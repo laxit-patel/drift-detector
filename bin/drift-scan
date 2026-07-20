@@ -61,10 +61,19 @@ if [ "${1:-}" = "doctor" ]; then
     echo "  python3     : not found"
   fi
   if [ -f "$MARKER" ]; then
-    ev="$("$VENV/bin/python" -c 'import importlib.metadata as m; print(m.version("semgrep"))' 2>/dev/null)"
-    echo "  engine venv : provisioned (semgrep ${ev:-?}) — ok"
+    # report the engine the scanner will ACTUALLY resolve, not just what pip installed
+    eng="$(env PYTHONPATH="$PLUGIN_ROOT${PYTHONPATH:+:$PYTHONPATH}" "$VENV/bin/python" -c \
+          'from agent.lib.scan_util import resolve_engine; print(resolve_engine())' 2>/dev/null)"
+    if [ -n "$eng" ]; then
+      case "$(basename "$eng")" in
+        ast-grep|sg) echo "  engine      : ast-grep ($("$eng" --version 2>/dev/null)) — ok (preferred: static binary)" ;;
+        *)           echo "  engine      : $(basename "$eng") — ok (ast-grep not present; slower but correct)" ;;
+      esac
+    else
+      echo "  engine      : none resolvable — scans will fail"
+    fi
   else
-    echo "  engine venv : not yet — created on first scan"
+    echo "  engine      : not yet — provisioned on first scan"
   fi
   echo
   if [ "$ready" = "1" ]; then
@@ -104,6 +113,36 @@ if [ ! -f "$MARKER" ]; then
     exit 3
   fi
   touch "$MARKER"
+fi
+
+# ---------- fetch the ast-grep engine (preferred: static binary, ~90x faster) ----------
+# Placed in the venv's bin/ because agent.lib.scan_util.resolve_engine looks there.
+# Best-effort: if the download fails (offline / unsupported platform) the scanner
+# falls back to the pip-installed semgrep, so a failure here is never fatal.
+if [ ! -x "$VENV/bin/ast-grep" ]; then
+  _os="$(uname -s)"; _arch="$(uname -m)"
+  case "$_os:$_arch" in
+    Linux:x86_64)   _asset="app-x86_64-unknown-linux-gnu.zip" ;;
+    Linux:aarch64)  _asset="app-aarch64-unknown-linux-gnu.zip" ;;
+    Darwin:arm64)   _asset="app-aarch64-apple-darwin.zip" ;;
+    Darwin:x86_64)  _asset="app-x86_64-apple-darwin.zip" ;;
+    *)              _asset="" ;;
+  esac
+  if [ -n "$_asset" ] && command -v curl >/dev/null 2>&1 && command -v unzip >/dev/null 2>&1; then
+    echo "drift-detector: fetching the ast-grep engine (one-time)…" >&2
+    _url=$(curl -fsSL https://api.github.com/repos/ast-grep/ast-grep/releases/latest 2>/dev/null \
+           | grep -o "\"browser_download_url\": \"[^\"]*${_asset}\"" | cut -d'"' -f4)
+    if [ -n "$_url" ]; then
+      _tmp=$(mktemp -d)
+      if curl -fsSL -o "$_tmp/sg.zip" "$_url" && unzip -qo "$_tmp/sg.zip" -d "$_tmp" 2>/dev/null \
+         && [ -f "$_tmp/ast-grep" ]; then
+        mv "$_tmp/ast-grep" "$VENV/bin/ast-grep" && chmod +x "$VENV/bin/ast-grep"
+      else
+        echo "drift-detector: ast-grep download failed — using semgrep (slower, still correct)." >&2
+      fi
+      rm -rf "$_tmp"
+    fi
+  fi
 fi
 
 # Run from the caller's cwd (so relative paths resolve), with the plugin on the
