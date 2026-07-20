@@ -15,7 +15,7 @@ def _git_init(d, files):
 
 
 def _empty_engine(args):
-    return json.dumps({"results": [], "errors": [], "paths": {"scanned": []}})
+    return json.dumps([])
 
 
 def _fake_eol(product, version, now, *, http=None):
@@ -43,27 +43,14 @@ def test_run_pipeline_writes_all_reports_and_delivers(tmp_path, monkeypatch):
         return {}
 
     out = run_pipeline(str(root), str(state), "2026-07-15",
-                       chat_webhook="https://chat.googleapis.com/hook",
                        engine="semgrep", run=_empty_engine, http=fake_http)
 
-    for name in ("inventory.json", "INVENTORY.md", "DRIFT.md", "AUDIT.md", "bom.json",
-                 "findings.sarif", "audit.json"):
+    for name in ("inventory.json", "audit.json", "dashboard.html"):
         assert (state / name).exists(), name
-    assert "DEPRECATED" in (state / "AUDIT.md").read_text() or "php" in (state / "AUDIT.md").read_text()
-    # chat delivered with the audit card
-    assert posted["url"].endswith("/hook") and "cardsV2" in posted["body"]
-    assert out["delivered"] == [{"channel": "chat", "ok": True}]
+    # the ONLY report surface on hybrid: nothing else is written
+    assert not (state / "INVENTORY.md").exists() and not (state / "AUDIT.md").exists()
+    assert not (state / "DRIFT.md").exists() and not (state / "bom.json").exists()
     assert out["auditCounts"]["DEPRECATED"] >= 1
-
-
-def test_run_pipeline_no_webhook_skips_delivery(tmp_path, monkeypatch):
-    root = tmp_path / "repos"
-    _git_init(root / "web", {"composer.json": '{"require": {"php": "^8.3"}}'})
-    import agent.audit as audit_mod
-    monkeypatch.setattr(audit_mod.eol, "check", lambda *a, **k: None)   # no findings
-    out = run_pipeline(str(root), str(tmp_path / "state"), "2026-07-15",
-                       engine="semgrep", run=_empty_engine, http=lambda *a, **k: {})
-    assert out["delivered"] == []
 
 
 def test_run_pipeline_pull_invokes_git_per_repo(tmp_path, monkeypatch):

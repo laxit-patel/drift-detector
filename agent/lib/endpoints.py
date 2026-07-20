@@ -44,16 +44,17 @@ def scan_endpoints(matches: list, repo_root: str, vendors: list, *, max_files: i
     groups: dict = {}
     seen_known: set = set()
 
-    def add(vendor, techKey, host, version, example, rel, lineno):
+    def add(vendor, techKey, host, version, example, rel, lineno, operation=None):
         loc = f"{rel}:{lineno}"
-        if techKey and (techKey, loc) in seen_known:
+        if techKey and (techKey, loc, operation) in seen_known:
             return
         if techKey:
-            seen_known.add((techKey, loc))
-        key = (techKey or f"unknown:{host}", host, version)
+            seen_known.add((techKey, loc, operation))
+        key = (techKey or f"unknown:{host}", host, version, operation)
         rec = groups.get(key)
         if rec is None:
             rec = {"vendor": vendor, "domain": host, "version": version, "techKey": techKey,
+                   "operation": operation,
                    "example": (example or host).rstrip("\"';,)"), "file_count": 0, "files": [],
                    "classified": bool(techKey)}
             groups[key] = rec
@@ -80,6 +81,25 @@ def scan_endpoints(matches: list, repo_root: str, vendors: list, *, max_files: i
             if v and d:
                 seg = classify_url.segment_at(line, d)
                 add(v.vendor, v.techKey, d, classify_url.version_of(seg, v), seg, rel, lineno)
+
+    # --- operation markers: name the OPERATION for vendors that deprecate per-call ---
+    # Same strict guard as the concat idiom: only when the repo has exactly one
+    # classified vendor, so an operation is never attributed to the wrong API.
+    classified_tks = {r["techKey"] for r in groups.values() if r["techKey"]}
+    if len(classified_tks) == 1:
+        v = by_tk.get(next(iter(classified_tks)))
+        if v is not None:
+            for m in matches:
+                if m.get("kind") != "operation-marker":
+                    continue
+                rel = _relpath(m.get("path", ""), repo_root)
+                lineno = int(m.get("line", 0) or 0)
+                # the marker may sit past the literal's first line, so search the
+                # whole matched text and fall back to the line for engines that omit it
+                op = (classify_url.operation_of(m.get("text") or "")
+                      or classify_url.operation_of(_read_line(repo_root, rel, lineno, line_cache)))
+                if op:
+                    add(v.vendor, v.techKey, v.domains[0], None, op, rel, lineno, operation=op)
 
     # --- concat idiom: attribute host-less path literals to the repo's SINGLE classified vendor ---
     classified_tks = {r["techKey"] for r in groups.values() if r["techKey"]}

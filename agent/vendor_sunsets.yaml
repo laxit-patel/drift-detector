@@ -49,3 +49,78 @@
   replacement: Browse API
   source: "https://developer.ebay.com/develop/get-started/api-deprecation-status#:~:text=Shopping%20API"
   note: eBay Shopping API (open.api.ebay.com) decommissioned 2025-02-05; migrate to the RESTful Browse API.
+
+# eBay Trading API — OPERATION-scoped. The Trading API as a whole is NOT retired
+# (eBay still ships releases), but individual calls are decommissioned on their own
+# schedules, all on the same host (api.ebay.com) with no URL version. Only an
+# `operation` scope can say "GetCategories is dead, GetItem is alive".
+# Both dates below were read directly off eBay's API Deprecation Status table
+# (Wayback snapshot 2026-05-13) — not inferred.
+- vendor: eBay
+  operation: GetCategoryFeatures
+  retires: "2026-06-04"
+  replacement: Metadata API
+  source: "https://developer.ebay.com/develop/get-started/api-deprecation-status#:~:text=GetCategoryFeatures"
+  note: Deprecated 2025-07-01; decommissioned 2026-06-04. Migrate to the Metadata API for category metadata.
+- vendor: eBay
+  operation: GetCategories
+  retires: "2026-04-15"
+  replacement: Taxonomy API
+  source: "https://developer.ebay.com/develop/get-started/api-deprecation-status#:~:text=GetCategories"
+  note: Decommissioned from the Trading API. Migrate to the Taxonomy API (category tree) + Metadata API.
+# These four aged off the deprecation-status table (it only lists current/recent
+# items), so each date was read from the Trading API release-notes index instead —
+# the release that actually shipped the decommission. Verified 2026-07-20.
+- vendor: eBay
+  operation: GetCategorySpecifics
+  retires: "2022-04-22"
+  replacement: Taxonomy API getItemAspectsForCategory
+  source: "https://developer.ebay.com/devzone/xml/docs/ReleaseNotesArchive.html#:~:text=GetCategorySpecifics%20Call%20Decommisioned"
+  note: Trading release 1255 — "GetCategorySpecifics Call Decommissioned". Use Taxonomy getItemAspectsForCategory.
+- vendor: eBay
+  operation: AddDispute
+  retires: "2023-01-27"
+  replacement: Post-Order API cancellation
+  source: "https://developer.ebay.com/devzone/xml/docs/ReleaseNotesArchive.html#:~:text=Six%20Dispute%20Calls%20Decommissioned"
+  note: Trading release 1295 — "Six Dispute Calls Decommissioned"; AddDispute removed from the WSDL.
+- vendor: eBay
+  operation: GetCharities
+  retires: "2023-09-18"
+  replacement: Charity API
+  source: "https://developer.ebay.com/devzone/xml/docs/ReleaseNotesArchive.html#:~:text=GetCharities%20Call%20Decommissioned"
+  note: Trading release 1327 — "GetCharities Call Decommissioned". Use the Charity API (commerce/charity/v1).
+- vendor: eBay
+  operation: GetSuggestedCategories
+  retires: "2024-07-01"
+  replacement: Taxonomy API getCategorySuggestions
+  source: "https://developer.ebay.com/devzone/xml/docs/ReleaseNotesArchive.html#:~:text=Decommissioned%20GetSuggestedCategories%20call"
+  note: Trading release 1367 — "Decommissioned GetSuggestedCategories call".
+
+# eBay Large Merchant Services — whole SOAP services, so DOMAIN-scoped. Date read
+# from eBay's Dec-2021 newsletter: "The Large Merchant Services APIs (Bulk Data
+# Exchange, File Transfer, and Merchant Data) will be decommissioned on April 30,
+# 2022." Confirmed by the Q1-2022 newsletter. Verified 2026-07-20.
+- vendor: eBay
+  domain: webservices.ebay.com
+  retires: "2022-04-30"
+  replacement: Sell Feed API
+  source: "https://developer.ebay.com/updates/newsletter/2021_12_news#:~:text=Bulk%20Data%20Exchange"
+  note: Large Merchant Services (Bulk Data Exchange) decommissioned 2022-04-30. The same Merchant Data XML feeds are served by the Sell Feed API as REST tasks.
+- vendor: eBay
+  domain: webservices.sandbox.ebay.com
+  retires: "2022-04-30"
+  replacement: Sell Feed API
+  source: "https://developer.ebay.com/updates/newsletter/2021_12_news#:~:text=Bulk%20Data%20Exchange"
+  note: Large Merchant Services (Bulk Data Exchange (sandbox)) decommissioned 2022-04-30. The same Merchant Data XML feeds are served by the Sell Feed API as REST tasks.
+- vendor: eBay
+  domain: storage.ebay.com
+  retires: "2022-04-30"
+  replacement: Sell Feed API
+  source: "https://developer.ebay.com/updates/newsletter/2021_12_news#:~:text=File%20Transfer"
+  note: Large Merchant Services (File Transfer) decommissioned 2022-04-30. The same Merchant Data XML feeds are served by the Sell Feed API as REST tasks.
+- vendor: eBay
+  domain: storage.sandbox.ebay.com
+  retires: "2022-04-30"
+  replacement: Sell Feed API
+  source: "https://developer.ebay.com/updates/newsletter/2021_12_news#:~:text=File%20Transfer"
+  note: Large Merchant Services (File Transfer (sandbox)) decommissioned 2022-04-30. The same Merchant Data XML feeds are served by the Sell Feed API as REST tasks.

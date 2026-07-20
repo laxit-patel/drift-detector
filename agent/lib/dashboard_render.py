@@ -114,6 +114,7 @@ def _build_projection(inventory: dict, audit: dict) -> dict:
         "sdkMediated": cov.get("sdkMediated", []),
         "coverageNotes": (audit.get("coverage") or {}).get("notes", []),
         "coverageGrades": residue.get("byRepo", []),
+        "shapes": cov.get("shapes", []),
         "residueSamples": residue.get("pathLiterals", []),
     }
 
@@ -131,8 +132,10 @@ def _blob(projection: dict) -> str:
     return raw.replace("<", "\\u003c")
 
 
-def render_dashboard(inventory: dict, audit: dict, now: str) -> str:
+def render_dashboard(inventory: dict, audit: dict, now: str, *, diff: dict | None = None) -> str:
     projection = _build_projection(inventory, audit)
+    if diff is not None:                 # the inventory drift DRIFT.md used to carry
+        projection["inventoryDrift"] = diff
     c = projection["counts"]
     d = projection.get("delta") or {}
     new_n = len(build_actions(d["new"])) if d.get("new") else 0
@@ -172,6 +175,7 @@ def render_dashboard(inventory: dict, audit: dict, now: str) -> str:
                  'placeholder="Filter by repo, package or vendor…">')
     parts.append('<table id="panel"><tbody></tbody></table>')
     parts.append('<p id="empty" class="empty" hidden>Nothing found.</p>')
+    parts.append('<section id="drift" class="coverage"></section>')
     parts.append('<section id="coverage" class="coverage"></section>')
     # data + behaviour
     parts.append('<script id="drift-data" type="application/json">'
@@ -405,9 +409,42 @@ _CLIENT_JS = r"""
   });
 
   (function(){
+    // Integration drift since the previous scan — what DRIFT.md used to carry.
+    var el=document.getElementById("drift"); if(!el) return;
+    var d=DATA.inventoryDrift; if(!d) return;
+    var h="", added=d.reposAdded||[], removed=d.reposRemoved||[], changes=d.changes||[];
+    if(added.length) h+='<div class="note">Repos added: '+added.map(esc).join(", ")+'</div>';
+    if(removed.length) h+='<div class="note">Repos removed: '+removed.map(esc).join(", ")+'</div>';
+    changes.forEach(function(c){
+      var bits=[];
+      (c.endpointsAdded||[]).forEach(function(e){ bits.push("+ endpoint "+esc(e)); });
+      (c.endpointsRemoved||[]).forEach(function(e){ bits.push("− endpoint "+esc(e)); });
+      (c.sdkVersionChanges||[]).forEach(function(s){
+        bits.push(esc(s.pkg)+" "+esc(s.from)+" → "+esc(s.to)); });
+      (c.sdksAdded||[]).forEach(function(s){ bits.push("+ "+esc(s.pkg)+" "+esc(s.ver)); });
+      (c.sdksRemoved||[]).forEach(function(s){ bits.push("− "+esc(s.pkg)+" "+esc(s.ver)); });
+      (c.runtimeChanges||[]).forEach(function(r){
+        bits.push(esc(r.product)+" "+esc(r.from)+" → "+esc(r.to)); });
+      if(bits.length) h+='<div class="note"><b>'+esc(c.repo)+'</b>: '+bits.join(" · ")+'</div>';
+    });
+    el.innerHTML = h ? ("<h2>Changed since last scan</h2>"+h) : "";
+  })();
+
+  (function(){
     var cov=document.getElementById("coverage"); if(!cov) return;
     var h="";
     (DATA.coverageNotes||[]).forEach(function(n){ h+='<div class="note">'+esc(n)+'</div>'; });
+    var unknown=(DATA.shapes||[]).filter(function(s){return s.verdict==="UNKNOWN";});
+    if(unknown.length){
+      h+='<div class="note"><b>'+esc(unknown.length)+' repo(s) the scan could not fully read.</b> '
+        +'A repo is only KNOWN when every language present has egress rules AND nothing was '
+        +'left unattributed:</div><ul>';
+      unknown.forEach(function(s){
+        h+='<li>'+esc(s.repo)+' — <b>'+esc(s.verdict)+'</b> ('+esc((s.reasons||[]).join(", "))+')'
+          +'; languages: '+esc(Object.keys(s.languages||{}).join(", "))+'</li>';
+      });
+      h+='</ul>';
+    }
     var grades=(DATA.coverageGrades||[]).filter(function(g){return g.grade!=="HIGH";});
     if(grades.length){
       h+='<div class="note">Coverage — repos where calls may be unattributed:</div><ul>';

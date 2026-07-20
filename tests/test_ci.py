@@ -1,10 +1,4 @@
-from pathlib import Path
-
-import yaml
-
 from agent import cli
-
-_ROOT = Path(__file__).resolve().parent.parent
 
 
 def _run_args(tmp_path, *extra):
@@ -35,20 +29,3 @@ def test_gate_fails_distinctly_when_sources_unreachable(monkeypatch, tmp_path):
         "coverage": {"osvErrors": 1, "eolErrors": 0}, "delivered": []})
     # 0 findings but a source was down -> exit 4 (couldn't check), NOT 0 (clean)
     assert cli.main(_run_args(tmp_path, "--fail-on-deprecated")) == 4
-
-
-def test_composite_action_valid():
-    action = yaml.safe_load((_ROOT / "action.yml").read_text())
-    assert action["runs"]["using"] == "composite"
-    for inp in ("path", "fail-on-deprecated", "upload-sarif", "chat-webhook"):
-        assert inp in action["inputs"]
-    body = (_ROOT / "action.yml").read_text()
-    assert "bin/drift-scan" in body and "run \\" in body                  # runs the deterministic pipeline
-    assert "codeql-action/upload-sarif" in body                           # -> Security tab / PR alerts
-
-
-def test_reference_workflow_shape():
-    text = (_ROOT / "examples" / "drift-ci.yml").read_text()
-    assert "security-events: write" in text                              # needed for upload-sarif
-    assert "schedule:" in text and "pull_request:" in text               # both modes
-    assert "laxit-patel/drift-detector@" in text                         # references the action

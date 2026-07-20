@@ -1,4 +1,0 @@
-# Dependencies for the read-only MCP server (bin/drift-mcp). Isolated from the scan venv —
-# the core plugin stays PyYAML-only; only users who wire up the MCP facade install these.
-mcp>=1.2,<2          # stable FastMCP API (mcp.server.fastmcp); 2.x renames it
-PyYAML>=6.0

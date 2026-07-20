@@ -16,11 +16,9 @@ def _git_init(d, files):
 
 
 def _canned_stripe(path):
-    # the engine now emits generic URL-literal matches; classification happens in Python
-    return json.dumps({"results": [
-        {"check_id": "x.url-literal", "path": path, "start": {"line": 1},
-         "extra": {"metadata": {"kind": "url"}}}],
-        "errors": [], "paths": {"scanned": [path]}})
+    # the engine emits generic URL-literal matches; classification happens in Python
+    from tests import astgrep_fake
+    return astgrep_fake.canned(astgrep_fake.hit("url-literal", path, 1))
 
 
 def test_scan_folder_end_to_end(tmp_path):
@@ -37,7 +35,7 @@ def test_scan_folder_end_to_end(tmp_path):
     assert repo["endpoints"][0]["techKey"] == "api:stripe"
     assert doc["unique_apis"] == ["Stripe"]
     assert (state / "inventory.json").exists()                 # IR persisted
-    assert "Stripe" in out["report_md"]
+    assert "Stripe" in out["doc"]["unique_apis"]
 
 
 def test_scan_folder_incremental_cache_reused(tmp_path):
@@ -48,7 +46,7 @@ def test_scan_folder_incremental_cache_reused(tmp_path):
 
     def counting_run(args):
         calls["n"] += 1
-        return json.dumps({"results": [], "errors": [], "paths": {"scanned": []}})
+        return json.dumps([])
 
     scan_folder(str(root), str(state), "2026-07-14", engine="semgrep", run=counting_run)
     assert calls["n"] == 1                                      # scanned once
@@ -57,7 +55,7 @@ def test_scan_folder_incremental_cache_reused(tmp_path):
 
 
 def _empty_run(args):
-    return json.dumps({"results": [], "errors": [], "paths": {"scanned": []}})
+    return json.dumps([])
 
 
 def test_scan_folder_discovers_nested_repos(tmp_path):
@@ -93,23 +91,21 @@ def test_scan_folder_multiple_roots(tmp_path):
 from agent import cli
 
 
-def test_cli_inventory_scan_writes_json_and_md(tmp_path, monkeypatch):
+def test_cli_inventory_scan_writes_json(tmp_path, monkeypatch):
     root = tmp_path / "repos"
     _git_init(root / "web", {"composer.json": '{"require": {"php": "^8.2"}}',
                              "pay.php": '"https://api.stripe.com/v1/x";\n'})
     # stub the engine so no real binary is needed
     import agent.inventory_scan as inv
-    monkeypatch.setattr(inv.scan_util, "resolve_engine", lambda engine="opengrep": "semgrep")
-    monkeypatch.setattr(inv.opengrep, "_default_run", lambda args: _canned_stripe("pay.php"), raising=False)
+    monkeypatch.setattr(inv.scan_util, "resolve_engine", lambda engine="ast-grep": "ast-grep")
+    monkeypatch.setattr(inv.engine_mod, "_default_run", lambda args: _canned_stripe("pay.php"), raising=False)
 
     out_json = tmp_path / "inv.json"
-    out_md = tmp_path / "INVENTORY.md"
     rc = cli.main(["inventory-scan", "--root", str(root), "--state", str(tmp_path / "state"),
-                   "--out-json", str(out_json), "--out-md", str(out_md), "--now", "2026-07-14"])
+                   "--out-json", str(out_json), "--now", "2026-07-14"])
     assert rc == 0
     doc = json.loads(out_json.read_text())
     assert doc["repos"][0]["path"] == "web" and doc["unique_apis"] == ["Stripe"]
-    assert "Stripe" in out_md.read_text()
 
 
 def test_cli_inventory_scan_repeatable_root(tmp_path, monkeypatch):
@@ -117,13 +113,13 @@ def test_cli_inventory_scan_repeatable_root(tmp_path, monkeypatch):
     _git_init(r1 / "web", {"composer.json": '{"require": {"php": "^8.2"}}'})
     _git_init(r2 / "api", {"composer.json": '{"require": {"php": "^8.1"}}'})
     import agent.inventory_scan as inv
-    monkeypatch.setattr(inv.scan_util, "resolve_engine", lambda engine="opengrep": "semgrep")
-    monkeypatch.setattr(inv.opengrep, "_default_run", _empty_run, raising=False)
+    monkeypatch.setattr(inv.scan_util, "resolve_engine", lambda engine="ast-grep": "ast-grep")
+    monkeypatch.setattr(inv.engine_mod, "_default_run", _empty_run, raising=False)
 
     out_json = tmp_path / "inv.json"
     rc = cli.main(["inventory-scan", "--root", str(r1), "--root", str(r2),
                    "--state", str(tmp_path / "state"), "--out-json", str(out_json),
-                   "--out-md", str(tmp_path / "INVENTORY.md"), "--now", "2026-07-14"])
+                   "--now", "2026-07-14"])
     assert rc == 0
     doc = json.loads(out_json.read_text())
     assert sorted(r["path"] for r in doc["repos"]) == ["api", "web"]
@@ -133,11 +129,11 @@ def test_cli_inventory_scan_progress_to_stderr(tmp_path, monkeypatch, capsys):
     root = tmp_path / "repos"
     _git_init(root / "web", {"composer.json": '{"require": {"php": "^8.2"}}'})
     import agent.inventory_scan as inv
-    monkeypatch.setattr(inv.scan_util, "resolve_engine", lambda engine="opengrep": "semgrep")
-    monkeypatch.setattr(inv.opengrep, "_default_run", _empty_run, raising=False)
+    monkeypatch.setattr(inv.scan_util, "resolve_engine", lambda engine="ast-grep": "ast-grep")
+    monkeypatch.setattr(inv.engine_mod, "_default_run", _empty_run, raising=False)
     rc = cli.main(["inventory-scan", "--root", str(root), "--progress",
                    "--state", str(tmp_path / "state"), "--out-json", str(tmp_path / "i.json"),
-                   "--out-md", str(tmp_path / "I.md"), "--now", "2026-07-14"])
+                   "--now", "2026-07-14"])
     assert rc == 0
     captured = capsys.readouterr()
     assert "deterministic static-analysis" in captured.err     # expectation-setting banner

@@ -2,7 +2,6 @@ import json
 import subprocess
 from pathlib import Path
 from agent.inventory_scan import scan_folder
-from agent.lib.inventory_diff import render_diff_md
 
 
 def _git_init(d, files):
@@ -17,7 +16,7 @@ def _git_init(d, files):
 
 def _canned(sdks):
     # opengrep finds no endpoints; the diff comes from manifest (sdk) changes
-    return json.dumps({"results": [], "errors": [], "paths": {"scanned": []}})
+    return json.dumps([])
 
 
 def test_scan_returns_diff_vs_prior_ir(tmp_path):
@@ -40,9 +39,10 @@ def test_scan_returns_diff_vs_prior_ir(tmp_path):
     ch = run2["diff"]["changes"][0]
     assert ch["repo"] == "web"
     assert {"eco": "npm", "pkg": "axios", "from": "^1.6", "to": "^1.7"} in ch["sdkVersionChanges"]
-    md = render_diff_md(run2["diff"])
-    assert "axios" in md and "^1.7" in md
 
 
-def test_render_diff_empty():
-    assert "no changes" in render_diff_md({"reposAdded": [], "reposRemoved": [], "changes": []}).lower()
+def test_diff_of_identical_inventories_is_empty():
+    from agent.lib.inventory_diff import diff_inventories
+    doc = {"repos": [{"path": "web", "endpoints": [], "sdks": [], "runtimes": {}}]}
+    d = diff_inventories(doc, doc)
+    assert d["changes"] == [] and d["reposAdded"] == [] and d["reposRemoved"] == []

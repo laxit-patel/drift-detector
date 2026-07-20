@@ -28,14 +28,15 @@ def test_resolve_engine_raises_when_absent(monkeypatch):
     import agent.lib.scan_util as su
     monkeypatch.setattr(su.shutil, "which", lambda name: None)
     monkeypatch.setattr(su.os.path, "exists", lambda p: False)
-    with pytest.raises(RuntimeError, match="engine"):
+    with pytest.raises(RuntimeError, match="ast-grep"):
         resolve_engine()
 
 
 def test_resolve_engine_finds_on_path(monkeypatch):
     import agent.lib.scan_util as su
-    monkeypatch.setattr(su.shutil, "which", lambda name: "/usr/bin/semgrep" if name == "semgrep" else None)
-    assert resolve_engine() == "/usr/bin/semgrep"
+    monkeypatch.setattr(su.os.path, "exists", lambda p: False)      # ignore any locally-installed binary
+    monkeypatch.setattr(su.shutil, "which", lambda name: "/usr/bin/ast-grep" if name == "ast-grep" else None)
+    assert resolve_engine() == "/usr/bin/ast-grep"
 
 
 # --- normalize_remote: safety-critical git-remote normalizer -------------------

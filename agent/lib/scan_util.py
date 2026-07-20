@@ -53,13 +53,16 @@ def git_meta(repo_abs: str, *, run=_default_git) -> dict:
     }
 
 
-def resolve_engine(engine: str = "opengrep") -> str:
-    for name in (engine, "opengrep", "semgrep"):
+def resolve_engine(engine: str = "ast-grep") -> str:
+    """Locate the ast-grep binary (static, no runtime). bin/drift-scan fetches it
+    into the venv on first run; $DRIFT_ENGINE or PATH also work."""
+    for name in (engine, "ast-grep"):
         p = shutil.which(name)
         if p:
             return p
         cand = os.path.join(os.path.dirname(sys.executable), name)
         if os.path.exists(cand):
             return cand
-    raise RuntimeError("No opengrep/semgrep engine found — install opengrep "
-                       "(or semgrep) to scan code endpoints.")
+    raise RuntimeError("ast-grep not found — install it (https://ast-grep.github.io) "
+                       "or re-run bin/drift-scan, which fetches it automatically.")
+

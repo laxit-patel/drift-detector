@@ -16,7 +16,7 @@ def test_audit_out_html_writes_dashboard(tmp_path, monkeypatch):
     inv = _inventory(tmp_path)
     out_html = tmp_path / "dashboard.html"
     rc = cli.main(["audit", "--in", str(inv), "--now", "2026-07-15",
-                   "--out-audit", str(tmp_path / "AUDIT.md"), "--out-html", str(out_html)])
+                   "--out-html", str(out_html)])
     assert rc == 0
     assert out_html.exists() and out_html.read_text().startswith("<!doctype html>")
 
@@ -27,5 +27,5 @@ def test_audit_without_out_html_writes_none(tmp_path, monkeypatch):
     monkeypatch.setattr(audit_mod.eol, "check", lambda *a, **k: None)
     inv = _inventory(tmp_path)
     cli.main(["audit", "--in", str(inv), "--now", "2026-07-15",
-              "--out-audit", str(tmp_path / "AUDIT.md")])
+              ])
     assert not (tmp_path / "dashboard.html").exists()

@@ -2,4 +2,3 @@
 # requirements-plugin.txt (what bin/drift-scan installs on a user's machine).
 pytest>=7.4
 PyYAML>=6.0
-semgrep>=1.100

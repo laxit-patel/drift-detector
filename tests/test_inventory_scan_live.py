@@ -21,4 +21,4 @@ def test_live_scan_marketplace_repos(tmp_path):
     # these SDK repos hard-code marketplace endpoints -> real APIs detected
     assert "Amazon SP-API" in doc["unique_apis"] or "eBay" in doc["unique_apis"]
     assert (tmp_path / "state" / "inventory.json").exists()
-    assert "Third-party APIs" in out["report_md"]
+    assert out["doc"]["repos"]

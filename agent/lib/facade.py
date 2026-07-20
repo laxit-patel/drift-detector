@@ -1,5 +1,5 @@
 """Read-only query facade over the produced artifacts (inventory.json / audit.json) plus a
-couple of LIVE checks. This is the logic the MCP server exposes — pure functions, unit-tested,
+couple of LIVE checks. A pure, protocol-free read API over the scan artifacts — pure functions, unit-tested,
 no protocol. The deterministic pipeline writes the data; this lets any assistant read it.
 """
 from __future__ import annotations

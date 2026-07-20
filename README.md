@@ -6,7 +6,7 @@ APIs/SDKs/runtimes, with `file:line` and versions), reports **what changed since
 scan** (drift), **audits** those dependencies for known vulnerabilities (OSV) and
 end-of-life runtimes (endoflife.date), rolls the findings up into a **ranked list of fix
 actions**, renders a **self-contained interactive dashboard**, and can **run itself on a
-schedule** and deliver the result to a Google Chat thread. Everything runs locally as a
+schedule**. Everything runs locally as a
 **deterministic pipeline** (Opengrep/semgrep AST matching + manifest parsing + public API
 lookups) — **zero LLM tokens**; Claude only orchestrates, narrates, and sets things up.
 
@@ -63,10 +63,9 @@ classifying each finding **DEPRECATED** (act now) / **REVIEW** (assess), with a 
   with your vendors' announcements (each entry cites a source).
 
 **Findings roll up into actions.** Thirty CVEs against one package are **one** job —
-*upgrade `torch` to `2.10.0`* — so the report doesn't drown you in 300 rows. `AUDIT.md`
-opens with **"Do this first"** (the top actions, ranked by severity then blast radius, each
-with the exact upgrade command), then the full **fix queue**, then a per-repo breakdown.
-The report also **leads with the delta** (🆕 new · ✅ resolved since last scan); accepted
+*upgrade `torch` to `2.10.0`* — so the report doesn't drown you in 300 rows. The dashboard
+opens with the tiles and a **ranked fix queue** (severity, then blast radius, each with the
+exact upgrade command). It also **leads with the delta** (🆕 new · ✅ resolved since last scan); accepted
 findings can be muted. Needs network on the run (still zero LLM tokens); degrades gracefully offline.
 
 ### Dashboard — the interactive view
@@ -82,36 +81,24 @@ tile's number always matches the rows it filters to.
 
 `/drift-detector <folder>` runs the full **scan → audit** pipeline and then offers to make
 it autonomous. On your OK it installs a **cron job on this machine** (default Sundays 7am)
-that re-runs the deterministic pipeline — **no Claude, no tokens** — and, if you give a
-**Google Chat** incoming-webhook URL, posts the summary to your team thread.
+that re-runs the deterministic pipeline — **no Claude, no tokens**.
 
 ```
 /drift-detector schedule <folder>      # install the weekly cron (shows the crontab line first)
 /drift-detector unschedule <folder>    # remove it
 ```
 
-The scheduled run is the `run` subcommand (`scan → audit → deliver`); logs land in
+The scheduled run is the `run` subcommand (`scan → audit → dashboard`); logs land in
 `<folder>/.drift-detector/cron.log`. The agent always shows the exact crontab line and asks
 before touching your crontab. (Cron = Linux/macOS.)
-
-### Query it from any assistant (MCP)
-
-A read-only **MCP server** (`bin/drift-mcp`) exposes the artifacts + live checks to any MCP host
-(Claude Code, Claude Desktop, Cursor, Copilot). Ask *"which repos call Shopify?"* or — while
-coding — **`check_dependency("npm","axios","0.21.1")` before you add it**, turning drift
-*detection* into *prevention*. Setup + config snippets: [docs/MCP.md](docs/MCP.md).
 
 ## Outputs (written to `<folder>/.drift-detector/`)
 
 | File | What |
 |---|---|
 | `inventory.json` | The IR — per-repo `{runtimes, frameworks, sdks, endpoints[{vendor, domain, version, file_count, files:[path:line]}]}` + rollups + coverage. The queryable shape-map. |
-| `INVENTORY.md` | The report to read — a comprehensive, **drift-first** Markdown doc (open in a Markdown preview): what changed, then the summary, the APIs/frameworks/runtimes/SDKs tables, and a per-repo section with each endpoint at `file:line`. |
-| `DRIFT.md` | Just the diff vs the previous scan (standalone). |
-| `AUDIT.md` | *(audit)* The "what to mend" report — findings rolled up into **ranked fix actions**: "Do this first", the full fix queue, then per-repo. Each action carries the exact upgrade command and a cited source. |
-| `dashboard.html` | *(run/audit)* Self-contained **interactive dashboard** — tiles + drill-down fix queue + the endpoint/sunset view. No server, opens from `file://`. |
-| `bom.json` | *(audit)* [CycloneDX 1.6](https://cyclonedx.org/) SBOM — components (PURLs) + vulnerabilities. Ingestible by Dependency-Track, Grype, GitHub, etc. |
-| `findings.sarif` | *(audit)* [SARIF 2.1.0](https://sarifweb.azurewebsites.net/) — uploadable to GitHub's Security tab. |
+| `audit.json` | The findings + ranked actions + delta, as data. |
+| `dashboard.html` | **The report** — self-contained interactive dashboard: tiles, drill-down fix queue, the endpoint/sunset view, "Changed since last scan", and the per-repo **coverage grade**. No server, opens from `file://`. |
 
 Re-runs are cheap: only repos whose git `HEAD` changed are re-analyzed (per-repo
 commit-SHA cache).

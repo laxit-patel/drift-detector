@@ -502,3 +502,29 @@ def test_ssh_repository_url_renders_as_escaped_text_not_link():
     html = render_dashboard(inv, {"actions": [], "coverage": {}}, "2026-07-17")
     assert 'href="ssh://' not in html                           # never linked with href
     assert "ssh://git@internal/x.git" in html                   # present as text
+
+
+def test_dashboard_renders_inventory_drift_when_diff_supplied():
+    inv = {"repos": [], "coverage": {}}
+    diff = {"reposAdded": ["web"], "reposRemoved": [],
+            "changes": [{"repo": "svc", "endpointsAdded": ["api.x.com v2"], "endpointsRemoved": [],
+                         "sdksAdded": [], "sdksRemoved": [],
+                         "sdkVersionChanges": [{"eco": "npm", "pkg": "axios", "from": "^1.6", "to": "^1.7"}],
+                         "runtimeChanges": []}]}
+    html = render_dashboard(inv, {"actions": [], "coverage": {}}, "2026-07-17", diff=diff)
+    assert 'id="drift"' in html
+    data = _blob(html)
+    assert data["inventoryDrift"]["reposAdded"] == ["web"]
+    assert "Changed since last scan" in html and "axios" in html
+
+
+def test_dashboard_without_diff_carries_no_drift():
+    html = render_dashboard({"repos": [], "coverage": {}}, {"actions": [], "coverage": {}}, "2026-07-17")
+    assert "inventoryDrift" not in _blob(html)
+
+
+def test_inventory_drift_is_xss_escaped():
+    diff = {"reposAdded": ["r</script><b>pwn"], "reposRemoved": [], "changes": []}
+    html = render_dashboard({"repos": [], "coverage": {}}, {"actions": [], "coverage": {}},
+                            "2026-07-17", diff=diff)
+    assert "<b>pwn" not in html.split('id="drift-data"')[0]

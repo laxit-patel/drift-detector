@@ -49,7 +49,7 @@ def test_preflight_cli_reports_private_sources(tmp_path, capsys):
     rc = cli.main(["preflight", "--root", str(tmp_path)])
     out = capsys.readouterr().out
     assert rc == 0 and "private package sources needing access" in out
-    assert "git.topsdemo.in" in out and "GitLab auth" in out
+    assert "git.topsdemo.in" in out and "clone them locally" in out   # connector stripped on hybrid
 
 
 def test_npm_bare_github_shorthand_flagged_but_not_semver_or_aliases(tmp_path):

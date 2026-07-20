@@ -194,3 +194,56 @@ def test_build_endpoints_still_returns_a_list(tmp_path):
     matches = [{"kind": "url", "path": "x.php", "line": 1}]
     eps = build_endpoints(matches, str(tmp_path), [_STRIPE])
     assert isinstance(eps, list) and eps[0]["techKey"] == "api:stripe"
+
+
+# --- the operation axis: one host, many operations, independent lifecycles ------
+
+def _op_match(path, line, text):
+    return {"kind": "operation-marker", "path": path, "line": line, "text": text}
+
+
+def test_operation_marker_attributed_to_the_single_classified_vendor(tmp_path):
+    _write(tmp_path, "cfg.php", "$h = 'https://api.ebay.com';\n")
+    _write(tmp_path, "Cat.php", "$x = '<GetCategoryFeaturesRequest xmlns=\"urn:ebay\">';\n")
+    _EBAY = Vendor("eBay", "api:ebay", ("ebay.com",), r"/(v[0-9]+)")
+    matches = [{"kind": "url", "path": "cfg.php", "line": 1},
+               _op_match("Cat.php", 1, "'<GetCategoryFeaturesRequest xmlns=\"urn:ebay\">'")]
+    out = scan_endpoints(matches, str(tmp_path), [_EBAY])
+    ops = {e["operation"]: e for e in out["endpoints"] if e.get("operation")}
+    assert "GetCategoryFeatures" in ops
+    assert ops["GetCategoryFeatures"]["techKey"] == "api:ebay"
+    assert "Cat.php:1" in ops["GetCategoryFeatures"]["files"]
+
+
+def test_operation_marker_not_attributed_when_two_vendors(tmp_path):
+    _write(tmp_path, "cfg.php", "$a='https://api.ebay.com'; $b='https://api.stripe.com';\n")
+    _write(tmp_path, "Cat.php", "$x = '<GetCategoryFeaturesRequest>';\n")
+    _EBAY = Vendor("eBay", "api:ebay", ("ebay.com",), r"/(v[0-9]+)")
+    matches = [{"kind": "url", "path": "cfg.php", "line": 1},
+               _op_match("Cat.php", 1, "'<GetCategoryFeaturesRequest>'")]
+    out = scan_endpoints(matches, str(tmp_path), [_EBAY, _STRIPE])
+    assert not any(e.get("operation") for e in out["endpoints"])   # ambiguous -> never guess
+
+
+def test_operation_read_from_multiline_literal_text(tmp_path):
+    """The XML root often sits on line 2+ of the literal; the match's start line
+    alone would miss it, so the full matched text is searched."""
+    _write(tmp_path, "cfg.php", "$h = 'https://api.ebay.com';\n")
+    _write(tmp_path, "Cancel.php", "$body = '<?xml version=\"1.0\"?>\n    <AddDisputeRequest xmlns=\"x\">';\n")
+    _EBAY = Vendor("eBay", "api:ebay", ("ebay.com",), r"/(v[0-9]+)")
+    matches = [{"kind": "url", "path": "cfg.php", "line": 1},
+               _op_match("Cancel.php", 1, "'<?xml version=\"1.0\"?>\n    <AddDisputeRequest xmlns=\"x\">'")]
+    out = scan_endpoints(matches, str(tmp_path), [_EBAY])
+    assert any(e.get("operation") == "AddDispute" for e in out["endpoints"])
+
+
+def test_operations_on_one_host_stay_separate_records(tmp_path):
+    _write(tmp_path, "cfg.php", "$h = 'https://api.ebay.com';\n")
+    _write(tmp_path, "A.php", "x\n")
+    _EBAY = Vendor("eBay", "api:ebay", ("ebay.com",), r"/(v[0-9]+)")
+    matches = [{"kind": "url", "path": "cfg.php", "line": 1},
+               _op_match("A.php", 1, "'<GetCategoriesRequest>'"),
+               _op_match("A.php", 1, "'<GetItemRequest>'")]
+    out = scan_endpoints(matches, str(tmp_path), [_EBAY])
+    ops = {e["operation"] for e in out["endpoints"] if e.get("operation")}
+    assert ops == {"GetCategories", "GetItem"}      # same host+version, distinct lifecycles
