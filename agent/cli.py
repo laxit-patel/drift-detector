@@ -127,6 +127,29 @@ def _cmd_unschedule(args) -> int:
     return 0
 
 
+def _cmd_catalog_refresh(args) -> int:
+    """Reconcile a vendor's published API specs against our sunset catalog.
+
+    Reports, never writes. Exit 0 clean, 3 when the vendor contradicts itself (our
+    catalog dates a family the vendor still publishes unflagged) — that is not an error
+    in our data, it is a disagreement a human has to resolve, and it should be loud
+    rather than buried in output nobody reads.
+    """
+    from agent import catalog_refresh
+    try:
+        result = catalog_refresh.refresh(args.vendor)
+    except KeyError as exc:
+        print(f"catalog-refresh: {exc}", file=sys.stderr)
+        return 2
+    except Exception as exc:
+        print(f"catalog-refresh: could not reach the vendor's specs ({exc}). "
+              f"Nothing was concluded — an unreachable source is not a clean one.",
+              file=sys.stderr)
+        return 4
+    print(catalog_refresh.render(result))
+    return 3 if result["specUnflagged"] else 0
+
+
 def _cmd_verify(args) -> int:
     """Check a produced report against itself: do the tiles agree with the tables, does
     the page carry the data the JSON claims, is every row distinguishable?
@@ -364,6 +387,10 @@ def main(argv: list[str]) -> int:
     ppf = sub.add_parser("preflight")
     ppf.add_argument("--root", required=True)
     ppf.set_defaults(func=_cmd_preflight)
+
+    pcr = sub.add_parser("catalog-refresh")   # vendor specs vs our curated catalog
+    pcr.add_argument("--vendor", required=True)
+    pcr.set_defaults(func=_cmd_catalog_refresh)
 
     pv = sub.add_parser("verify")         # do the report's numbers agree with its data?
     pv.add_argument("--state", required=True)

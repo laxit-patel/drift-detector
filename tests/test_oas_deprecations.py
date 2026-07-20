@@ -130,3 +130,56 @@ def test_nothing_is_ever_auto_removed_from_the_catalog():
     before = [dict(e) for e in cat]
     oas.reconcile([], cat, "V", all_spec_paths=set())
     assert cat == before
+
+
+# ------------------------------------------------------------- the refresh command
+def _fake_fetch(tree_paths, docs):
+    def fetch(url):
+        if "git/trees" in url:
+            return {"tree": [{"path": p} for p in tree_paths]}
+        for name, doc in docs.items():
+            if url.endswith(name):
+                return doc
+        raise OSError(f"unreachable: {url}")
+    return fetch
+
+
+def test_refresh_reports_and_never_writes():
+    from agent import catalog_refresh
+    cat = [{"vendor": "Amazon SP-API", "path": "/orders/v0", "retires": "2027-03-27"}]
+    before = [dict(e) for e in cat]
+    out = catalog_refresh.refresh("Amazon SP-API", catalog=cat, fetch=_fake_fetch(
+        ["models/orders-api-model/ordersV0.json"], {"ordersV0.json": ORDERS_V0}))
+    assert set(out["confirmed"]) == {"/orders/v0"}
+    assert cat == before, "refresh must never mutate the catalog"
+
+
+def test_an_unreachable_spec_is_reported_not_treated_as_unflagged():
+    """The failure this project keeps having: 'could not check' rendering as 'clean'.
+    A model that 404s must never make its family look un-deprecated."""
+    from agent import catalog_refresh
+    out = catalog_refresh.refresh("Amazon SP-API", catalog=[], fetch=_fake_fetch(
+        ["models/a/ordersV0.json", "models/b/missing.json"], {"ordersV0.json": ORDERS_V0}))
+    assert len(out["specsFailed"]) == 1
+    assert out["specsFetched"] == 1
+    assert "UNREACHABLE" in catalog_refresh.render(out)
+
+
+def test_conflict_is_rendered_as_a_conflict_not_a_clearance():
+    from agent import catalog_refresh
+    cat = [{"vendor": "Amazon SP-API", "path": "/fba/inbound/v0", "retires": "2025-01-21"}]
+    doc = {"info": {"title": "FBA Inbound", "version": "v0"},
+           "paths": {"/fba/inbound/v0/shipments": {"get": {"operationId": "getShipments"}}}}
+    out = catalog_refresh.refresh("Amazon SP-API", catalog=cat, fetch=_fake_fetch(
+        ["models/fulfillment-inbound-api-model/fulfillmentInboundV0.json"],
+        {"fulfillmentInboundV0.json": doc}))
+    assert out["specUnflagged"] == ["/fba/inbound/v0"]
+    text = catalog_refresh.render(out)
+    assert "CONFLICT" in text and "NOT read this as a clearance" in text
+
+
+def test_unknown_vendor_is_refused_rather_than_guessed():
+    from agent import catalog_refresh
+    import pytest as _p
+    with _p.raises(KeyError):
+        catalog_refresh.refresh("Walmart", fetch=lambda u: {})

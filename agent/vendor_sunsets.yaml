@@ -178,3 +178,56 @@
   source: https://developer-docs.amazon/sp-api/docs/sp-api-deprecations#:~:text=Merchant%20Fulfillment
   note: 'Merchant Fulfillment v0 — Amazon removed THREE (unnamed) operations 2024-03-27. Family-scoped:
     verify which of your calls are affected.'
+
+# ── eBay, from the vendor's MACHINE-READABLE deprecation feed ────────────────────────
+# Fetched 2026-07-20 from https://www.edp.ebay.com/rss/api-deprecation
+#
+# eBay publishes an RSS feed with STRUCTURED fields — <api>, <methods><method>,
+# <deprecationDate>, <decommissionDate>, <notes> — i.e. exactly the machine-readable
+# retirement source this catalog was assumed to lack. `retires` below is the
+# DECOMMISSION date (when calls stop working), not the earlier deprecation notice.
+#
+# The canonical URL is https://developer.ebay.com/rss/api-deprecation, which returns 403
+# to non-browser clients (a WAF fingerprint block, verified: instant 403, not a timeout).
+# The www.edp.ebay.com mirror serves the identical feed and is what was actually fetched,
+# so that is what is cited — citing a URL we could not reach would be the same dishonesty
+# as an unsourced date.
+#
+# This feed independently CONFIRMED the GetCategoryFeatures entry above (2026-06-04),
+# a date this catalog previously got wrong twice by hand.
+- vendor: eBay
+  operation: getProductCompatibilities
+  retires: '2026-08-15'
+  replacement: the getProductCompatibilities method of the Metadata API
+  source: https://www.edp.ebay.com/rss/api-deprecation#getProductCompatibilities
+  note: Product API. Deprecated 2025-07-08, decommissioned 2026-08-15.
+- vendor: eBay
+  operation: findProducts
+  retires: '2026-08-15'
+  source: https://www.edp.ebay.com/rss/api-deprecation#findProducts
+  note: Product API. Deprecated 2026-05-26, decommissioned 2026-08-15.
+- vendor: eBay
+  operation: getProductDetails
+  retires: '2026-08-15'
+  source: https://www.edp.ebay.com/rss/api-deprecation#getProductDetails
+  note: Product API. Deprecated 2026-05-26, decommissioned 2026-08-15.
+- vendor: eBay
+  operation: updatePaymentInfo
+  retires: '2026-06-02'
+  source: https://www.edp.ebay.com/rss/api-deprecation#updatePaymentInfo
+  note: Order v1 API. Deprecated 2026-05-18, decommissioned 2026-06-02.
+- vendor: eBay
+  operation: GetSellerDiscountProfiles
+  retires: '2027-01-19'
+  source: https://www.edp.ebay.com/rss/api-deprecation#GetSellerDiscountProfiles
+  note: Trading API. Deprecated 2026-06-10, decommissioned 2027-01-19.
+- vendor: eBay
+  operation: SetShippingDiscountProfiles
+  retires: '2027-01-19'
+  source: https://www.edp.ebay.com/rss/api-deprecation#SetShippingDiscountProfiles
+  note: Trading API. Deprecated 2026-06-10, decommissioned 2027-01-19.
+- vendor: eBay
+  operation: UploadSiteHostedPictures
+  retires: '2026-09-30'
+  source: https://www.edp.ebay.com/rss/api-deprecation#UploadSiteHostedPictures
+  note: Trading API. Deprecated 2025-11-06, decommissioned 2026-09-30.

@@ -34,3 +34,16 @@
     the 13 listed retirements were staged; the remainder (Authorization v1, Data Kiosk
     dataset) do not appear in any scanned repo. Two entries are family-scoped because
     Amazon names an operation subset without enumerating it.
+
+- vendor: eBay
+  checked: "2026-07-20"
+  source: https://www.edp.ebay.com/rss/api-deprecation
+  note: >-
+    Reconciled against eBay's structured deprecation RSS (canonical
+    developer.ebay.com/rss/api-deprecation returns 403 to non-browser clients; the
+    www.edp.ebay.com mirror serves the identical feed and is what was fetched). All 10
+    current feed items reviewed: 7 method-scoped retirements added, the existing
+    GetCategoryFeatures date independently confirmed, one notification-only item skipped
+    as undetectable. STILL OPEN: Merchandising, Return Management and Business Policies
+    Management are whole-API deprecations with decommission date TBD and no host or
+    operation scope we could verify — they are NOT in the catalog.
