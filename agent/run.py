@@ -11,7 +11,7 @@ import subprocess
 
 from agent.inventory_scan import scan_folder
 from agent.audit import audit_inventory
-from agent.lib.dashboard_render import render_dashboard
+from agent.lib.dashboard_render import build_payload, render_payload
 from agent.lib.findings_state import apply_lifecycle
 from agent.lib.repo_discovery import discover_repos
 from agent.lib.http_util import default_http
@@ -56,8 +56,12 @@ def run_pipeline(roots, state_dir, now, *, pull=False,
     audit = audit_inventory(doc, now, http=http) if http else audit_inventory(doc, now)
     apply_lifecycle(audit, state_dir, now)
     _write_json(os.path.join(state_dir, "audit.json"), audit)
-    _write(os.path.join(state_dir, "dashboard.html"),
-           render_dashboard(doc, audit, now, diff=scan["diff"]))
+    # ONE payload, written to disk and embedded in the page. Not two code paths that
+    # ought to agree — the same object, so `dashboard.json` is exactly what a reader
+    # sees, and asserting on it is asserting on the dashboard.
+    payload = build_payload(doc, audit, diff=scan["diff"])
+    _write_json(os.path.join(state_dir, "dashboard.json"), payload)
+    _write(os.path.join(state_dir, "dashboard.html"), render_payload(payload, now))
 
     return {"scope": doc.get("scope", {}), "auditCounts": audit["counts"],
             "coverage": audit.get("coverage", {})}

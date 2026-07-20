@@ -135,10 +135,26 @@ def _blob(projection: dict) -> str:
     return raw.replace("<", "\\u003c")
 
 
-def render_dashboard(inventory: dict, audit: dict, now: str, *, diff: dict | None = None) -> str:
+def build_payload(inventory: dict, audit: dict, *, diff: dict | None = None) -> dict:
+    """The dashboard's DATA — everything the page displays, before any HTML exists.
+
+    This is the contract. `dashboard.json` is this dict and the page embeds this same
+    dict, so what a test asserts on is what a reader sees. Rendered HTML cannot be
+    verified by anything that does not have eyes: two bugs shipped this week — a tile
+    reading `Sunsets 1` over twelve findings, then twelve rows all labelled "eBay" —
+    both passed their unit tests because the tests ran a layer below the artifact.
+    """
     projection = _build_projection(inventory, audit)
     if diff is not None:                 # the inventory drift DRIFT.md used to carry
         projection["inventoryDrift"] = diff
+    return projection
+
+
+def render_dashboard(inventory: dict, audit: dict, now: str, *, diff: dict | None = None) -> str:
+    return render_payload(build_payload(inventory, audit, diff=diff), now)
+
+
+def render_payload(projection: dict, now: str) -> str:
     c = projection["counts"]
     d = projection.get("delta") or {}
     new_n = len(build_actions(d["new"])) if d.get("new") else 0

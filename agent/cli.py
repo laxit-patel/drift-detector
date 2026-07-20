@@ -127,6 +127,49 @@ def _cmd_unschedule(args) -> int:
     return 0
 
 
+def _cmd_verify(args) -> int:
+    """Check a produced report against itself: do the tiles agree with the tables, does
+    the page carry the data the JSON claims, is every row distinguishable?
+
+    Exists so "the dashboard is correct" stops being a claim anyone makes by looking at
+    it. Two bugs shipped in one day because rendered HTML cannot be verified by reading
+    the source — a tile said `Sunsets 1` over twelve findings, then twelve rows rendered
+    with the same label. Both are mechanically detectable from the payload, and this is
+    where that happens. Exit 0 clean, 3 violations, 4 nothing to verify.
+    """
+    import json as _json
+    from agent.lib import verify as _verify
+
+    state = args.state
+    try:
+        def _slurp(name):
+            with open(os.path.join(state, name), encoding="utf-8") as fh:
+                return fh.read()
+        payload = _json.loads(_slurp("dashboard.json"))
+        audit = _json.loads(_slurp("audit.json"))
+        html = _slurp("dashboard.html")
+    except OSError as exc:
+        print(f"drift verify: nothing to verify — {exc}", file=sys.stderr)
+        return 4
+
+    violations = _verify.verify_payload(payload, audit.get("findings", []))
+    try:
+        _verify.check_blob_matches_payload(html, _json.dumps(payload))
+    except _verify.Violation as v:
+        violations.append(v)
+
+    if violations:
+        print(f"✗ {len(violations)} invariant(s) violated:")
+        for v in violations:
+            print(f"  [{v.check}] {v.detail}")
+        return 3
+    n = payload.get("counts", {})
+    print(f"✓ report is self-consistent — {n.get('sunsets', 0)} sunsets, "
+          f"{n.get('eol', 0)} eol, {n.get('private', 0)} private, "
+          f"tiles match their tables, page matches dashboard.json")
+    return 0
+
+
 def _cmd_preflight(args) -> int:
     from agent.lib.repo_discovery import discover_repos
     from agent.lib import private_sources
@@ -321,6 +364,10 @@ def main(argv: list[str]) -> int:
     ppf = sub.add_parser("preflight")
     ppf.add_argument("--root", required=True)
     ppf.set_defaults(func=_cmd_preflight)
+
+    pv = sub.add_parser("verify")         # do the report's numbers agree with its data?
+    pv.add_argument("--state", required=True)
+    pv.set_defaults(func=_cmd_verify)
 
     pa = sub.add_parser("audit")
     pa.add_argument("--in", dest="in_json", required=True)
