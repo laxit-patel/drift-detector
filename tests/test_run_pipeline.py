@@ -45,9 +45,11 @@ def test_run_pipeline_writes_all_reports_and_delivers(tmp_path, monkeypatch):
     out = run_pipeline(str(root), str(state), "2026-07-15",
                        engine="semgrep", run=_empty_engine, http=fake_http)
 
-    for name in ("inventory.json", "INVENTORY.md", "DRIFT.md", "AUDIT.md", "audit.json"):
+    for name in ("inventory.json", "audit.json", "dashboard.html"):
         assert (state / name).exists(), name
-    assert "DEPRECATED" in (state / "AUDIT.md").read_text() or "php" in (state / "AUDIT.md").read_text()
+    # the ONLY report surface on hybrid: nothing else is written
+    assert not (state / "INVENTORY.md").exists() and not (state / "AUDIT.md").exists()
+    assert not (state / "DRIFT.md").exists() and not (state / "bom.json").exists()
     assert out["auditCounts"]["DEPRECATED"] >= 1
 
 

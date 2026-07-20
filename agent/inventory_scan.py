@@ -9,7 +9,6 @@ from agent.lib.vendor_rules import write_ruleset
 from agent.lib.repo_scan import scan_repo
 from agent.lib.repo_discovery import discover_repos
 from agent.lib.inv_rollups import build_rollups
-from agent.lib.inventory_render import render_inventory_md
 from agent.lib.inventory_diff import diff_inventories
 
 
@@ -115,5 +114,4 @@ def scan_folder(root, state_dir, now, *, engine=None, run=None, git=None, progre
     diff = diff_inventories(prior or {}, doc)
     # On the very first scan (no prior IR) everything is "added" — that's a
     # baseline, not drift, so the report omits the drift section.
-    report_md = render_inventory_md(doc, diff if prior else None)
-    return {"doc": doc, "report_md": report_md, "diff": diff}
+    return {"doc": doc, "diff": diff}

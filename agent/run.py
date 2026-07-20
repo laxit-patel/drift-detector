@@ -11,8 +11,6 @@ import subprocess
 
 from agent.inventory_scan import scan_folder
 from agent.audit import audit_inventory
-from agent.lib.inventory_diff import render_diff_md
-from agent.lib.audit_render import render_audit_md
 from agent.lib.dashboard_render import render_dashboard
 from agent.lib.findings_state import apply_lifecycle
 from agent.lib.repo_discovery import discover_repos
@@ -54,14 +52,12 @@ def run_pipeline(roots, state_dir, now, *, pull=False,
     scan = scan_folder(roots, state_dir, now, engine=engine, run=run, git=git, progress=progress)
     doc = scan["doc"]
     _write_json(os.path.join(state_dir, "inventory.json"), doc)
-    _write(os.path.join(state_dir, "INVENTORY.md"), scan["report_md"])
-    _write(os.path.join(state_dir, "DRIFT.md"), render_diff_md(scan["diff"]))
 
     audit = audit_inventory(doc, now, http=http) if http else audit_inventory(doc, now)
     apply_lifecycle(audit, state_dir, now)
-    _write(os.path.join(state_dir, "AUDIT.md"), render_audit_md(audit))
     _write_json(os.path.join(state_dir, "audit.json"), audit)
-    _write(os.path.join(state_dir, "dashboard.html"), render_dashboard(doc, audit, now))
+    _write(os.path.join(state_dir, "dashboard.html"),
+           render_dashboard(doc, audit, now, diff=scan["diff"]))
 
     return {"scope": doc.get("scope", {}), "auditCounts": audit["counts"],
             "coverage": audit.get("coverage", {})}

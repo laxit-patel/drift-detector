@@ -37,7 +37,7 @@ def test_scan_folder_end_to_end(tmp_path):
     assert repo["endpoints"][0]["techKey"] == "api:stripe"
     assert doc["unique_apis"] == ["Stripe"]
     assert (state / "inventory.json").exists()                 # IR persisted
-    assert "Stripe" in out["report_md"]
+    assert "Stripe" in out["doc"]["unique_apis"]
 
 
 def test_scan_folder_incremental_cache_reused(tmp_path):
@@ -93,7 +93,7 @@ def test_scan_folder_multiple_roots(tmp_path):
 from agent import cli
 
 
-def test_cli_inventory_scan_writes_json_and_md(tmp_path, monkeypatch):
+def test_cli_inventory_scan_writes_json(tmp_path, monkeypatch):
     root = tmp_path / "repos"
     _git_init(root / "web", {"composer.json": '{"require": {"php": "^8.2"}}',
                              "pay.php": '"https://api.stripe.com/v1/x";\n'})
@@ -103,13 +103,11 @@ def test_cli_inventory_scan_writes_json_and_md(tmp_path, monkeypatch):
     monkeypatch.setattr(inv.opengrep, "_default_run", lambda args: _canned_stripe("pay.php"), raising=False)
 
     out_json = tmp_path / "inv.json"
-    out_md = tmp_path / "INVENTORY.md"
     rc = cli.main(["inventory-scan", "--root", str(root), "--state", str(tmp_path / "state"),
-                   "--out-json", str(out_json), "--out-md", str(out_md), "--now", "2026-07-14"])
+                   "--out-json", str(out_json), "--now", "2026-07-14"])
     assert rc == 0
     doc = json.loads(out_json.read_text())
     assert doc["repos"][0]["path"] == "web" and doc["unique_apis"] == ["Stripe"]
-    assert "Stripe" in out_md.read_text()
 
 
 def test_cli_inventory_scan_repeatable_root(tmp_path, monkeypatch):
@@ -123,7 +121,7 @@ def test_cli_inventory_scan_repeatable_root(tmp_path, monkeypatch):
     out_json = tmp_path / "inv.json"
     rc = cli.main(["inventory-scan", "--root", str(r1), "--root", str(r2),
                    "--state", str(tmp_path / "state"), "--out-json", str(out_json),
-                   "--out-md", str(tmp_path / "INVENTORY.md"), "--now", "2026-07-14"])
+                   "--now", "2026-07-14"])
     assert rc == 0
     doc = json.loads(out_json.read_text())
     assert sorted(r["path"] for r in doc["repos"]) == ["api", "web"]
@@ -137,7 +135,7 @@ def test_cli_inventory_scan_progress_to_stderr(tmp_path, monkeypatch, capsys):
     monkeypatch.setattr(inv.opengrep, "_default_run", _empty_run, raising=False)
     rc = cli.main(["inventory-scan", "--root", str(root), "--progress",
                    "--state", str(tmp_path / "state"), "--out-json", str(tmp_path / "i.json"),
-                   "--out-md", str(tmp_path / "I.md"), "--now", "2026-07-14"])
+                   "--now", "2026-07-14"])
     assert rc == 0
     captured = capsys.readouterr()
     assert "deterministic static-analysis" in captured.err     # expectation-setting banner

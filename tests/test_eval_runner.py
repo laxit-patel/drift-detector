@@ -28,7 +28,7 @@ def _fake_scan(root, state, now, **kw):
                                      "domain": "svcs.ebay.com"}],
                       "sdks": []}],
            "coverage": {"reposErrored": []}}
-    return {"doc": doc, "report_md": "", "diff": {}}
+    return {"doc": doc, "diff": {}}
 
 
 def _fake_audit(doc, now, **kw):
@@ -59,7 +59,7 @@ def test_cli_returns_exit_code_from_gate(tmp_path, monkeypatch):
     monkeypatch.setattr(runner, "scan_folder",
                         lambda *a, **k: {"doc": {"repos": [{"path": "ebay-sdk-php",
                                                             "endpoints": [], "sdks": []}],
-                                                "coverage": {"reposErrored": []}}, "report_md": "", "diff": {}})
+                                                "coverage": {"reposErrored": []}}, "diff": {}})
     monkeypatch.setattr(runner, "audit_inventory", lambda *a, **k: {"findings": []})
     rc = cli.main(["run", "ebay", "--now", "2026-07-16", "--no-clone",
                    "--sandbox", str(tmp_path / "sandbox"), "--corpus", _corpus_file(tmp_path)])

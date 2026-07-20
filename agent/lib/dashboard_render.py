@@ -131,8 +131,10 @@ def _blob(projection: dict) -> str:
     return raw.replace("<", "\\u003c")
 
 
-def render_dashboard(inventory: dict, audit: dict, now: str) -> str:
+def render_dashboard(inventory: dict, audit: dict, now: str, *, diff: dict | None = None) -> str:
     projection = _build_projection(inventory, audit)
+    if diff is not None:                 # the inventory drift DRIFT.md used to carry
+        projection["inventoryDrift"] = diff
     c = projection["counts"]
     d = projection.get("delta") or {}
     new_n = len(build_actions(d["new"])) if d.get("new") else 0
