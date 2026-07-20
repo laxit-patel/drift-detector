@@ -158,3 +158,43 @@ def attest(state_dir: str, repo_path: str, fingerprint: str, *, resolved_by: str
 
 def is_attested(attestations: dict, repo_path: str, fingerprint: str) -> bool:
     return f"{repo_path}@{fingerprint}" in (attestations or {})
+
+
+# --- scan profiles: which mode should a human run this folder in? ---------------
+# Called a "scan profile", NOT a category — `category` already means the eval
+# corpus's vendor grouping (eval/corpus.yaml) and overloading it would confuse
+# two unrelated things.
+AUTO, HYBRID, MANUAL = "auto", "hybrid", "manual"
+
+
+def recommend_profile(shape: dict) -> tuple:
+    """(profile, why) from a scanned repo's shape.
+
+    auto   — the deterministic tool sees this repo; run it free, in CI, forever.
+    hybrid — the tool sees most of it and says what it missed; an agent closes the
+             named gap, then absorption makes the next run auto.
+    manual — we have no egress rules for a language here, so the tool has nothing
+             to be confident about; first contact needs an agent.
+    """
+    reasons = shape.get("reasons") or []
+    if NO_EGRESS_SIGNAL in reasons:
+        blind = [l for l, kinds in (shape.get("signalCoverage") or {}).items()
+                 if not any(k in ("sink", "path-assembly") for k in kinds)]
+        return MANUAL, f"no egress rules for {', '.join(blind) or 'a language present'}"
+    if shape.get("verdict") == "UNKNOWN":
+        return HYBRID, (f"{shape.get('unattributedPaths', 0)} unattributed path literal(s)"
+                        f" — {', '.join(reasons)}")
+    return AUTO, "every language covered and nothing left unattributed"
+
+
+def recommend_from_census(counts: dict, rule_kinds_by_lang: dict) -> tuple:
+    """Pre-scan recommendation: language census only, no engine run needed."""
+    langs = meaningful_languages(counts)
+    if not langs:
+        return AUTO, "no source files we model — nothing to scan"
+    blind = [l for l in langs
+             if not any(k in ("sink", "path-assembly")
+                        for k in rule_kinds_by_lang.get(l, []))]
+    if blind:
+        return MANUAL, f"no egress rules for {', '.join(blind)}"
+    return AUTO, f"egress rules cover {', '.join(langs)}"

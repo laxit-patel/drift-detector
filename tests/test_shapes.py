@@ -63,3 +63,36 @@ def test_attestation_clears_the_verdict_then_lapses_when_residue_changes(tmp_pat
     grew = {"pathLiterals": residue["pathLiterals"] + [{"sample": "/n/v1/z", "loc": "b.php:9"}],
             "sinks": []}
     assert not shapes.is_attested(at, "svc", shapes.residue_fingerprint(grew))
+
+
+# --- scan profiles -------------------------------------------------------------
+
+def _shape(verdict, reasons, coverage, paths=0):
+    return {"repo": "r", "verdict": verdict, "reasons": reasons,
+            "signalCoverage": coverage, "unattributedPaths": paths}
+
+
+def test_profile_auto_when_the_tool_can_see_everything():
+    sh = _shape("KNOWN", [], {"php": ["sink", "url"]})
+    assert shapes.recommend_profile(sh)[0] == shapes.AUTO
+
+
+def test_profile_hybrid_when_the_tool_names_what_it_missed():
+    sh = _shape("UNKNOWN", ["config-driven-url"], {"php": ["sink", "url"]}, paths=3)
+    profile, why = shapes.recommend_profile(sh)
+    assert profile == shapes.HYBRID and "3 unattributed" in why
+
+
+def test_profile_manual_when_a_language_has_no_egress_rules():
+    """No rules means no residue means nothing to be confident about — an agent
+    has to make first contact, not the tool."""
+    sh = _shape("UNKNOWN", [shapes.NO_EGRESS_SIGNAL], {"go": ["url", "path-literal"]})
+    profile, why = shapes.recommend_profile(sh)
+    assert profile == shapes.MANUAL and "go" in why
+
+
+def test_prescan_census_recommendation_needs_no_engine():
+    kinds = {"php": ["sink", "path-assembly", "url"], "go": ["url"]}
+    assert shapes.recommend_from_census({"php": 40}, kinds)[0] == shapes.AUTO
+    assert shapes.recommend_from_census({"go": 40}, kinds)[0] == shapes.MANUAL
+    assert shapes.recommend_from_census({}, kinds)[0] == shapes.AUTO      # nothing to scan

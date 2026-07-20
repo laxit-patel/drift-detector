@@ -151,6 +151,58 @@ def _cmd_preflight(args) -> int:
     return 0
 
 
+def _cmd_recommend(args) -> int:
+    """Suggest a scan profile per repo — for when the user can't decide which mode to run.
+
+    Uses the shape verdicts from a previous scan when one exists (precise), and falls
+    back to a language census when it doesn't (no engine needed, still honest).
+    """
+    import json
+    from agent.lib.repo_discovery import discover_repos
+    from agent.lib.vendors import load_vendors
+    from agent.lib.vendor_rules import rule_kinds_by_language
+    from agent.lib import shapes
+
+    kinds = rule_kinds_by_language(load_vendors())
+    prior = {}
+    state = getattr(args, "state", None) or os.path.join(args.root, ".drift-detector")
+    try:
+        with open(os.path.join(state, "inventory.json"), encoding="utf-8") as fh:
+            prior = {s["repo"]: s for s in (json.load(fh).get("coverage") or {}).get("shapes", [])}
+    except (OSError, ValueError):
+        pass
+
+    repos = discover_repos([args.root])
+    matched = sum(1 for _, name in repos if name in prior)
+    print(f"scan profiles · {args.root}")
+    if matched:
+        print(f"  {len(repos)} repo(s); {matched} with shape verdicts from a previous scan"
+              + (f", {len(repos) - matched} from a language census" if matched < len(repos) else ""))
+    else:
+        print(f"  {len(repos)} repo(s); language census only "
+              "(no matching prior scan — repo identities depend on the --root used)")
+    print()
+    tally = {}
+    for abs_path, name in repos:
+        sh = prior.get(name)
+        if sh:
+            profile, why = shapes.recommend_profile(sh)
+            langs = ",".join(sh.get("languages", {}))
+            extra = f"{sh['verdict']}"
+        else:
+            counts = shapes.census(abs_path)
+            profile, why = shapes.recommend_from_census(counts, kinds)
+            langs = ",".join(shapes.meaningful_languages(counts)) or "-"
+            extra = "unscanned"
+        tally[profile] = tally.get(profile, 0) + 1
+        print(f"  {name:<28} {profile:<7} [{extra}] {langs}")
+        print(f"      {why}")
+    print("\n  " + " · ".join(f"{n} {p}" for p, n in sorted(tally.items())))
+    if tally.get(shapes.MANUAL) or tally.get(shapes.HYBRID):
+        print("  → repos not on `auto` need an agent pass; the tool says exactly what it missed.")
+    return 0
+
+
 def _cmd_mute(args) -> int:
     from agent.lib.findings_state import add_to_baseline, remove_from_baseline
     if args.remove:
@@ -192,6 +244,11 @@ def main(argv: list[str]) -> int:
     pmu.add_argument("--fingerprint", required=True)
     pmu.add_argument("--remove", action="store_true")
     pmu.set_defaults(func=_cmd_mute)
+
+    prc = sub.add_parser("recommend")     # which scan profile should this folder run?
+    prc.add_argument("--root", required=True)
+    prc.add_argument("--state")
+    prc.set_defaults(func=_cmd_recommend)
 
     ppf = sub.add_parser("preflight")
     ppf.add_argument("--root", required=True)
