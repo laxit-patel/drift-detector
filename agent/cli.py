@@ -88,14 +88,8 @@ def _cmd_audit(args) -> int:
     return 0
 
 
-def _config_webhook(state: str):
-    from agent.lib.schedule import load_config
-    return ((load_config(state).get("connectors") or {}).get("chat") or {}).get("webhookUrl")
-
-
 def _cmd_run(args) -> int:
     from agent.run import run_pipeline
-    webhook = args.chat_webhook or _config_webhook(args.state)
     progress = None
     if getattr(args, "progress", False):
         print("drift-detector · scan → audit → deliver (deterministic · 0 LLM tokens)",
@@ -104,15 +98,13 @@ def _cmd_run(args) -> int:
         def progress(msg):
             print(f"⚙ {msg}", file=sys.stderr, flush=True)
     try:
-        out = run_pipeline(args.root, args.state, args.now, chat_webhook=webhook,
+        out = run_pipeline(args.root, args.state, args.now,
                            pull=getattr(args, "pull", False), progress=progress)
     except RuntimeError as exc:
         print(f"run failed: {exc}", file=sys.stderr)
         return 2
     c = out["auditCounts"]
-    deliver = ", ".join(f"{d['channel']}:{'ok' if d['ok'] else 'FAILED'}" for d in out["delivered"]) or "local only"
-    print(f"✓ scan+audit: 🔴 {c.get('DEPRECATED', 0)} action-required · 🟠 {c.get('REVIEW', 0)} review · "
-          f"deliver: {deliver}")
+    print(f"✓ scan+audit: 🔴 {c.get('DEPRECATED', 0)} action-required · 🟠 {c.get('REVIEW', 0)} review")
     if getattr(args, "fail_on_deprecated", False):
         cov = out.get("coverage", {})
         if cov.get("osvErrors") or cov.get("eolErrors"):
@@ -130,10 +122,9 @@ def _cmd_schedule(args) -> int:
     from pathlib import Path
     from agent.lib import schedule as sched
     plugin_root = str(Path(__file__).resolve().parent.parent)
-    webhook = args.chat_webhook or _config_webhook(args.state)
     try:
         line = sched.install_cron(args.root, args.state, args.at, plugin_root=plugin_root,
-                                  chat_webhook=webhook, pull=getattr(args, "pull", False))
+                                  pull=getattr(args, "pull", False))
     except Exception as exc:      # missing/failed crontab -> actionable message, not a traceback
         print(f"schedule failed: {exc}\n  Is 'crontab' installed and the cron service running?",
               file=sys.stderr)
@@ -172,7 +163,7 @@ def _cmd_preflight(args) -> int:
         for name, ps in flagged[:20]:
             bits = [p["pkg"] for p in ps["packages"]] + ps["repositories"]
             print(f"    - {name}: {', '.join(bits[:6])}" + (" …" if len(bits) > 6 else ""))
-        print("  → these need source access (GitLab auth); the connector will scan them.")
+        print("  → these need source access; clone them locally and add them as a --root to scan them.")
     else:
         print("  ✓ no private package sources detected — full source coverage.")
     return 0
@@ -197,7 +188,6 @@ def main(argv: list[str]) -> int:
     pr.add_argument("--root", action="append", required=True)
     pr.add_argument("--state", required=True)
     pr.add_argument("--now", required=True)
-    pr.add_argument("--chat-webhook")
     pr.add_argument("--pull", action="store_true")
     pr.add_argument("--progress", action="store_true")
     pr.add_argument("--fail-on-deprecated", action="store_true",
@@ -208,7 +198,6 @@ def main(argv: list[str]) -> int:
     psc.add_argument("--root", required=True)
     psc.add_argument("--state", required=True)
     psc.add_argument("--at", default="0 7 * * 0")
-    psc.add_argument("--chat-webhook")
     psc.add_argument("--pull", action="store_true")
     psc.set_defaults(func=_cmd_schedule)
 

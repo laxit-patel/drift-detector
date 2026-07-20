@@ -2,7 +2,7 @@
 
 The `crontab` command is injected so tests never touch the real crontab. Each folder gets one
 crontab line tagged with a per-folder marker, so installs are idempotent and folders coexist.
-Config (folder, schedule, chat webhook) is persisted in `<state>/agent.json`.
+Config (folder, schedule) is persisted in `<state>/agent.json`.
 """
 from __future__ import annotations
 
@@ -54,12 +54,10 @@ def _default_crontab(action: str, content: str | None = None) -> str:
     return ""
 
 
-def _wrapper_script(root: str, state_dir: str, plugin_root: str, chat_webhook: str | None,
+def _wrapper_script(root: str, state_dir: str, plugin_root: str,
                     pull: bool, path_env: str) -> str:
     q = shlex.quote
     scan = f'{q(plugin_root + "/bin/drift-scan")} run --root {q(root)} --state {q(state_dir)} --now "$(date +%F)"'
-    if chat_webhook:
-        scan += f" --chat-webhook {q(chat_webhook)}"
     if pull:
         scan += " --pull"
     log = q(os.path.join(state_dir, LOG_NAME))
@@ -70,7 +68,7 @@ def _wrapper_script(root: str, state_dir: str, plugin_root: str, chat_webhook: s
 
 
 def install_cron(root: str, state_dir: str, when: str, *, plugin_root: str,
-                 chat_webhook: str | None = None, pull: bool = False,
+                 pull: bool = False,
                  path_env: str | None = None, crontab_run=_default_crontab) -> str:
     """Write the wrapper + install one crontab line. Returns the crontab line for display."""
     root, state_dir = os.path.abspath(root), os.path.abspath(state_dir)
@@ -79,7 +77,7 @@ def install_cron(root: str, state_dir: str, when: str, *, plugin_root: str,
 
     wrapper = os.path.join(state_dir, WRAPPER_NAME)
     with open(wrapper, "w", encoding="utf-8") as fh:
-        fh.write(_wrapper_script(root, state_dir, plugin_root, chat_webhook, pull, path_env))
+        fh.write(_wrapper_script(root, state_dir, plugin_root, pull, path_env))
     os.chmod(wrapper, 0o755)
 
     marker = _marker(state_dir)
@@ -88,8 +86,7 @@ def install_cron(root: str, state_dir: str, when: str, *, plugin_root: str,
     crontab_run("write", "\n".join(existing + [line]) + "\n")
 
     cfg = load_config(state_dir)
-    cfg.update({"root": root, "schedule": when, "pull": pull,
-                "connectors": {"chat": {"webhookUrl": chat_webhook}} if chat_webhook else {}})
+    cfg.update({"root": root, "schedule": when, "pull": pull})
     save_config(state_dir, cfg)
     return line
 

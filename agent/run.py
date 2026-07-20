@@ -16,7 +16,6 @@ from agent.lib.audit_render import render_audit_md
 from agent.lib.dashboard_render import render_dashboard
 from agent.lib.cyclonedx import build_bom
 from agent.lib.sarif import build_sarif
-from agent.lib.chat import build_chat_card, post_chat
 from agent.lib.findings_state import apply_lifecycle
 from agent.lib.repo_discovery import discover_repos
 from agent.lib.http_util import default_http
@@ -46,7 +45,7 @@ def _pull_repos(roots, pull_run):
             pass          # best-effort; a repo that won't fast-forward is scanned as-is
 
 
-def run_pipeline(roots, state_dir, now, *, chat_webhook=None, pull=False,
+def run_pipeline(roots, state_dir, now, *, pull=False,
                  engine=None, run=None, git=None, http=None, progress=None,
                  pull_run=None) -> dict:
     roots = [roots] if isinstance(roots, (str, os.PathLike)) else list(roots)
@@ -68,11 +67,5 @@ def run_pipeline(roots, state_dir, now, *, chat_webhook=None, pull=False,
     _write_json(os.path.join(state_dir, "audit.json"), audit)
     _write(os.path.join(state_dir, "dashboard.html"), render_dashboard(doc, audit, now))
 
-    delivered = []
-    if chat_webhook:
-        card = build_chat_card(audit, now, folder=str(roots[0]))
-        ok = post_chat(chat_webhook, card, http=http or default_http)
-        delivered.append({"channel": "chat", "ok": ok})
-
     return {"scope": doc.get("scope", {}), "auditCounts": audit["counts"],
-            "coverage": audit.get("coverage", {}), "delivered": delivered}
+            "coverage": audit.get("coverage", {})}

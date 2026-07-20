@@ -17,13 +17,12 @@ def test_install_writes_wrapper_and_one_marked_line(tmp_path):
     state = tmp_path / "state"
     ct = FakeCrontab(initial="0 0 * * * echo existing\n")
     line = schedule.install_cron(str(tmp_path / "repos"), str(state), "0 7 * * 0",
-                                 plugin_root="/plug", chat_webhook="https://hook",
+                                 plugin_root="/plug",
                                  path_env="/usr/bin:/home/u/.local/bin", crontab_run=ct)
     # wrapper script (values are shlex-quoted; safe strings render unquoted)
     wrapper = state / "cron-run.sh"
     body = wrapper.read_text()
     assert "/plug/bin/drift-scan" in body and "run --root" in body
-    assert "--chat-webhook" in body and "https://hook" in body
     assert "export PATH=" in body and "/usr/bin:/home/u/.local/bin" in body
     assert wrapper.stat().st_mode & 0o100                       # executable
     # crontab: existing line preserved + one marked line added
@@ -32,7 +31,7 @@ def test_install_writes_wrapper_and_one_marked_line(tmp_path):
     assert line in ct.content and line.startswith("0 7 * * 0")
     # config persisted
     cfg = schedule.load_config(str(state))
-    assert cfg["schedule"] == "0 7 * * 0" and cfg["connectors"]["chat"]["webhookUrl"] == "https://hook"
+    assert cfg["schedule"] == "0 7 * * 0" and "connectors" not in cfg   # chat stripped on hybrid
 
 
 def test_reinstall_is_idempotent(tmp_path):
