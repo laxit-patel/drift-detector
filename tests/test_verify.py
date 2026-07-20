@@ -216,3 +216,33 @@ def test_drift_verify_reports_nothing_to_verify_rather_than_passing(tmp_path):
     clean' rule the --fail-on-deprecated gate already follows (exit 4)."""
     from agent.cli import main
     assert main(["verify", "--state", str(tmp_path)]) == 4
+
+
+# ------------------------------------------------------- the UNAUDITED tile obeys the rail
+def test_unaudited_tile_must_match_its_own_panel():
+    """The new tile is held to the same rule as every other: the number equals the rows.
+    Added WITH the feature, not after a user reports four identical rows."""
+    bad = {"counts": {"sunsets": 0, "eol": 0, "private": 0, "unaudited": 3},
+           "actions": [], "private": [],
+           "catalog": [{"vendor": "eBay", "verdict": "UNAUDITED", "callSites": 162},
+                       {"vendor": "Amazon SP-API", "verdict": "CURRENT", "callSites": 272}]}
+    with pytest.raises(Violation) as e:
+        verify.check_tile_counts(bad, [])
+    assert e.value.check == "tile-vs-table"
+    assert "unaudited" in str(e.value)
+
+
+def test_unaudited_tile_excludes_current_vendors():
+    """A vendor whose page WAS checked is not a gap and must not inflate the tile."""
+    ok = {"counts": {"sunsets": 0, "eol": 0, "private": 0, "unaudited": 1},
+          "actions": [], "private": [],
+          "catalog": [{"vendor": "eBay", "verdict": "UNAUDITED", "callSites": 162},
+                      {"vendor": "Amazon SP-API", "verdict": "CURRENT", "callSites": 272}]}
+    verify.check_tile_counts(ok, [])
+
+
+def test_catalog_accessor_coverage_over_the_real_client_js():
+    """renderCatalog reads r.vendor / r.verdict / r.callSites — all must exist."""
+    from agent.lib.dashboard_render import _CLIENT_JS
+    verify.check_accessor_coverage(_CLIENT_JS, {"catalog": {
+        "vendor", "verdict", "callSites", "catalogEntries", "checked", "reasons", "source"}})

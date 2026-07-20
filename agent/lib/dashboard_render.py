@@ -106,6 +106,10 @@ def _build_projection(inventory: dict, audit: dict) -> dict:
         # "1 repos" read as "it only scanned one". Both numbers, or neither.
         "reposScanned": (inventory.get("scope") or {}).get("reposScanned", 0),
         "private": len(private),
+        # vendors we CALL but whose retirement list nobody has checked. Counted as
+        # unaudited+stale, because both mean "0 findings here is not evidence of clean".
+        "unaudited": sum(1 for r in (audit.get("coverage") or {}).get("catalog", [])
+                         if r.get("verdict") != "CURRENT"),
     }
     return {
         "generated": audit.get("generated", ""),
@@ -115,6 +119,7 @@ def _build_projection(inventory: dict, audit: dict) -> dict:
         "endpoints": endpoints,
         "private": private,
         "sdkMediated": cov.get("sdkMediated", []),
+        "catalog": (audit.get("coverage") or {}).get("catalog", []),
         "coverageNotes": (audit.get("coverage") or {}).get("notes", []),
         "coverageGrades": residue.get("byRepo", []),
         "shapes": cov.get("shapes", []),
@@ -188,7 +193,8 @@ def render_payload(projection: dict, now: str) -> str:
         ("apis", "APIs used", c["apis"]),
         ("sunsets", "Sunsets", c["sunsets"]),
         ("unknown", "Unknown hosts", c["unknown"]),
-        ("private", "Private / unreachable", c["private"])]))
+        ("private", "Private / unreachable", c["private"]),
+        ("unaudited", "Vendors unaudited", c["unaudited"])]))
     parts.append("</section>")
     # search + panel
     parts.append('<input class="search" id="search" type="search" '
@@ -375,6 +381,30 @@ _CLIENT_JS = r"""
   function privateFor(){
     return (DATA.private||[]).filter(function(p){ return matchesQ((p.repo||"")+" "+(p.source||"")); });
   }
+  function catalogFor(){
+    return (DATA.catalog||[]).filter(function(cv){
+      return cv.verdict!=="CURRENT" && matchesQ((cv.vendor||"")+" "+(cv.verdict||"")); });
+  }
+  function renderCatalog(list){
+    if(list.length){
+      var intro=document.createElement("tr"), itd=document.createElement("td");
+      itd.colSpan=5; itd.className="intro";
+      itd.textContent="Vendors this code calls whose retirement list nobody has checked. "+
+        "Zero findings for these is UNAUDITED, not clean.";
+      intro.appendChild(itd); body.appendChild(intro);
+    }
+    list.forEach(function(cv){
+      var tr=document.createElement("tr"); tr.className="row";
+      var why = cv.verdict==="UNAUDITED"
+        ? (cv.catalogEntries ? cv.catalogEntries+" catalog entr(y/ies), but the vendor's page has never been reconciled"
+                            : "no catalog entries at all")
+        : "last checked "+esc(cv.checked||"?")+" — re-check the vendor's page";
+      tr.innerHTML='<td>'+esc(cv.vendor)+'</td><td>'+why+'</td><td>'+
+        esc(cv.callSites)+' call-site(s)</td><td>'+esc(cv.catalogEntries)+' entr(y/ies)</td>'+
+        '<td class="sev-'+escA(cv.verdict)+'">'+esc(cv.verdict)+'</td>';
+      body.appendChild(tr);
+    });
+  }
   function renderPrivate(list){
     if(list.length){
       var intro=document.createElement("tr"), itd=document.createElement("td");
@@ -396,6 +426,7 @@ _CLIENT_JS = r"""
     body.innerHTML="";
     if(state.mode==="endpoints"){ renderEndpoints(endpointsFor()); }
     else if(state.mode==="private"){ renderPrivate(privateFor()); }
+    else if(state.mode==="catalog"){ renderCatalog(catalogFor()); }
     else { renderActions(actionsFor()); }
     empty.hidden = body.children.length>0;
   }
@@ -412,6 +443,7 @@ _CLIENT_JS = r"""
       else { state.filter=f;
              state.mode = (f==="apis"||f==="unknown") ? "endpoints"
                         : (f==="private") ? "private"
+                        : (f==="unaudited") ? "catalog"
                         : "actions";
              t.setAttribute("aria-pressed","true"); }
       render();

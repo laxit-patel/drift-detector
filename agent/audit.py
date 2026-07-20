@@ -7,7 +7,7 @@ unreachable it is skipped and noted in coverage — never fabricated, never a ha
 """
 from __future__ import annotations
 
-from agent.lib import osv, eol, vendor_sunsets
+from agent.lib import osv, eol, vendor_sunsets, catalog_coverage
 from agent.lib.http_util import default_http
 from agent.lib.version_floor import floor
 from agent.lib.purl import osv_ecosystem
@@ -179,6 +179,24 @@ def audit_inventory(doc: dict, now: str, *, http=None,
         findings.extend(_sunset_findings(r, sun_index, now))
 
     coverage["notes"].append("Vendor API sunsets: curated catalog (agent/vendor_sunsets.yaml) joined against endpoints — extend it with your vendors' announcements.")
+
+    # --- which vendors has anyone actually CHECKED a retirement list for? ---
+    # Without this a vendor with 272 call-sites and an empty catalog reports the same
+    # zero findings as a vendor that is genuinely clean, which is how eight already-past
+    # Amazon retirements stayed invisible until somebody asked "where is Amazon?".
+    all_eps = [e for r in repos for e in r.get("endpoints", [])]
+    cat_records = catalog_coverage.build(
+        all_eps, [s for v in sun_index.values() for s in v],
+        catalog_coverage.load_attestations(), now)
+    coverage["catalog"] = cat_records
+    coverage["catalogSummary"] = catalog_coverage.summary(cat_records)
+    for r in cat_records:
+        if r["verdict"] == catalog_coverage.UNAUDITED:
+            coverage["notes"].append(
+                f"{r['vendor']}: {r['callSites']} call-site(s) detected, but nobody has "
+                f"checked this vendor's retirement list — 0 findings here means UNAUDITED, "
+                f"not clean.")
+
     counts = {
         "DEPRECATED": sum(1 for f in findings if f["status"] == "DEPRECATED"),
         "REVIEW": sum(1 for f in findings if f["status"] == "REVIEW"),

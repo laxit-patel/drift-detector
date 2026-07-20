@@ -1,0 +1,36 @@
+# Catalog attestations — "somebody checked this vendor's deprecation page on DATE".
+#
+# WHY THIS EXISTS, and why it is not a count of entries.
+#
+# A vendor with 272 detected call-sites and no catalog data used to render exactly like a
+# vendor that was genuinely clean. That is how eight already-past Amazon SP-API
+# retirements sat unreported: the tool had an elaborate conscience for what it could not
+# SEE (shape verdicts, residue, per-language signal coverage) and none at all for what it
+# had never been TAUGHT.
+#
+# The obvious fix — "this vendor has N catalog entries, so it is audited" — is gameable
+# and wrong. You cannot know completeness from the inside, and one junk entry would flip a
+# vendor from unaudited to audited. eBay proves it: twelve entries, and the vendor's own
+# page still lists operations the catalog does not have.
+#
+# The only honest scalar is the one below: a human or agent opened the vendor's canonical
+# deprecation page on a stated date and reconciled it against the catalog. An entry count
+# is a claim about our file; this is a claim about the world.
+#
+# RULES
+#   • `checked` is the date the SOURCE PAGE WAS ACTUALLY FETCHED — not the date an entry
+#     was written, and never a remembered date.
+#   • `source` must be the vendor's canonical deprecation/sunset page, the one that would
+#     reveal a retirement we are missing.
+#   • Attestations go STALE (see shapes/catalog verdicts). Re-checking means re-fetching
+#     the page and moving the date, not editing this line.
+#   • A vendor absent from this file is UNAUDITED even if it has catalog entries.
+
+- vendor: Amazon SP-API
+  checked: "2026-07-20"
+  source: https://developer-docs.amazon/sp-api/docs/sp-api-deprecations
+  note: >-
+    SP-API Deprecation Schedule, the vendor's canonical table. Reconciled in full: 8 of
+    the 13 listed retirements were staged; the remainder (Authorization v1, Data Kiosk
+    dataset) do not appear in any scanned repo. Two entries are family-scoped because
+    Amazon names an operation subset without enumerating it.

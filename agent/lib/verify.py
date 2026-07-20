@@ -44,7 +44,10 @@ def check_projection_parity(action: dict, projected: dict) -> None:
                         f"(This is how `unit` was lost and twelve rows rendered as 'eBay'.)")
 
 
-_ACCESSOR = re.compile(r"\b([aep])\.([A-Za-z_]\w*)\b")
+# `r` is deliberately NOT tracked: it is already a loop variable for other
+# records in the page, and conflating them makes this check lie in both
+# directions. A payload-backed loop uses a distinct name (cv for catalog).
+_ACCESSOR = re.compile(r"\b(a|e|p|cv)\.([A-Za-z_]\w*)\b")
 # JS built-ins and locals that are not payload fields
 _NOT_FIELDS = frozenset({"length", "forEach", "map", "filter", "push", "join", "slice",
                          "indexOf", "toLowerCase", "toUpperCase", "concat", "sort"})
@@ -58,7 +61,7 @@ def check_accessor_coverage(client_js: str, samples: dict) -> None:
     cannot silently blank a column.
     """
     for var, keys in (("a", samples.get("actions")), ("e", samples.get("endpoints")),
-                      ("p", samples.get("private"))):
+                      ("p", samples.get("private")), ("cv", samples.get("catalog"))):
         if not keys:
             continue
         read = {m.group(2) for m in _ACCESSOR.finditer(client_js)
@@ -88,7 +91,10 @@ def check_tile_counts(payload: dict, findings: list) -> None:
     # tile <-> table: replicate the page's own filters
     pairs = [("sunsets", [a for a in actions if a["kind"] == "sunset"]),
              ("eol", [a for a in actions if a["kind"] == "eol"]),
-             ("private", payload.get("private", []))]
+             ("private", payload.get("private", [])),
+             # the panel lists vendors nobody has checked; CURRENT ones are not rows
+             ("unaudited", [r for r in payload.get("catalog", [])
+                            if r.get("verdict") != "CURRENT"])]
     for name, rows in pairs:
         if counts.get(name, 0) != len(rows):
             raise Violation("tile-vs-table",
