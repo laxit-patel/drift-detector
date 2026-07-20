@@ -45,8 +45,7 @@ def test_run_pipeline_writes_all_reports_and_delivers(tmp_path, monkeypatch):
     out = run_pipeline(str(root), str(state), "2026-07-15",
                        engine="semgrep", run=_empty_engine, http=fake_http)
 
-    for name in ("inventory.json", "INVENTORY.md", "DRIFT.md", "AUDIT.md", "bom.json",
-                 "findings.sarif", "audit.json"):
+    for name in ("inventory.json", "INVENTORY.md", "DRIFT.md", "AUDIT.md", "audit.json"):
         assert (state / name).exists(), name
     assert "DEPRECATED" in (state / "AUDIT.md").read_text() or "php" in (state / "AUDIT.md").read_text()
     assert out["auditCounts"]["DEPRECATED"] >= 1

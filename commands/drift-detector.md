@@ -32,7 +32,7 @@ case "$MODE" in
   audit)
     [ -f "$D/inventory.json" ] || { echo "No inventory at $D — run /drift-detector \"$F\" first" >&2; exit 3; }
     "$SCAN" audit --progress --in "$D/inventory.json" --now "$(date +%F)" \
-      --out-audit "$D/AUDIT.md" --out-bom "$D/bom.json" --out-sarif "$D/findings.sarif" \
+      --out-audit "$D/AUDIT.md" \
       --out-json "$D/audit.json" --out-html "$D/dashboard.html" ;;
   unschedule)
     "$SCAN" unschedule --state "$D" ;;
@@ -50,7 +50,7 @@ If the runner says `uv`/python is missing (or points to `doctor`), run `"$SCAN" 
 
 ## After the default run — report, then offer to make it autonomous
 
-1. **Point at the reports, don't paste them.** The run wrote `INVENTORY.md` (drift-first inventory), `AUDIT.md` (what to mend — findings rolled up into **ranked fix actions**: "Do this first", then the fix queue), an interactive **`dashboard.html`**, and `bom.json`/`findings.sarif` to `<folder>/.drift-detector/`. Read `AUDIT.md` + `INVENTORY.md` yourself and give a tight **headline (2–4 lines)**: **lead with the delta** — *"🆕 N new · ✅ M resolved since last scan"* (that's what matters on a Monday), then *"🔴 N fixes needed · 🟠 M to review across K repos"*, the top action or two (e.g. *"upgrade `torch` → 2.10.0, clears 30 advisories"*), and flag any **retired vendor API** (sunset) since no CVE feed catches those. End with *"full report → `<folder>/.drift-detector/AUDIT.md`, interactive dashboard → `dashboard.html`"* and offer to open either (`code`/`xdg-open`). Findings are **DEPRECATED** (act now) / **REVIEW** (monitor), each cited; versions are **lockfile-exact where a lockfile exists**, else the **declared floor** (marked — verify). If the user accepts a finding as a non-issue, mute it: `"$SCAN" mute --state "$D" --fingerprint <fp>` (each finding carries a `fingerprint`); `--remove` un-mutes.
+1. **Point at the reports, don't paste them.** The run wrote `INVENTORY.md` (drift-first inventory), `AUDIT.md` (what to mend — findings rolled up into **ranked fix actions**: "Do this first", then the fix queue), and an interactive **`dashboard.html`** to `<folder>/.drift-detector/`. Read `AUDIT.md` + `INVENTORY.md` yourself and give a tight **headline (2–4 lines)**: **lead with the delta** — *"🆕 N new · ✅ M resolved since last scan"* (that's what matters on a Monday), then *"🔴 N fixes needed · 🟠 M to review across K repos"*, the top action or two (e.g. *"upgrade `torch` → 2.10.0, clears 30 advisories"*), and flag any **retired vendor API** (sunset) since no CVE feed catches those. End with *"full report → `<folder>/.drift-detector/AUDIT.md`, interactive dashboard → `dashboard.html`"* and offer to open either (`code`/`xdg-open`). Findings are **DEPRECATED** (act now) / **REVIEW** (monitor), each cited; versions are **lockfile-exact where a lockfile exists**, else the **declared floor** (marked — verify). If the user accepts a finding as a non-issue, mute it: `"$SCAN" mute --state "$D" --fingerprint <fp>` (each finding carries a `fingerprint`); `--remove` un-mutes.
 
 2. **Then offer autonomy.** Say: *"That was a one-off. The optimal way to keep these green is to let me run this **weekly and autonomously**. Want me to install a cron job on this machine (default **Sundays 7am**) that re-runs the pipeline — and, if you give me a Google Chat webhook, posts the summary to your team thread?"* If yes:
    - Ask for the cron cadence (default `0 7 * * 0`) and, optionally, a **Google Chat incoming-webhook URL**.

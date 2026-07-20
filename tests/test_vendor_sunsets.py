@@ -1,6 +1,5 @@
 from agent.lib import vendor_sunsets as vs
 from agent.audit import audit_inventory
-from agent.lib.sarif import build_sarif
 
 
 _NOOP = {"osv_query": lambda *a, **k: [], "eol_check": lambda *a, **k: None,
@@ -136,17 +135,6 @@ def test_real_catalog_has_accurate_ebay_finding_and_shopping_sunsets():
         assert s["retires"] == "2025-02-05"    # the real decommission date
         assert s.get("source")                 # every entry cites a source
         assert "api.ebay.com" != s.get("domain")   # never target the LIVE host
-
-
-def test_sunset_findings_get_precise_sarif_locations():
-    sun = [{"vendor": "Amazon SP-API", "version": "v0", "retires": "2020-01-01", "source": "u"}]
-    doc = _doc("Amazon SP-API", "v0", ["orders/client.js:17"])
-    out = audit_inventory(doc, "2026-07-15", sunsets=sun, **_NOOP)
-    sarif = build_sarif(doc, out["findings"])
-    r = next(x for x in sarif["runs"][0]["results"] if x["ruleId"] == "sunset")
-    loc = r["locations"][0]["physicalLocation"]
-    assert loc["artifactLocation"]["uri"] == "svc/orders/client.js"      # repo/path
-    assert loc["region"]["startLine"] == 17                             # the :17 line
 
 
 def test_no_more_than_two_entries_share_a_source_url():

@@ -43,7 +43,8 @@ def test_runner_and_command_support_audit_run_schedule():
         assert sub in case_line                                  # runner dispatches every subcommand
     assert "gitlab-sync" not in case_line                        # connector stripped on hybrid (see master)
     cmd = (_ROOT / "commands" / "drift-detector.md").read_text()
-    assert "audit" in cmd and "bom.json" in cmd and "findings.sarif" in cmd
+    assert "audit" in cmd
+    assert "bom.json" not in cmd and "findings.sarif" not in cmd   # stripped on hybrid
     assert "schedule" in cmd and "cron" in cmd.lower()          # agent offers autonomy
     from agent import cli
     assert all(hasattr(cli, n) for n in ("_cmd_audit", "_cmd_run", "_cmd_schedule", "_cmd_unschedule"))

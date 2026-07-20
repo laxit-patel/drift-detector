@@ -14,8 +14,6 @@ from agent.audit import audit_inventory
 from agent.lib.inventory_diff import render_diff_md
 from agent.lib.audit_render import render_audit_md
 from agent.lib.dashboard_render import render_dashboard
-from agent.lib.cyclonedx import build_bom
-from agent.lib.sarif import build_sarif
 from agent.lib.findings_state import apply_lifecycle
 from agent.lib.repo_discovery import discover_repos
 from agent.lib.http_util import default_http
@@ -62,8 +60,6 @@ def run_pipeline(roots, state_dir, now, *, pull=False,
     audit = audit_inventory(doc, now, http=http) if http else audit_inventory(doc, now)
     apply_lifecycle(audit, state_dir, now)
     _write(os.path.join(state_dir, "AUDIT.md"), render_audit_md(audit))
-    _write_json(os.path.join(state_dir, "bom.json"), build_bom(doc, audit["findings"], now))
-    _write_json(os.path.join(state_dir, "findings.sarif"), build_sarif(doc, audit["findings"]))
     _write_json(os.path.join(state_dir, "audit.json"), audit)
     _write(os.path.join(state_dir, "dashboard.html"), render_dashboard(doc, audit, now))
 

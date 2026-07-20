@@ -50,8 +50,6 @@ def _cmd_inventory_scan(args) -> int:
 def _cmd_audit(args) -> int:
     from agent.audit import audit_inventory
     from agent.lib.audit_render import render_audit_md
-    from agent.lib.cyclonedx import build_bom
-    from agent.lib.sarif import build_sarif
     from agent.lib.dashboard_render import render_dashboard
 
     with open(args.in_json, encoding="utf-8") as fh:
@@ -70,12 +68,6 @@ def _cmd_audit(args) -> int:
 
     with open(args.out_audit, "w", encoding="utf-8") as fh:
         fh.write(render_audit_md(audit))
-    if getattr(args, "out_bom", None):
-        with open(args.out_bom, "w", encoding="utf-8") as fh:
-            json.dump(build_bom(doc, audit["findings"], args.now), fh, ensure_ascii=False, indent=2)
-    if getattr(args, "out_sarif", None):
-        with open(args.out_sarif, "w", encoding="utf-8") as fh:
-            json.dump(build_sarif(doc, audit["findings"]), fh, ensure_ascii=False, indent=2)
     if getattr(args, "out_json", None):
         with open(args.out_json, "w", encoding="utf-8") as fh:
             json.dump(audit, fh, ensure_ascii=False, indent=2, sort_keys=True)
@@ -219,8 +211,6 @@ def main(argv: list[str]) -> int:
     pa.add_argument("--in", dest="in_json", required=True)
     pa.add_argument("--now", required=True)
     pa.add_argument("--out-audit", required=True)
-    pa.add_argument("--out-bom")
-    pa.add_argument("--out-sarif")
     pa.add_argument("--out-json")
     pa.add_argument("--out-html")
     pa.add_argument("--offline", action="store_true")
