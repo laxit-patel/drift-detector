@@ -44,7 +44,8 @@ def test_ruleset_has_broad_url_rule_plus_one_per_vendor_per_language():
 
 def test_ruleset_without_vendors_is_just_the_shape_rules():
     bases = {d["id"].split("@")[0] for d in build_astgrep_ruleset()}
-    assert bases == {"url-literal", "path-literal", "php-http-sink", "path-assembly"}
+    assert bases == {"url-literal", "path-literal", "php-http-sink", "path-assembly",
+                     "operation-marker", "operation-call-name"}
 
 
 def test_write_ruleset_is_valid_multidoc_yaml(tmp_path):

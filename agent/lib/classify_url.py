@@ -103,6 +103,24 @@ def domain_in_line(line: str, domains) -> str:
 
 _VERSION_SEG = re.compile(r"/(v[0-9][0-9.]*|[0-9]{4}-[0-9]{2}-[0-9]{2})(/|$)")
 
+# An API OPERATION name — the unit some vendors deprecate independently of the host.
+# eBay's Trading API is the motivating case: one host (api.ebay.com), one path
+# (/ws/api.dll), ~19 operations on separate lifecycles, so (vendor, host, version)
+# cannot distinguish "GetCategories is dead" from "GetItem is alive". Two marker
+# shapes carry the name at the call-site:
+#   • the XML request root  -> <GetCategoryFeaturesRequest xmlns="urn:ebay:apis:...">
+#   • the call-name argument -> getEbaySession("GetCategories", ...)  (becomes the
+#     X-EBAY-API-CALL-NAME header)
+_OP_XML_ROOT = re.compile(r"<([A-Z][A-Za-z0-9]{2,})Request\b")
+_OP_CALL_NAME = re.compile(r"""(?:CALL-NAME|getEbaySession)\s*[:(]\s*['"]([A-Z][A-Za-z0-9]{2,})['"]""")
+
+
+def operation_of(line: str) -> str:
+    """The API operation named on `line`, or '' if none. Never guesses: the name
+    must appear as an XML request root or an explicit call-name argument."""
+    m = _OP_XML_ROOT.search(line) or _OP_CALL_NAME.search(line)
+    return m.group(1) if m else ""
+
 
 def path_literal_of(line: str) -> str:
     """The first quoted string on `line` that is a version-bearing resource path

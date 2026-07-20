@@ -36,10 +36,17 @@ def _sunset_findings(repo: dict, sun_index: dict, now: str) -> list:
         if not vendor_eps:
             continue
         for entry in entries:
+            eop = entry.get("operation")             # optional: scope to ONE API operation
             edomain = entry.get("domain")            # optional: scope to a specific dead host
             cver = entry.get("version")
             files, confirmed = [], False
             for e in vendor_eps:
+                if eop:                              # operation-scoped wins: one host can carry
+                    if e.get("operation") != eop:    # many operations on separate lifecycles
+                        continue                     # (eBay Trading: GetCategories dead, GetItem alive)
+                    confirmed = True                 # an exact operation match IS the confirmation
+                    files += e.get("files", [])
+                    continue
                 if edomain:                          # domain-scoped: the host IS the API
                     if e.get("domain") != edomain:
                         continue                     # a different host of the same vendor -> skip
@@ -56,7 +63,9 @@ def _sunset_findings(repo: dict, sun_index: dict, now: str) -> list:
                 continue
             files = list(dict.fromkeys(files))[:6]
             status = vendor_sunsets.status_for(entry.get("retires"), now, confirmed=confirmed)
-            if edomain:
+            if eop:
+                vlabel = eop                          # the operation IS the thing retired
+            elif edomain:
                 vlabel = edomain
             elif cver == "*":
                 vlabel = "(all versions)"
@@ -69,6 +78,7 @@ def _sunset_findings(repo: dict, sun_index: dict, now: str) -> list:
                 rec += f" before {entry['retires']}"
             out.append({
                 "repo": path, "kind": "sunset", "ref": vendor, "version": cver, "domain": edomain,
+                "operation": eop,
                 "status": status, "severity": "SUNSET",
                 "detail": f"{vendor} {vlabel} {when}{verify} · used at " + ", ".join(files),
                 "date": entry.get("retires"), "source_url": entry.get("source", ""), "tier": 1,

@@ -71,6 +71,17 @@ def build_astgrep_ruleset(vendors: list | None = None,
         docs.append(_ast_literal_rule(
             "path-literal", r"/(v[0-9][0-9.]*|[0-9]{4}-[0-9]{2}-[0-9]{2})/", lang,
             {"kind": "path-literal"}))
+    # operation markers — the name of the API OPERATION being called, for vendors
+    # that deprecate per-operation rather than per-host/version (eBay Trading:
+    # one host, ~19 operations, independent lifecycles). classify_url.operation_of
+    # pulls the name out of the matched line.
+    for lang in langs:
+        docs.append(_ast_literal_rule(
+            "operation-marker", r"<[A-Z][A-Za-z0-9]{2,}Request\b", lang,
+            {"kind": "operation-marker"}))
+    docs.append({"id": "operation-call-name@php", "language": "php",
+                 "metadata": {"kind": "operation-marker"},
+                 "rule": {"pattern": "getEbaySession($NAME, $$$)"}})
     # structural rules — PHP only
     docs.append({"id": "php-http-sink@php", "language": "php", "metadata": {"kind": "sink"},
                  "rule": {"any": [{"pattern": "curl_exec($$$)"},
