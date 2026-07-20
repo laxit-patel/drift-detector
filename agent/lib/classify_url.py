@@ -124,12 +124,20 @@ def operation_of(line: str) -> str:
 
 def path_literal_of(line: str) -> str:
     """The first quoted string on `line` that is a version-bearing resource path
-    ('/orders/2026-01-01/orders'). Excludes full URLs (those go through the url path)."""
-    for m in re.finditer(r"""['"](/[^'"]*)['"]""", line):
+    ('/orders/2026-01-01/orders'). Excludes full URLs (those go through the url path).
+
+    A leading slash is NOT required. Requiring one silently dropped every literal
+    written as "post-order/v2/cancellation" — the engine matched them, this returned
+    "", and they then appeared in neither attribution NOR residue. Invisible, not
+    merely unattributed, which is the exact failure the coverage verdict exists to
+    make impossible. The version segment is what identifies a resource path; the
+    leading slash is just one house style.
+    """
+    for m in re.finditer(r"""['"]([^'"\s]*/[^'"]*)['"]""", line):
         s = m.group(1)
         if "://" in s:
             continue
-        if _VERSION_SEG.search(s):
+        if _VERSION_SEG.search("/" + s.lstrip("/")):
             return s
     return ""
 

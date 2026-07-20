@@ -25,3 +25,18 @@ def test_operation_of_reads_the_api_operation_name():
     # never guesses
     assert operation_of("$x = 'just a string';") == ""
     assert operation_of("<div>Request</div>") == ""                    # lowercase tag, not an operation
+
+
+def test_path_literal_does_not_require_a_leading_slash():
+    """Regression: requiring a leading '/' silently DROPPED literals written as
+    "post-order/v2/cancellation" — the engine matched them, this returned "", and
+    they appeared in neither attribution nor residue. Invisible, not merely
+    unattributed, which is the one thing the coverage verdict must never allow.
+    On one real file this under-reported residue 2 -> 41."""
+    from agent.lib.classify_url import path_literal_of
+    assert path_literal_of('$u = "post-order/v2/cancellation/";') == "post-order/v2/cancellation/"
+    assert path_literal_of('$u = "/post-order/v2/return/";') == "/post-order/v2/return/"
+    # still excludes what it should
+    assert path_literal_of("$u = 'https://api.x.com/v1/foo';") == ""      # full URL
+    assert path_literal_of("$u = '/local/file/path';") == ""              # no version segment
+    assert path_literal_of("$u = 'v2';") == ""                            # not a path
