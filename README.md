@@ -94,13 +94,6 @@ The scheduled run is the `run` subcommand (`scan → audit → deliver`); logs l
 `<folder>/.drift-detector/cron.log`. The agent always shows the exact crontab line and asks
 before touching your crontab. (Cron = Linux/macOS.)
 
-### Query it from any assistant (MCP)
-
-A read-only **MCP server** (`bin/drift-mcp`) exposes the artifacts + live checks to any MCP host
-(Claude Code, Claude Desktop, Cursor, Copilot). Ask *"which repos call Shopify?"* or — while
-coding — **`check_dependency("npm","axios","0.21.1")` before you add it**, turning drift
-*detection* into *prevention*. Setup + config snippets: [docs/MCP.md](docs/MCP.md).
-
 ## Outputs (written to `<folder>/.drift-detector/`)
 
 | File | What |

@@ -1,6 +1,6 @@
 """The one shared definition of 'worse' (severity) and 'newer' (version).
 
-Both the MCP facade and the report renderer import these. Keeping one copy is the point:
+Both the read facade and the report renderer import these. Keeping one copy is the point:
 the ranking logic used to live privately in facade.py, so audit_render.py could not reach it
 and ranked nothing at all.
 """
