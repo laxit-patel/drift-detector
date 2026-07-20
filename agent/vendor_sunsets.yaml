@@ -49,3 +49,22 @@
   replacement: Browse API
   source: "https://developer.ebay.com/develop/get-started/api-deprecation-status#:~:text=Shopping%20API"
   note: eBay Shopping API (open.api.ebay.com) decommissioned 2025-02-05; migrate to the RESTful Browse API.
+
+# eBay Trading API — OPERATION-scoped. The Trading API as a whole is NOT retired
+# (eBay still ships releases), but individual calls are decommissioned on their own
+# schedules, all on the same host (api.ebay.com) with no URL version. Only an
+# `operation` scope can say "GetCategories is dead, GetItem is alive".
+# Both dates below were read directly off eBay's API Deprecation Status table
+# (Wayback snapshot 2026-05-13) — not inferred.
+- vendor: eBay
+  operation: GetCategoryFeatures
+  retires: "2026-06-04"
+  replacement: Metadata API
+  source: "https://developer.ebay.com/develop/get-started/api-deprecation-status"
+  note: Deprecated 2025-07-01; decommissioned 2026-06-04. Migrate to the Metadata API for category metadata.
+- vendor: eBay
+  operation: GetCategories
+  retires: "2026-04-15"
+  replacement: Taxonomy API
+  source: "https://developer.ebay.com/develop/get-started/api-deprecation-status"
+  note: Decommissioned from the Trading API. Migrate to the Taxonomy API (category tree) + Metadata API.

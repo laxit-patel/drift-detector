@@ -127,12 +127,15 @@ def test_loader_accepts_domain_only_entry_without_version(tmp_path):
 
 def test_real_catalog_has_accurate_ebay_finding_and_shopping_sunsets():
     cat = vs.load_sunsets()
-    ebay = [s for s in cat if s["vendor"] == "eBay"]
+    # DOMAIN-scoped eBay entries: whole hosts that are dead. Operation-scoped
+    # entries live on the shared LIVE host and have their own dates, so they are
+    # deliberately not covered by this assertion.
+    ebay = [s for s in cat if s["vendor"] == "eBay" and s.get("domain")]
     domains = {s.get("domain") for s in ebay}
     assert "svcs.ebay.com" in domains          # Finding API
     assert "open.api.ebay.com" in domains      # Shopping API
     for s in ebay:
-        assert s["retires"] == "2025-02-05"    # the real decommission date
+        assert s["retires"] == "2025-02-05"    # the announced decommission date
         assert s.get("source")                 # every entry cites a source
         assert "api.ebay.com" != s.get("domain")   # never target the LIVE host
 
@@ -146,3 +149,33 @@ def test_no_more_than_two_entries_share_a_source_url():
     counts = collections.Counter(s.get("source") for s in cat if s.get("source"))
     offenders = {url: n for url, n in counts.items() if n > 2}
     assert not offenders, f"more than 2 sunset entries share a source URL: {offenders}"
+
+
+def test_operation_scoped_entry_flags_only_that_operation():
+    """One host, many operations: a dead call must not condemn a live one."""
+    sun = [{"vendor": "eBay", "operation": "GetCategories", "retires": "2026-04-15",
+            "replacement": "Taxonomy API", "source": "https://developer.ebay.com/x"}]
+    doc = {"repos": [{"path": "ebayapi", "endpoints": [
+        {"vendor": "eBay", "domain": "ebay.com", "version": None,
+         "operation": "GetCategories", "files": ["Cat.php:18"]},
+        {"vendor": "eBay", "domain": "ebay.com", "version": None,
+         "operation": "GetItem", "files": ["Item.php:9"]},          # alive
+    ]}]}
+    out = audit_inventory(doc, "2026-07-20", sunsets=sun, **_NOOP)
+    f = [x for x in out["findings"] if x["kind"] == "sunset"]
+    assert len(f) == 1 and f[0]["operation"] == "GetCategories"
+    assert f[0]["files"] == ["Cat.php:18"]                          # NOT Item.php
+    assert f[0]["status"] == "DEPRECATED"                           # past due
+
+
+def test_real_catalog_operation_entries_are_sourced_and_dated():
+    cat = vs.load_sunsets()
+    ops = [s for s in cat if s.get("operation")]
+    assert ops, "the operation axis needs at least one curated entry"
+    for s in ops:
+        assert s.get("source", "").startswith("http")               # never an invented date
+        assert len(str(s.get("retires", ""))) == 10                 # YYYY-MM-DD
+    by_op = {s["operation"]: s for s in ops}
+    # verified from eBay's API Deprecation Status table (snapshot 2026-05-13)
+    assert by_op["GetCategoryFeatures"]["retires"] == "2026-06-04"
+    assert by_op["GetCategories"]["retires"] == "2026-04-15"
