@@ -24,9 +24,12 @@ def test_ruleset_has_path_literal_sink_and_assembly_rules():
     assert sk["language"] == "php"
     pats = " ".join(p["pattern"] for p in sk["rule"]["any"])
     assert "curl_exec" in pats and "CURLOPT_URL" in pats and "GuzzleHttp\\Client" in pats
-    # path-assembly: PHP-only, the getHost() concat idiom
-    pa = kinds["path-assembly"]
-    assert pa["language"] == "php" and "getHost()" in pa["rule"]["pattern"]
+    # path-assembly: one rule per url-assembly idiom instance (not a single hardcoded one)
+    docs = build_astgrep_ruleset(vendors=[])
+    asm = [d for d in docs if (d.get("metadata") or {}).get("kind") == "path-assembly"]
+    assert asm and all(d["rule"]["pattern"].endswith(" . $B") for d in asm)
+    pats = " ".join(d["rule"]["pattern"] for d in asm)
+    assert "getHost()" in pats and "serviceUrl" in pats
 
 
 def test_ruleset_has_broad_url_rule_plus_one_per_vendor_per_language():
@@ -44,8 +47,10 @@ def test_ruleset_has_broad_url_rule_plus_one_per_vendor_per_language():
 
 def test_ruleset_without_vendors_is_just_the_shape_rules():
     bases = {d["id"].split("@")[0] for d in build_astgrep_ruleset()}
-    assert bases == {"url-literal", "path-literal", "php-http-sink", "path-assembly",
-                     "operation-marker", "operation-call-name"}
+    # the shape rules, plus whatever idiom instances agent/idioms.yaml declares
+    assert {"url-literal", "path-literal", "php-http-sink"} <= bases
+    from agent.lib import idioms
+    assert {i["id"] for i in idioms.load_idioms()} <= bases
 
 
 def test_write_ruleset_is_valid_multidoc_yaml(tmp_path):
@@ -79,6 +84,7 @@ def test_astgrep_rule_ids_carry_language_and_metadata():
     v = Vendor("Stripe", "api:stripe", ("stripe.com",), r"/(v[0-9]+)")
     docs = build_astgrep_ruleset([v], languages=["php"])
     ids = {d["id"] for d in docs}
-    assert "stripe-endpoint@php" in ids and "path-assembly@php" in ids
+    assert "stripe-endpoint@php" in ids
+    assert any(d["id"].startswith("php-gethost-method@") for d in docs)   # from idioms.yaml
     sd = next(d for d in docs if d["id"] == "stripe-endpoint@php")
     assert sd["metadata"] == {"vendor": "Stripe", "techKey": "api:stripe", "kind": "endpoint"}

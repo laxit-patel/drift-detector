@@ -13,6 +13,7 @@ import sys
 import time
 
 from agent import inventory_scan as inventory_scan_mod
+from agent.lib import scan_util
 
 
 def _cmd_inventory_scan(args) -> int:
@@ -203,6 +204,65 @@ def _cmd_recommend(args) -> int:
     return 0
 
 
+def _cmd_absorb(args) -> int:
+    """Gate a staged proposal into the tool. Deterministic, zero tokens.
+
+    An agent may PROPOSE (idiom instances, sunset entries); nothing is trusted
+    because an agent said it. This re-scans the repo with the staged specs and
+    refuses anything that cannot show its work.
+    """
+    import tempfile
+    from agent import absorb
+    from agent.lib import idioms as idioms_mod, shapes
+    from agent.lib.vendors import load_vendors
+    from agent.lib.vendor_rules import write_ruleset
+    from agent.lib.engine import run_scan
+    from agent.lib.endpoints import scan_endpoints
+
+    staged_idioms = absorb._load(os.path.join(args.staged, "idioms.yaml"))
+    staged_sunsets = absorb._load(os.path.join(args.staged, "sunsets.yaml"))
+    claims = absorb._load(os.path.join(args.staged, "claims.yaml")) or []
+
+    problems = absorb.check_idioms(staged_idioms) + absorb.check_sunsets(staged_sunsets)
+    if problems:
+        print("✗ absorb rejected — the proposal is malformed:", file=sys.stderr)
+        for p in problems:
+            print(f"    {p}", file=sys.stderr)
+        return 3
+
+    vendors = load_vendors()
+    engine = scan_util.resolve_engine()
+
+    def scan(extra_idioms):
+        insts = idioms_mod.load_idioms() + list(extra_idioms or [])
+        with tempfile.TemporaryDirectory() as td:
+            rules = os.path.join(td, "rules.yaml")
+            write_ruleset(vendors, rules, idiom_instances=insts)
+            res = run_scan(args.repo, rules, engine=engine)
+        return scan_endpoints(res["matches"], args.repo, vendors)
+
+    problems = absorb.verify_against_repo(args.repo, staged_idioms, claims, scan=scan)
+    if problems:
+        print("✗ absorb rejected — the proposal did not hold up against the repo:", file=sys.stderr)
+        for p in problems:
+            print(f"    {p}", file=sys.stderr)
+        return 3
+
+    added = absorb.promote(args.staged, idioms_path=idioms_mod._DEFAULT,
+                           sunsets_path=os.path.join(os.path.dirname(idioms_mod._DEFAULT),
+                                                     "vendor_sunsets.yaml"))
+    print(f"✓ absorbed: {added['idioms']} idiom(s), {added['sunsets']} sunset(s) — "
+          "verified against the repo, promoted to the catalogs")
+    if args.state:
+        after = scan(staged_idioms)
+        fp = shapes.residue_fingerprint(after["residue"])
+        shapes.attest(args.state, args.repo_name or os.path.basename(args.repo.rstrip("/")),
+                      fp, resolved_by="absorb", date=args.now or "",
+                      note=f"{added['idioms']} idiom(s) absorbed")
+        print(f"  attestation written for residue {fp}")
+    return 0
+
+
 def _cmd_mute(args) -> int:
     from agent.lib.findings_state import add_to_baseline, remove_from_baseline
     if args.remove:
@@ -244,6 +304,14 @@ def main(argv: list[str]) -> int:
     pmu.add_argument("--fingerprint", required=True)
     pmu.add_argument("--remove", action="store_true")
     pmu.set_defaults(func=_cmd_mute)
+
+    pab = sub.add_parser("absorb")        # gate a staged agent proposal into the tool
+    pab.add_argument("--staged", required=True)
+    pab.add_argument("--repo", required=True)
+    pab.add_argument("--repo-name")
+    pab.add_argument("--state")
+    pab.add_argument("--now")
+    pab.set_defaults(func=_cmd_absorb)
 
     prc = sub.add_parser("recommend")     # which scan profile should this folder run?
     prc.add_argument("--root", required=True)
