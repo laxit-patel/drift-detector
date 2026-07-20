@@ -31,6 +31,11 @@ _LANG_BY_EXT = {
     ".ts": "typescript", ".tsx": "typescript", ".py": "python", ".rb": "ruby",
     ".go": "go", ".java": "java", ".cs": "csharp",
 }
+# Extensions that are plainly source code but which we have no rules for. Counted so
+# a repo made of them cannot report KNOWN by virtue of being unreadable.
+_CODE_ISH = {".kt", ".kts", ".rs", ".swift", ".ex", ".exs", ".scala", ".dart", ".m",
+             ".mm", ".c", ".cc", ".cpp", ".h", ".hpp", ".pl", ".pm", ".lua", ".r",
+             ".jl", ".clj", ".erl", ".hs", ".ml", ".fs", ".vb", ".groovy"}
 _SKIP_DIRS = {".git", "test", "tests", "spec", "__tests__", "vendor", "node_modules",
               ".venv", "dist", "build", "target", "__pycache__"}
 
@@ -40,18 +45,28 @@ _SKIP_DIRS = {".git", "test", "tests", "spec", "__tests__", "vendor", "node_modu
 _MEANINGFUL_SHARE = 0.10
 
 NO_EGRESS_SIGNAL = "no-egress-signal"
+UNMODELED_LANGUAGE = "unmodeled-language"
 
 
-def census(repo_abs: str) -> dict:
-    """language -> source-file count, skipping vendored and test trees."""
+def census(repo_abs: str) -> tuple:
+    """(language -> source-file count, count of files in languages we do NOT model).
+
+    The second number matters: a repo written entirely in Kotlin, Rust or Swift has an
+    EMPTY census, and an empty census used to sail through the coverage check with
+    nothing to iterate — reporting KNOWN for a repo we cannot read a single line of.
+    """
     counts: dict = {}
+    unmodeled = 0
     for dirpath, dirnames, filenames in os.walk(repo_abs):
         dirnames[:] = [d for d in dirnames if d not in _SKIP_DIRS]
         for fn in filenames:
-            lang = _LANG_BY_EXT.get(os.path.splitext(fn)[1].lower())
+            ext = os.path.splitext(fn)[1].lower()
+            lang = _LANG_BY_EXT.get(ext)
             if lang:
                 counts[lang] = counts.get(lang, 0) + 1
-    return counts
+            elif ext in _CODE_ISH:
+                unmodeled += 1
+    return counts, unmodeled
 
 
 def signal_coverage(languages, rule_kinds_by_lang: dict) -> dict:
@@ -81,10 +96,14 @@ def residue_fingerprint(residue: dict) -> str:
 
 
 def verdict(attributed: int, residue: dict, coverage: dict,
-            *, attested: bool = False) -> tuple:
+            *, attested: bool = False, unmodeled: int = 0) -> tuple:
     """(KNOWN|UNKNOWN, reasons). KNOWN requires BOTH egress coverage for every
     meaningful language AND nothing left unattributed (or a valid attestation)."""
     reasons = []
+    if unmodeled and not coverage:
+        # every source file is in a language we do not model at all — we have not
+        # looked at this repo, and saying KNOWN would be a lie of omission
+        reasons.append(UNMODELED_LANGUAGE)
     uncovered = [lang for lang, kinds in coverage.items()
                  if not any(k in ("sink", "path-assembly") for k in kinds)]
     if uncovered:
@@ -105,15 +124,16 @@ def verdict(attributed: int, residue: dict, coverage: dict,
 
 def build(repo_abs: str, repo_path: str, endpoints: list, residue: dict,
           rule_kinds_by_lang: dict, *, attested: bool = False) -> dict:
-    counts = census(repo_abs)
+    counts, unmodeled = census(repo_abs)
     langs = meaningful_languages(counts)
     cov = signal_coverage(langs, rule_kinds_by_lang)
     attributed = sum(1 for e in endpoints
                      if e.get("vendor") and e["vendor"] != "Unknown")
-    v, reasons = verdict(attributed, residue, cov, attested=attested)
+    v, reasons = verdict(attributed, residue, cov, attested=attested, unmodeled=unmodeled)
     return {
         "repo": repo_path,
         "languages": counts,
+        "unmodeledFiles": unmodeled,
         "signalCoverage": cov,
         "attributed": attributed,
         "unattributedPaths": len(residue.get("pathLiterals", [])),
@@ -145,10 +165,23 @@ def load_attestations(state_dir: str) -> dict:
         return {}
 
 
+def repo_key(repo_path: str, repo_abs: str = "") -> str:
+    """A repo identity that cannot collide across unrelated repos.
+
+    The discovered name is often a bare basename, so two unrelated repos both called
+    `svc` with the same unresolved literal produced the same attestation key — and
+    attesting one silently marked the other, never reviewed by anyone, as resolved.
+    """
+    if not repo_abs:
+        return repo_path
+    return f"{repo_path}:{hashlib.sha256(os.path.abspath(repo_abs).encode()).hexdigest()[:12]}"
+
+
 def attest(state_dir: str, repo_path: str, fingerprint: str, *, resolved_by: str,
-           date: str, note: str = "") -> None:
+           date: str, note: str = "", repo_abs: str = "") -> None:
     import json
     data = load_attestations(state_dir)
+    repo_path = repo_key(repo_path, repo_abs)
     data[f"{repo_path}@{fingerprint}"] = {"repo": repo_path, "fingerprint": fingerprint,
                                           "resolvedBy": resolved_by, "date": date,
                                           "note": note}
@@ -156,8 +189,9 @@ def attest(state_dir: str, repo_path: str, fingerprint: str, *, resolved_by: str
         json.dump(data, fh, ensure_ascii=False, indent=2, sort_keys=True)
 
 
-def is_attested(attestations: dict, repo_path: str, fingerprint: str) -> bool:
-    return f"{repo_path}@{fingerprint}" in (attestations or {})
+def is_attested(attestations: dict, repo_path: str, fingerprint: str,
+                repo_abs: str = "") -> bool:
+    return f"{repo_key(repo_path, repo_abs)}@{fingerprint}" in (attestations or {})
 
 
 # --- scan profiles: which mode should a human run this folder in? ---------------
@@ -187,10 +221,13 @@ def recommend_profile(shape: dict) -> tuple:
     return AUTO, "every language covered and nothing left unattributed"
 
 
-def recommend_from_census(counts: dict, rule_kinds_by_lang: dict) -> tuple:
+def recommend_from_census(counts: dict, rule_kinds_by_lang: dict,
+                          unmodeled: int = 0) -> tuple:
     """Pre-scan recommendation: language census only, no engine run needed."""
     langs = meaningful_languages(counts)
     if not langs:
+        if unmodeled:
+            return MANUAL, f"{unmodeled} source file(s) in language(s) we do not model at all"
         return AUTO, "no source files we model — nothing to scan"
     blind = [l for l in langs
              if not any(k in ("sink", "path-assembly")

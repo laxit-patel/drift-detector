@@ -100,6 +100,19 @@ def verify_against_repo(repo_abs: str, staged_idioms: list, claims: list,
         problems.append(f"attributes endpoints to vendor(s) not previously present: {invented}"
                         " — a rule that invents calls is worse than the gap it closes")
 
+    # An idiom must attribute EXACTLY what it claimed. A proposal that also sweeps up
+    # call-sites it never named has not been reviewed for those, and the reviewer had no
+    # chance to judge them. This is the check that catches an over-broad pattern: e.g.
+    # `$A->getHost()` where $A is a metavariable matching ANY object, which will happily
+    # attribute an unrelated library's paths to the repo's one classified vendor.
+    attributed_before = {loc for e in before["endpoints"]
+                         if e.get("vendor") and e["vendor"] != "Unknown"
+                         for loc in e.get("files", [])}
+    unclaimed = sorted((attributed_after - attributed_before) - set(claims))
+    if unclaimed:
+        problems.append("attributes call-sites it did not claim: " + ", ".join(unclaimed[:6])
+                        + " — every attributed site must be named and reviewed")
+
     n_before = len(before["residue"].get("pathLiterals", []))
     n_after = len(after["residue"].get("pathLiterals", []))
     if n_after > n_before:

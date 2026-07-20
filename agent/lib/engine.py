@@ -64,10 +64,17 @@ def _is_skipped(file_path: str, repo_path: str) -> bool:
 def run_scan(repo_path: str, ruleset_path: str, *, engine: str = "ast-grep",
              run=_default_run) -> dict:
     out = run([engine, "scan", "-r", ruleset_path, "--json=compact", repo_path])
+    errors = []
     try:
         data = json.loads(out) if out and out.strip() else []
-    except ValueError:
+    except ValueError as exc:
+        # A crash mid-write, or a warning line before the JSON, must NOT read as
+        # "scanned cleanly, found nothing" — that is indistinguishable from a clean
+        # repo all the way through to a KNOWN verdict. Fail loud.
         data = []
+        errors.append({"message": f"engine output was not valid JSON ({exc}); "
+                                  "treating the scan as FAILED, not empty",
+                       "path": repo_path})
     meta_by_rule = _rule_metadata(ruleset_path)
     matches = []
     for m in data:
@@ -85,4 +92,4 @@ def run_scan(repo_path: str, ruleset_path: str, *, engine: str = "ast-grep",
             # its start line (an XML request root often sits on line 2 of the literal)
             "text": m.get("text", "") or "",
         })
-    return {"matches": matches, "scanned": [], "errors": []}
+    return {"matches": matches, "scanned": [], "errors": errors}

@@ -44,7 +44,8 @@ def scan_endpoints(matches: list, repo_root: str, vendors: list, *, max_files: i
     groups: dict = {}
     seen_known: set = set()
 
-    def add(vendor, techKey, host, version, example, rel, lineno, operation=None):
+    def add(vendor, techKey, host, version, example, rel, lineno, operation=None,
+            inferred=False):
         loc = f"{rel}:{lineno}"
         if techKey and (techKey, loc, operation) in seen_known:
             return
@@ -55,6 +56,11 @@ def scan_endpoints(matches: list, repo_root: str, vendors: list, *, max_files: i
         if rec is None:
             rec = {"vendor": vendor, "domain": host, "version": version, "techKey": techKey,
                    "operation": operation,
+                   # OBSERVED means the vendor was read at this call-site; INFERRED means
+                   # it was assigned by the single-classified-vendor heuristic, which is
+                   # a guess about the repo, not evidence from the line. A reader must be
+                   # able to tell them apart.
+                   "attribution": "inferred" if inferred else "observed",
                    "example": (example or host).rstrip("\"';,)"), "file_count": 0, "files": [],
                    "classified": bool(techKey)}
             groups[key] = rec
@@ -65,7 +71,10 @@ def scan_endpoints(matches: list, repo_root: str, vendors: list, *, max_files: i
     for m in sorted(matches, key=lambda x: 0 if x.get("kind") == "url" else 1):
         rel = _relpath(m.get("path", ""), repo_root)
         lineno = int(m.get("line", 0) or 0)
-        line = _read_line(repo_root, rel, lineno, line_cache)
+        # Prefer the engine's full matched text: a heredoc/multi-line literal carries
+        # its URL past the node's START line, and reading only that line loses it
+        # entirely — present in neither endpoints nor residue.
+        line = m.get("text") or _read_line(repo_root, rel, lineno, line_cache)
         kind = m.get("kind")
         if kind == "url":
             for url in classify_url.extract_urls(line):
@@ -86,6 +95,7 @@ def scan_endpoints(matches: list, repo_root: str, vendors: list, *, max_files: i
     # Same strict guard as the concat idiom: only when the repo has exactly one
     # classified vendor, so an operation is never attributed to the wrong API.
     classified_tks = {r["techKey"] for r in groups.values() if r["techKey"]}
+    attributed_ops: set = set()
     if len(classified_tks) == 1:
         v = by_tk.get(next(iter(classified_tks)))
         if v is not None:
@@ -99,7 +109,9 @@ def scan_endpoints(matches: list, repo_root: str, vendors: list, *, max_files: i
                 op = (classify_url.operation_of(m.get("text") or "")
                       or classify_url.operation_of(_read_line(repo_root, rel, lineno, line_cache)))
                 if op:
-                    add(v.vendor, v.techKey, v.domains[0], None, op, rel, lineno, operation=op)
+                    add(v.vendor, v.techKey, v.domains[0], None, op, rel, lineno,
+                        operation=op, inferred=True)
+                    attributed_ops.add(f"{rel}:{lineno}")
 
     # --- concat idiom: attribute host-less path literals to the repo's SINGLE classified vendor ---
     classified_tks = {r["techKey"] for r in groups.values() if r["techKey"]}
@@ -116,28 +128,40 @@ def scan_endpoints(matches: list, repo_root: str, vendors: list, *, max_files: i
                 if rel not in assembly_files:
                     continue
                 lineno = int(m.get("line", 0) or 0)
-                path = classify_url.path_literal_of(_read_line(repo_root, rel, lineno, line_cache))
+                path = classify_url.path_literal_of(
+                    m.get("text") or _read_line(repo_root, rel, lineno, line_cache))
                 if not path:
                     continue
-                add(v.vendor, v.techKey, v.domains[0], classify_url.version_of(path, v), path, rel, lineno)
+                add(v.vendor, v.techKey, v.domains[0], classify_url.version_of(path, v),
+                    path, rel, lineno, inferred=True)
                 attributed_locs.add(f"{rel}:{lineno}")
 
     # --- residue: what we could NOT attribute (the conscience) ---
-    residue_paths, residue_sinks = [], []
+    residue_paths, residue_sinks, residue_ops = [], [], []
     for m in matches:
         rel = _relpath(m.get("path", ""), repo_root)
         lineno = int(m.get("line", 0) or 0)
         loc = f"{rel}:{lineno}"
         kind = m.get("kind")
         if kind == "path-literal" and loc not in attributed_locs:
-            path = classify_url.path_literal_of(_read_line(repo_root, rel, lineno, line_cache))
+            path = classify_url.path_literal_of(
+                m.get("text") or _read_line(repo_root, rel, lineno, line_cache))
             if path:
                 residue_paths.append({"sample": path, "loc": loc})
         elif kind == "sink":
             residue_sinks.append({"kind": "egress", "loc": loc})
+        elif kind == "operation-marker" and loc not in attributed_ops:
+            # the single-vendor guard did not fire (0 or >=2 classified vendors). The
+            # marker is still real evidence of an API call; dropping it would make it
+            # invisible rather than merely unattributed.
+            op = classify_url.operation_of(m.get("text") or
+                                           _read_line(repo_root, rel, lineno, line_cache))
+            if op:
+                residue_ops.append({"operation": op, "loc": loc})
 
     return {"endpoints": list(groups.values()),
-            "residue": {"pathLiterals": residue_paths, "sinks": residue_sinks}}
+            "residue": {"pathLiterals": residue_paths, "sinks": residue_sinks,
+                        "operations": residue_ops}}
 
 
 def build_endpoints(matches: list, repo_root: str, vendors: list, *, max_files: int = 20) -> list:

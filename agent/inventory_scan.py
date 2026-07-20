@@ -13,8 +13,18 @@ from agent.lib.inv_rollups import build_rollups
 from agent.lib.inventory_diff import diff_inventories
 
 
-def _coverage_grade(attributed: int, unattributed_paths: int, sinks: int) -> str:
-    """Grade a repo's endpoint coverage: HIGH/PARTIAL/LOW based on attribution and residue."""
+def _coverage_grade(attributed: int, unattributed_paths: int, sinks: int,
+                    verdict: str | None = None) -> str:
+    """Grade a repo's endpoint coverage: HIGH/PARTIAL/LOW.
+
+    DERIVED from the shape verdict when one exists, so the two cannot disagree inside
+    one document. A Go-only repo previously reported `verdict: UNKNOWN
+    (no-egress-signal)` beside `grade: HIGH` — the grade counts residue, and a repo we
+    have no rules for produces none, so it looked perfect. A reader had no way to know
+    which number to trust.
+    """
+    if verdict == "UNKNOWN" and not unattributed_paths:
+        return "PARTIAL"          # blind for a reason residue counts cannot express
     if unattributed_paths and attributed == 0:
         return "LOW"
     if unattributed_paths or (attributed == 0 and sinks):
@@ -28,7 +38,7 @@ def _shape_of(abs_: str, name: str, record: dict, rule_kinds: dict,
     residue = record.get("residue") or {}
     fp = shapes.residue_fingerprint(residue)
     return shapes.build(abs_, name, record.get("endpoints", []), residue, rule_kinds,
-                        attested=shapes.is_attested(attestations, name, fp))
+                        attested=shapes.is_attested(attestations, name, fp, abs_))
 
 
 def _rollup_coverage(coverage: dict, repos: list, *, discovered_count: int) -> None:
@@ -64,7 +74,8 @@ def _rollup_coverage(coverage: dict, repos: list, *, discovered_count: int) -> N
                          if e.get("vendor") and e["vendor"] != "Unknown")
         by_repo.append({"repo": r.get("path"), "attributed": attributed,
                         "unattributedPaths": len(plist), "unresolvedSinks": len(slist),
-                        "grade": _coverage_grade(attributed, len(plist), len(slist))})
+                        "grade": _coverage_grade(attributed, len(plist), len(slist),
+                                                 (r.get("shape") or {}).get("verdict"))})
     coverage["residue"] = {"pathLiterals": res_paths, "sinks": res_sinks, "byRepo": by_repo}
     coverage["shapes"] = [r["shape"] for r in repos if r.get("shape")]
 

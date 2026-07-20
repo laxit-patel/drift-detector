@@ -191,8 +191,8 @@ def _cmd_recommend(args) -> int:
             langs = ",".join(sh.get("languages", {}))
             extra = f"{sh['verdict']}"
         else:
-            counts = shapes.census(abs_path)
-            profile, why = shapes.recommend_from_census(counts, kinds)
+            counts, unmodeled = shapes.census(abs_path)
+            profile, why = shapes.recommend_from_census(counts, kinds, unmodeled)
             langs = ",".join(shapes.meaningful_languages(counts)) or "-"
             extra = "unscanned"
         tally[profile] = tally.get(profile, 0) + 1
