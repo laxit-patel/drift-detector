@@ -81,3 +81,28 @@ def test_marketplace_manifest_valid_and_matches_plugin():
     assert mp["name"] and mp["owner"]["name"]                    # required marketplace fields
     entry = next(p for p in mp["plugins"] if p["name"] == pj["name"])
     assert entry["source"] == "./"                              # plugin IS this repo root
+
+
+def test_deepen_command_exists_and_states_its_guardrails():
+    """The scout's promptfile is the contract that keeps agent output out of the
+    catalogs unreviewed — its guardrails are load-bearing, not decoration."""
+    cmd = (_ROOT / "commands" / "drift-deepen.md").read_text()
+    assert cmd.startswith("---") and "argument-hint:" in cmd
+    # it must drive the real CLI, not invent its own flow
+    assert "drift-scan" in cmd and "absorb --staged" in cmd and "recommend" in cmd
+    # the two guardrails that exist because they were violated for real
+    assert "did not open" in cmd.lower() or "did not fetch" in cmd.lower()
+    assert "source" in cmd.lower() and "staged" in cmd.lower()
+    # never a direct write to the catalogs
+    assert "Never edit" in cmd and "vendor_sunsets.yaml" in cmd
+
+
+def test_main_command_surfaces_unknown_verdicts():
+    cmd = (_ROOT / "commands" / "drift-detector.md").read_text()
+    assert "UNKNOWN" in cmd and "drift-deepen" in cmd
+
+
+def test_still_no_skill_dir():
+    """A skill was removed once as a duplicate of the command; the scout is a
+    command too, deliberately."""
+    assert not (_ROOT / "skills").exists()
