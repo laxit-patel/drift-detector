@@ -53,3 +53,42 @@ def test_write_ruleset_is_valid_yaml(tmp_path):
     write_ruleset(_VS, str(p))
     loaded = yaml.safe_load(p.read_text())
     assert loaded["rules"][0]["id"] == "url-literal" and len(loaded["rules"]) == 6
+
+
+# --- ast-grep dialect ---------------------------------------------------------
+
+def test_astgrep_ruleset_uses_verified_string_kinds_per_language():
+    from agent.lib.vendor_rules import build_astgrep_ruleset, AST_STRING_KINDS
+    docs = build_astgrep_ruleset(vendors=[])
+    by_id = {d["id"]: d for d in docs}
+    # PHP double-quoted strings are `encapsed_string`; missing it silently loses call-sites
+    php = by_id["url-literal@php"]
+    kinds = [c["kind"] for c in php["rule"]["any"]]
+    assert kinds == AST_STRING_KINDS["php"] == ["string", "encapsed_string", "heredoc"]
+    # Go has no bare `string` kind at all
+    assert AST_STRING_KINDS["go"] == ["interpreted_string_literal", "raw_string_literal"]
+    # inner-content kinds must NOT appear anywhere (they double-count)
+    all_kinds = {c.get("kind") for d in docs for c in d["rule"].get("any", []) if "kind" in c}
+    assert not (all_kinds & {"string_fragment", "string_content", "heredoc_body"})
+
+
+def test_astgrep_rule_ids_carry_language_and_metadata():
+    from agent.lib.vendor_rules import build_astgrep_ruleset
+    from agent.lib.vendors import Vendor
+    v = Vendor("Stripe", "api:stripe", ("stripe.com",), r"/(v[0-9]+)")
+    docs = build_astgrep_ruleset([v], languages=["php"])
+    ids = {d["id"] for d in docs}
+    assert "stripe-endpoint@php" in ids and "path-assembly@php" in ids
+    sd = next(d for d in docs if d["id"] == "stripe-endpoint@php")
+    assert sd["metadata"] == {"vendor": "Stripe", "techKey": "api:stripe", "kind": "endpoint"}
+
+
+def test_write_ruleset_dialect_follows_the_engine(tmp_path):
+    from agent.lib.vendor_rules import write_ruleset
+    import yaml
+    p = tmp_path / "r.yaml"
+    write_ruleset([], str(p), engine="/usr/bin/semgrep")
+    assert "rules" in yaml.safe_load(p.read_text())            # semgrep: single doc, rules[]
+    write_ruleset([], str(p), engine="/venv/bin/ast-grep")
+    docs = [d for d in yaml.safe_load_all(p.read_text()) if d]  # ast-grep: multi-doc
+    assert docs and all("language" in d and "rule" in d for d in docs)

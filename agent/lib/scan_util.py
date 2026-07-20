@@ -53,13 +53,22 @@ def git_meta(repo_abs: str, *, run=_default_git) -> dict:
     }
 
 
-def resolve_engine(engine: str = "opengrep") -> str:
-    for name in (engine, "opengrep", "semgrep"):
+def resolve_engine(engine: str = "ast-grep") -> str:
+    """Locate a scan engine. ast-grep is preferred (static binary, ~90x faster than
+    semgrep on a real repo and ~165x faster to start); opengrep/semgrep still work."""
+    for name in (engine, "ast-grep", "opengrep", "semgrep"):
         p = shutil.which(name)
         if p:
             return p
         cand = os.path.join(os.path.dirname(sys.executable), name)
         if os.path.exists(cand):
             return cand
-    raise RuntimeError("No opengrep/semgrep engine found — install opengrep "
-                       "(or semgrep) to scan code endpoints.")
+    raise RuntimeError("No scan engine found — install ast-grep (preferred) or "
+                       "opengrep/semgrep to scan code endpoints.")
+
+
+def engine_family(engine: str) -> str:
+    """Which CLI/rule dialect an engine binary speaks: 'ast-grep' or 'semgrep'.
+    The two take different rule formats and emit different JSON."""
+    base = os.path.basename(engine or "").lower()
+    return "ast-grep" if ("ast-grep" in base or base == "sg") else "semgrep"

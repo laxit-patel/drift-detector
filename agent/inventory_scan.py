@@ -72,7 +72,7 @@ def scan_folder(root, state_dir, now, *, engine=None, run=None, git=None, progre
     os.makedirs(state_dir, exist_ok=True)
     vendors = load_vendors()
     rules_path = os.path.join(state_dir, "rules.generated.yaml")
-    write_ruleset(vendors, rules_path)
+    write_ruleset(vendors, rules_path, engine=engine)
 
     _p("discovering git repos under " + ", ".join(str(r) for r in roots) + " …")
     discovered = discover_repos(roots)     # [(abs_path, identity)], sorted, deduped

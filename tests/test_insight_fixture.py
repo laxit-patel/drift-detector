@@ -21,11 +21,11 @@ FIX = Path(__file__).parent / "fixtures" / "insight"
 
 
 def _find_engine():
-    for name in ("opengrep", "semgrep"):
-        p = shutil.which(name) or os.path.join(os.path.dirname(sys.executable), name)
-        if os.path.exists(p):
-            return p
-    return None
+    from agent.lib.scan_util import resolve_engine
+    try:
+        return resolve_engine()          # prefers ast-grep, falls back to opengrep/semgrep
+    except RuntimeError:
+        return None
 
 
 _ENGINE = _find_engine()
@@ -33,12 +33,12 @@ _ENGINE = _find_engine()
 
 def _scan(repo_dir, vendors, tmp_path):
     rules = tmp_path / "rules.yaml"
-    write_ruleset(vendors, str(rules))
+    write_ruleset(vendors, str(rules), engine=_ENGINE)
     res = run_scan(str(repo_dir), str(rules), engine=_ENGINE)
     return scan_endpoints(res["matches"], str(repo_dir), vendors)
 
 
-@pytest.mark.skipif(_ENGINE is None, reason="no opengrep/semgrep engine installed")
+@pytest.mark.skipif(_ENGINE is None, reason="no scan engine installed")
 def test_repo_a_attributes_sp_api_and_reports_residue(tmp_path):
     vendors = load_vendors()
     out = _scan(FIX / "repo_a", vendors, tmp_path)
@@ -52,7 +52,7 @@ def test_repo_a_attributes_sp_api_and_reports_residue(tmp_path):
     assert any("Client.php" in s["loc"] for s in out["residue"]["sinks"])   # curl_exec = sink residue
 
 
-@pytest.mark.skipif(_ENGINE is None, reason="no opengrep/semgrep engine installed")
+@pytest.mark.skipif(_ENGINE is None, reason="no scan engine installed")
 def test_repo_b_attributes_stripe_proving_idiom_not_vendor(tmp_path):
     vendors = load_vendors()
     out = _scan(FIX / "repo_b", vendors, tmp_path)
