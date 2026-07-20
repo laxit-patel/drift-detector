@@ -2,6 +2,47 @@
 
 All notable changes to the Drift Detector plugin. Dates are YYYY-MM-DD.
 
+## v0.7.0-beta — 2026-07-20
+
+**The tool now reports what it has not been taught, and can see seven more languages.**
+
+### Added
+
+- **Catalog coverage per vendor — `CURRENT` / `STALE` / `UNAUDITED`.** Until now a vendor
+  with hundreds of call-sites and an empty catalog rendered exactly like a vendor that
+  was genuinely clean; that is how eight already-past Amazon retirements stayed invisible.
+  The unit is an **attestation** — "somebody opened this vendor's deprecation page on this
+  date" — deliberately *not* an entry count, which is gameable by one junk entry and
+  unknowable from the inside. New "Vendors unaudited" tile and panel.
+  - Consequence, by design: **eBay reads UNAUDITED despite having 12 catalog entries**,
+    because nobody has reconciled eBay's own page. Amazon SP-API reads CURRENT
+    (checked 2026-07-20). This grades our coverage honestly rather than flatteringly.
+- **Egress detection for all 8 languages.** JavaScript, TypeScript, Python, Go, Java, C#
+  and Ruby now have HTTP sink rules; previously only PHP did, so every other language
+  reported `UNKNOWN / no-egress-signal` and could never be scanned with confidence.
+  Every pattern was verified against a real fixture in that language *before* shipping,
+  and those fixtures are committed as tests that run the real ruleset through the real
+  engine — because a sink rule that matches nothing is worse than no rule: it reports
+  coverage the scanner does not have.
+
+### Upgrading
+
+- **Caches invalidate once** (schema 5 → 6) because the ruleset changed; the first scan
+  after upgrading re-reads every repo.
+- **Expect a new UNAUDITED count.** It is not new risk — it is risk that was always
+  there and previously rendered as clean.
+- Repos in the seven newly-covered languages may move from `UNKNOWN` to `KNOWN`.
+
+### Known gaps (unchanged, stated plainly)
+
+- Five eBay operations visible on the vendor's deprecation page are **still missing**
+  (`getProductCompatibilities`, `updatePaymentInfo`, Return Management, Business Policies,
+  Media API). `developer.ebay.com` could not be fetched, and the reachable secondary
+  sources disagreed on dates, so **no entry was written** — an unsourced date is the one
+  thing this catalog refuses. eBay's UNAUDITED status reflects exactly this.
+- Sink→endpoint linking still needs dataflow and remains out of scope; unresolved sinks
+  do not affect a verdict when calls are otherwise attributed.
+
 ## v0.6.0-beta — 2026-07-20
 
 **Amazon SP-API is now audited, and the report is now checkable by machine.**
