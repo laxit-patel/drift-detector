@@ -108,3 +108,76 @@ def test_grade_cannot_contradict_the_verdict():
                            verdict="UNKNOWN") == "PARTIAL"
     assert _coverage_grade(attributed=5, unattributed_paths=0, sinks=0,
                            verdict="KNOWN") == "HIGH"
+
+
+def _sunset(repo, op, date, rec, files):
+    return {"repo": repo, "ref": "eBay", "kind": "sunset", "severity": "SUNSET",
+            "status": "DEPRECATED", "operation": op, "date": date, "domain": None,
+            "version": None, "recommendation": rec, "files": files,
+            "first_seen": "2026-07-20"}
+
+
+def test_sunset_actions_are_per_operation_not_per_vendor():
+    """Twelve dead eBay calls must not collapse into one action labelled "eBay".
+
+    A vendor is not a job. GetCategoryFeatures migrates to the Metadata API by
+    2026-06-04; AddDispute migrated to Post-Order by 2023-01-27. Different work,
+    different deadlines, different owners. Grouping sunsets on (repo, ref) rendered
+    the dashboard tile as `Sunsets 1` while the audit held twelve findings — the
+    operation axis was present in the data and discarded at the last step.
+    """
+    from agent.lib.actions import build_actions
+    findings = [
+        _sunset("ebayapi", "GetCategoryFeatures", "2026-06-04",
+                "migrate to Metadata API", ["src/Ebay/EbayCategoryFieldsFeature.php:72"]),
+        _sunset("ebayapi", "GetCategories", "2026-04-15",
+                "migrate to Metadata API", ["src/Ebay/EbayCategoryFieldsFeature.php:18"]),
+        _sunset("ebayapi", "AddDispute", "2023-01-27",
+                "migrate to Post-Order API", ["src/Ebay/EbayOrderCancel.php:17"]),
+    ]
+    actions = build_actions(findings)
+    assert len(actions) == 3, f"expected one action per operation, got {len(actions)}"
+    assert {a["unit"] for a in actions} == {
+        "GetCategoryFeatures", "GetCategories", "AddDispute"}
+    # each must keep its OWN migration advice — the collapse also lost these
+    by_unit = {a["unit"]: a for a in actions}
+    assert by_unit["AddDispute"]["recommendation"] == "migrate to Post-Order API"
+    assert by_unit["GetCategories"]["recommendation"] == "migrate to Metadata API"
+
+
+def test_cve_actions_still_group_by_package():
+    """The regrouping must NOT split CVEs: 30 CVEs against one package is still one
+    upgrade, which is the whole reason actions exist."""
+    from agent.lib.actions import build_actions
+    findings = [
+        {"repo": "app", "ref": "composer/guzzlehttp/guzzle", "kind": "cve",
+         "severity": "HIGH", "status": "DEPRECATED", "version": "6.0.0", "fixed": "7.4.5",
+         "recommendation": "upgrade", "files": ["composer.json"], "first_seen": "2026-07-20"},
+        {"repo": "app", "ref": "composer/guzzlehttp/guzzle", "kind": "cve",
+         "severity": "CRITICAL", "status": "DEPRECATED", "version": "6.0.0", "fixed": "7.4.5",
+         "recommendation": "upgrade", "files": ["composer.json"], "first_seen": "2026-07-20"},
+    ]
+    actions = build_actions(findings)
+    assert len(actions) == 1
+    assert actions[0]["finding_count"] == 2
+    assert actions[0]["unit"] is None
+
+
+def test_sunsets_without_an_operation_group_by_host():
+    """Host-scoped sunsets (eBay Finding/Shopping, LMS) have no operation; they must
+    still separate by the host being retired rather than merging into one row."""
+    from agent.lib.actions import build_actions
+    findings = [
+        {"repo": "ebayapi", "ref": "eBay", "kind": "sunset", "severity": "SUNSET",
+         "status": "DEPRECATED", "operation": None, "domain": "svcs.ebay.com",
+         "version": None, "date": "2025-02-05", "recommendation": "migrate to Browse API",
+         "files": ["src/config/ebay.php:39"], "first_seen": "2026-07-20"},
+        {"repo": "ebayapi", "ref": "eBay", "kind": "sunset", "severity": "SUNSET",
+         "status": "DEPRECATED", "operation": None, "domain": "webservices.ebay.com",
+         "version": None, "date": "2022-04-30", "recommendation": "migrate to Feed API",
+         "files": ["src/Ebay/src/LMS/ServiceEndpointsAndTokens.php:9"],
+         "first_seen": "2026-07-20"},
+    ]
+    actions = build_actions(findings)
+    assert len(actions) == 2
+    assert {a["unit"] for a in actions} == {"svcs.ebay.com", "webservices.ebay.com"}

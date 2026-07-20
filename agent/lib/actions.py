@@ -48,17 +48,41 @@ def _rank_key(action):
         -action["finding_count"],
         action["repo"],
         action["ref"],
+        action.get("unit") or "",      # sunsets share a ref; the unit keeps order total
     )
 
 
+def _sunset_unit(f) -> str:
+    """The thing being retired: an operation, else the host, else the API version."""
+    return f.get("operation") or f.get("domain") or f.get("version") or ""
+
+
+def _group_key(f):
+    """A group is ONE JOB.
+
+    For a CVE that is (repo, package) — 30 CVEs against torch really are one
+    `pip install`. For a SUNSET it is (repo, vendor, thing-being-retired), because a
+    vendor is not a job: eBay retiring GetCategoryFeatures (-> Metadata API, 2026-06-04)
+    and AddDispute (-> Post-Order API, 2023-01-27) are two migrations with two deadlines
+    and two owners. Keying sunsets on the vendor collapsed twelve dead eBay calls into a
+    tile reading `Sunsets 1` — the operation axis was in the data and thrown away at the
+    last step, which is precisely the "it skipped my call" complaint this release exists
+    to answer.
+    """
+    if f.get("kind") == "sunset":
+        return (f["repo"], f["ref"], _sunset_unit(f))
+    return (f["repo"], f["ref"])
+
+
 def build_actions(findings: list) -> list:
-    """Group findings by (repo, ref) and rank them. Returns a list of action dicts."""
+    """Group findings into jobs (see _group_key) and rank them. Returns action dicts."""
     groups: "OrderedDict[tuple, list]" = OrderedDict()
     for f in findings:
-        groups.setdefault((f["repo"], f["ref"]), []).append(f)
+        groups.setdefault(_group_key(f), []).append(f)
 
     actions = []
-    for (repo, ref), group in groups.items():
+    for group in groups.values():
+        repo, ref = group[0]["repo"], group[0]["ref"]
         # the worst finding drives severity AND supplies the prose fallback
         worst_f = max(group, key=lambda f: severity_rank(f.get("severity"), f.get("status")))
         status = "DEPRECATED" if any(f.get("status") == "DEPRECATED" for f in group) else "REVIEW"
@@ -77,6 +101,9 @@ def build_actions(findings: list) -> list:
             "eco": eco,
             "pkg": pkg,
             "kind": kind,
+            # what is actually retiring — the row label is "eBay GetCategoryFeatures",
+            # not a bare "eBay" repeated down twelve identical-looking rows.
+            "unit": _sunset_unit(worst_f) if kind == "sunset" else None,
             "current_version": worst_f.get("version"),
             "fix_version": fix_version,
             "command": _command(kind, eco, pkg, fix_version),

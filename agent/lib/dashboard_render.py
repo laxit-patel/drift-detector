@@ -102,6 +102,8 @@ def _build_projection(inventory: dict, audit: dict) -> dict:
         "apis": len({e["vendor"] for e in endpoints if e["classified"]}),
         "unknown": sum(1 for e in endpoints if not e["classified"]),
         "reposAffected": (audit.get("counts") or {}).get("reposAffected", 0),
+        # "1 repos" read as "it only scanned one". Both numbers, or neither.
+        "reposScanned": (inventory.get("scope") or {}).get("reposScanned", 0),
         "private": len(private),
     }
     return {
@@ -155,7 +157,8 @@ def render_dashboard(inventory: dict, audit: dict, now: str, *, diff: dict | Non
     # exposure header
     parts.append('<header class="exposure">')
     parts.append(f'<span class="headline">🔴 {c["fixes"]} fixes needed · '
-                 f'{c["reposAffected"]} repos{_e(delta_txt)}</span>')
+                 f'{c["reposAffected"]} of {c["reposScanned"]} repos affected'
+                 f'{_e(delta_txt)}</span>')
     parts.append('<button id="theme-toggle" title="Toggle light/dark">◐</button>')
     parts.append("</header>")
     # tile groups
@@ -284,11 +287,14 @@ _CLIENT_JS = r"""
 
   function renderActions(list){
     list.forEach(function(a){
-      if(!matchesQ((a.repo||"")+" "+(a.ref||""))) return;
+      // the retiring operation is part of the identity, so it must be searchable too —
+      // a PM filtering for "GetCategoryFeatures" has to land on its row
+      var label = a.ref + (a.unit ? " " + a.unit : "");
+      if(!matchesQ((a.repo||"")+" "+label)) return;
       var tr=document.createElement("tr"); tr.className="row";
       var tgt = a.fix_version ? esc(a.current_version)+" → "+esc(a.fix_version)
                               : esc(a.recommendation||"review");
-      tr.innerHTML='<td>'+esc(a.repo)+'</td><td>'+esc(a.ref)+'</td><td>'+tgt+
+      tr.innerHTML='<td>'+esc(a.repo)+'</td><td>'+esc(label)+'</td><td>'+tgt+
         '</td><td>'+esc(a.finding_count)+'</td><td class="sev-'+escA(a.worst)+'">'+esc(a.worst)+'</td>';
       var open=false, det=null;
       tr.addEventListener("click", function(){
