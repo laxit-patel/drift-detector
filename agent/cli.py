@@ -233,9 +233,18 @@ def _cmd_verify(args) -> int:
         return 4
 
     violations = _verify.verify_payload(payload, audit.get("findings", []))
-    for check, args_ in ((_verify.check_blob_matches_payload, (html, _json.dumps(payload))),
-                         (_verify.check_md_matches_payload, (drift_md, payload)),
-                         (_verify.check_mermaid_wellformed, (drift_md,))):
+    checks = [(_verify.check_blob_matches_payload, (html, _json.dumps(payload))),
+              (_verify.check_md_matches_payload, (drift_md, payload)),
+              (_verify.check_mermaid_wellformed, (drift_md,))]
+    # chart.html is the OPTIONAL online view: absent is fine, but if present its embedded
+    # payload must equal drift.json exactly — the charts must draw from the real data.
+    try:
+        chart = _slurp("chart.html")
+        checks.append((_verify.check_blob_matches_payload,
+                       (chart, _json.dumps(payload), "chart.html")))
+    except OSError:
+        pass
+    for check, args_ in checks:
         try:
             check(*args_)
         except _verify.Violation as v:

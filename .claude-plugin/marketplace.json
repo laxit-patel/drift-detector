@@ -10,7 +10,7 @@
       "displayName": "Drift Detector",
       "source": "./",
       "description": "Detect third-party integration drift across a folder of repos — code-level API/SDK/runtime usage (via ast-grep), operation-level vendor sunsets, an interactive dashboard, and an honest coverage verdict that says where it is blind. Cheap, deterministic, zero LLM tokens.",
-      "version": "0.12.1-beta",
+      "version": "0.13.0-beta",
       "author": {
         "name": "Laxit Patel",
         "email": "lankit@topsinfosolutions.com"

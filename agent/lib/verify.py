@@ -132,11 +132,14 @@ def check_row_labels_distinct(payload: dict) -> None:
         seen[label] = True
 
 
-def check_blob_matches_payload(html: str, payload_json: str) -> None:
+def check_blob_matches_payload(html: str, payload_json: str,
+                               source: str = "dashboard.html") -> None:
     """The data embedded in the page is the data in drift.json.
 
     This is what makes asserting on drift.json equivalent to asserting on the
-    dashboard, and it is the only reason the checks above are trustworthy.
+    dashboard, and it is the only reason the checks above are trustworthy. `source` names
+    the page in the message so it works for both dashboard.html and chart.html, which
+    embed the identical blob.
 
     Compared as parsed JSON, not as bytes: the embedded copy escapes `<` to \\u003c so a
     scan string containing </script> cannot close the element, and drift.json is
@@ -146,14 +149,14 @@ def check_blob_matches_payload(html: str, payload_json: str) -> None:
     m = re.search(r'<script id="drift-data" type="application/json">(.*?)</script>',
                   html, re.S)
     if not m:
-        raise Violation("blob-present", "the page carries no #drift-data payload")
+        raise Violation("blob-present", f"{source} carries no #drift-data payload")
     try:
         embedded = json.loads(m.group(1))
     except ValueError as exc:
         raise Violation("blob-parity", f"the embedded payload is not valid JSON ({exc})")
     if embedded != json.loads(payload_json):
         raise Violation("blob-parity",
-                        "the data embedded in dashboard.html differs from drift.json "
+                        f"the data embedded in {source} differs from drift.json "
                         "— the file being verified is not the file being read")
 
 

@@ -2,6 +2,27 @@
 
 All notable changes to the Drift Detector plugin. Dates are YYYY-MM-DD.
 
+## v0.13.0-beta — 2026-07-21
+
+**See what's already broken — and a charts view.**
+
+### Added
+
+- **"Past-due" tile + report row.** A vendor API that is *already retired* (past its
+  removal date) is a different, more urgent thing than a CVE fix or an upcoming deadline —
+  an integration broken *now*. It gets its own count (`counts.pastDue`), a **Past-due** tile
+  in the dashboard's Integrations group, and an "— of which already retired (past-due)" row
+  in the Markdown summary. `verify` guards the new number against drift on every surface.
+- **A "Most urgent" callout** at the top of `drift.md`, naming the single most pressing
+  surface (the most-overdue retired sunset, else the soonest deadline) so the reader has one
+  thing to do first.
+- **`chart.html` — an online charts view.** The same report data drawn as a risk doughnut,
+  a per-vendor retired-vs-upcoming bar, and a most-overdue-first retirement schedule. It
+  loads Chart.js from a CDN, so it **needs internet**; if the CDN is unreachable it says so
+  and points back at the dashboard. `dashboard.html` stays self-contained and offline — the
+  charts view is a separate, additional file. It embeds the same verified payload, so
+  `verify` proves the charts draw from `drift.json` and nothing else.
+
 ## v0.12.1-beta — 2026-07-21
 
 ### Fixed

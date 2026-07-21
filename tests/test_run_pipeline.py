@@ -45,7 +45,8 @@ def test_run_pipeline_writes_all_reports_and_delivers(tmp_path, monkeypatch):
     out = run_pipeline(str(root), str(state), "2026-07-15",
                        engine="semgrep", run=_empty_engine, http=fake_http)
 
-    for name in ("inventory.json", "audit.json", "dashboard.html"):
+    for name in ("inventory.json", "audit.json", "dashboard.html", "chart.html",
+                 "drift.md", "drift.json"):
         assert (state / name).exists(), name
     # the ONLY report surface on hybrid: nothing else is written
     assert not (state / "INVENTORY.md").exists() and not (state / "AUDIT.md").exists()
