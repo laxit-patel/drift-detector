@@ -2,6 +2,45 @@
 
 All notable changes to the Drift Detector plugin. Dates are YYYY-MM-DD.
 
+## v0.10.0-beta — 2026-07-21
+
+**Two more vendors, a picture of your exposure, and a guided flow that plans before it
+scans.**
+
+### Added
+
+- **Shopify** — the first vendor whose retirement dates are **computed, not curated**.
+  Shopify versions by calendar quarter (`2024-01`) and publishes a rule (a version is
+  accessible for 12 months + 15 days from release), so every version dates itself with no
+  per-version catalog entry, and the coverage can't go stale. The rule is verified against
+  all seven rows of Shopify's own published support table. Carries Shopify's twist: a
+  retired version isn't a 4xx — Shopify silently serves the oldest version, so a stale pin
+  is invisible drift.
+- **Walmart Marketplace** — 6 sourced sunsets from the vendor's deprecation guide (two
+  already retired). Adding it fixed a real detection gap: Walmart front-loads the version
+  (`/v3/insights/refunds`), which used to collapse every Walmart call into one `/v3`
+  record. Sub-APIs are now scoped apart — the same granularity Amazon already had.
+- **Exposure graph** — a Mermaid flowchart in `drift.md`: each repo → the retiring API
+  surfaces it calls, red for already-removed, amber for deadline-ahead. Renders natively
+  in a Claude artifact, VS Code, and GitHub. A complement to the findings table (every
+  node is also a row), with a structural check so a broken graph fails `verify` rather
+  than rendering a silent error box.
+- **`drift-scan plan`** — resolves and classifies every source (git repo / plain folder /
+  cloned / error) **without scanning**, so a run can be previewed and approved first.
+
+### Changed
+
+- **`/drift-detector` is now a guided flow**: an intake menu when no source is given, a
+  plan you approve before any scanning, and a delivery that renders the report inline and
+  links every representation (Markdown, Dashboard, Data, and the Artifact if you opt in).
+  No more per-run "want the dashboard?" question.
+
+### Vendor coverage
+
+Four vendors fully audited, each from a different source shape: Amazon SP-API (page +
+OpenAPI specs), eBay (structured RSS feed), Shopify (computed rule), Walmart (deprecation
+guide).
+
 ## v0.9.0-beta — 2026-07-21
 
 **One canonical report, three views that cannot disagree — and a report you can read

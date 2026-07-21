@@ -1,7 +1,7 @@
 {
   "name": "drift-detector",
   "description": "Detect third-party integration drift across a folder of repos — code-level API/SDK/runtime usage (via ast-grep), operation-level vendor sunsets, an interactive dashboard, and an honest coverage verdict that says where it is blind. Cheap, deterministic, zero LLM tokens.",
-  "version": "0.9.0-beta",
+  "version": "0.10.0-beta",
   "author": {
     "name": "TOPS"
   },
