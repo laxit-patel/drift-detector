@@ -64,4 +64,6 @@ def run_pipeline(roots, state_dir, now, *, pull=False,
     _write(os.path.join(state_dir, "dashboard.html"), render_payload(payload, now))
 
     return {"scope": doc.get("scope", {}), "auditCounts": audit["counts"],
-            "coverage": audit.get("coverage", {})}
+            "coverage": audit.get("coverage", {}),
+            # from the SCAN, not the audit — why any root yielded no repo
+            "rootsUnscannable": (doc.get("coverage", {}) or {}).get("rootsUnscannable", [])}

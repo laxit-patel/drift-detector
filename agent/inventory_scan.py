@@ -8,7 +8,7 @@ from agent.lib.vendors import load_vendors
 from agent.lib.vendor_rules import write_ruleset, rule_kinds_by_language
 from agent.lib import shapes
 from agent.lib.repo_scan import scan_repo
-from agent.lib.repo_discovery import discover_repos
+from agent.lib.repo_discovery import discover_repos, diagnose_root
 from agent.lib.inv_rollups import build_rollups
 from agent.lib.inventory_diff import diff_inventories
 
@@ -100,6 +100,10 @@ def scan_folder(root, state_dir, now, *, engine=None, run=None, git=None, progre
     discovered = discover_repos(roots)     # [(abs_path, identity)], sorted, deduped
     n = len(discovered)
     _p(f"  {n} repo(s) found")
+    # When a root yields nothing, say WHY. A URL, a typo, or a plain source folder
+    # otherwise vanishes and the run reports a clean bill — the failure the PM hit.
+    unscannable = [{"root": str(r), "reason": diagnose_root(r)}
+                   for r in roots if diagnose_root(r)]
     repos: list = []
     # what the ruleset can even SEE, per language — the shape verdict needs this to
     # tell "no rules for this language" apart from "looked and found nothing"
@@ -131,6 +135,7 @@ def scan_folder(root, state_dir, now, *, engine=None, run=None, git=None, progre
             coverage["reposErrored"].append({"repo": name, "reason": str(exc)})
 
     _p("aggregating inventory + drift delta …")
+    coverage["rootsUnscannable"] = unscannable
     _rollup_coverage(coverage, repos, discovered_count=n)
     prior = ir_store.load_ir(state_dir)                # BEFORE save_ir overwrites it
     root_count = len({os.path.realpath(r) for r in roots})   # distinct, not raw

@@ -86,6 +86,17 @@ def _cmd_run(args) -> int:
     except RuntimeError as exc:
         print(f"run failed: {exc}", file=sys.stderr)
         return 2
+    # Nothing scanned is NEVER a clean bill. A URL, a typo, or a plain non-git folder
+    # otherwise printed a green checkmark over zero repos — the failure the PM hit and
+    # the exact "cannot see == clean" collapse this tool exists to refuse.
+    if out.get("scope", {}).get("reposScanned", 0) == 0:
+        print("✗ scanned 0 repositories — this is NOT a clean result.", file=sys.stderr)
+        for u in (out.get("rootsUnscannable") or []):
+            print(f"    {u['reason']}", file=sys.stderr)
+        print("  Nothing was audited. Point at a git checkout (or a folder containing one).",
+              file=sys.stderr)
+        return 4                           # 'found nothing to scan' is 'couldn't verify'
+
     c = out["auditCounts"]
     print(f"✓ scan+audit: 🔴 {c.get('DEPRECATED', 0)} action-required · 🟠 {c.get('REVIEW', 0)} review")
     if getattr(args, "fail_on_deprecated", False):

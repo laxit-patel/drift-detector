@@ -55,6 +55,33 @@ def _find_git_repos(root: Path, visited: set | None = None):
         yield from _find_git_repos(child, visited)
 
 
+def diagnose_root(root) -> str | None:
+    """Why did this root yield no scannable repo? None if it looks fine.
+
+    A scan that discovers nothing must be able to SAY why, because the alternative —
+    reporting a clean bill over a folder it never read — is the exact failure this tool
+    exists to refuse. "0 findings" and "0 repos" are opposite outcomes that looked
+    identical: a green checkmark.
+    """
+    s = str(root)
+    if "://" in s or s.startswith("git@"):
+        return (f"{s!r} looks like a URL — this version scans LOCAL paths only. "
+                f"Clone it first, then point at the checkout.")
+    p = Path(s)
+    if not p.exists():
+        return f"{s!r} does not exist — check the path."
+    if p.is_file():
+        return f"{s!r} is a file, not a directory."
+    # a real directory that simply has no git repo under it
+    if not any(True for _ in _find_git_repos(p)):
+        has_code = any(p.rglob("*.php")) or any(p.rglob("*.js")) or any(p.rglob("*.py"))
+        if has_code:
+            return (f"{s!r} has source files but no .git — this version only scans git "
+                    f"working trees. `git init` it, or clone the repo, then re-run.")
+        return f"{s!r} contains no git repository."
+    return None
+
+
 def discover_repos(roots: list) -> list:
     """Find all git repos recursively beneath each of `roots`.
 
