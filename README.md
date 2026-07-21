@@ -1,5 +1,9 @@
 # Drift Detector
 
+> 🔮 **Ashen Oracle** — *Know before it breaks.*
+> The TOPS relic that reads the ashes: it names the dying, sunset, and end-of-life
+> third-party APIs in your repos — with dates — before they break in production.
+
 A Claude Code plugin — a **goal-driven agent** for keeping third-party API integrations
 green. It builds a **code-level inventory** of the integrations your repos use (which
 APIs/SDKs/runtimes, with `file:line` and versions), reports **what changed since the last
@@ -7,7 +11,7 @@ scan** (drift), **audits** those dependencies for known vulnerabilities (OSV) an
 end-of-life runtimes (endoflife.date), rolls the findings up into a **ranked list of fix
 actions**, renders a **self-contained interactive dashboard**, and can **run itself on a
 schedule**. Everything runs locally as a
-**deterministic pipeline** (Opengrep/semgrep AST matching + manifest parsing + public API
+**deterministic pipeline** (ast-grep AST matching + manifest parsing + public API
 lookups) — **zero LLM tokens**; Claude only orchestrates, narrates, and sets things up.
 
 Its one thing no CVE scanner or SBOM can do: the **endpoint layer** — it knows *which

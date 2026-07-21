@@ -1,0 +1,17 @@
+Ashen Oracle — drift-detector — TOPS Artifact Collection master icon.
+Generate with Google Gemini (image). See DESIGN.md §4.2.
+
+Context: A circular game-item icon for a matched collection of fantasy "artifact" relics
+(like Mobile Legends: Bang Bang equipment icons). Each relic shares the same frame and
+lighting — only the central object and its glow color change. This one is the "Ashen
+Oracle": a seer's relic that foretells which things are dying and turning to ash.
+
+Generate the icon: A circular fantasy game item icon. An ornate, polished gold beveled
+ring border frames the emblem, set against a dark teal-to-black radial-gradient background
+with a soft vignette. At the center floats a cracked ancient scrying orb of smoky
+obsidian-grey glass (an oracle's seeing-stone), its fractures leaking ember-crimson light
+as if something inside is burning out; drifting grey ash, floating cinders, and glowing
+light particles swirl around it. A faint engraved gold gear-and-rune arc sits at the bottom
+of the medallion. Semi-realistic painted fantasy game asset, dramatic inner glow, rich
+detail, clean centered composition, no text, no letters. Square image, transparent or
+plain white background.
