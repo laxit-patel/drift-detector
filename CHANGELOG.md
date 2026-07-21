@@ -2,6 +2,40 @@
 
 All notable changes to the Drift Detector plugin. Dates are YYYY-MM-DD.
 
+## v0.8.0-beta — 2026-07-21
+
+**Point it at anything — a checkout, a folder, or a URL — and a scan of nothing can
+no longer look like a clean bill.**
+
+### Fixed (the one that mattered)
+
+- **Scanning zero repositories is now an error, not a green checkmark.** Pointing the
+  tool at a folder with no `.git` — a client's zipped source, a wrong path, a URL —
+  used to report `🔴 0 action-required` at exit 0. It scanned nothing and declared
+  victory. Now it exits 4 and says *why*: *"has source files but no .git — git init it,
+  or clone the repo"*, *"looks like a URL — clone it first"*, *"does not exist"*. This
+  is the failure a scan of real Amazon SP-API code hit: the folder had no `.git`, so
+  nothing was read, and the report said clean.
+
+### Added
+
+- **Scan a checkout, a plain folder, or a git/GitLab URL — one or many, mixed.**
+  - a **plain folder** (no `.git`) is now scanned as one project; the report notes it
+    has no history, so "changed since last scan" and clickable `file:line` are
+    unavailable for it — clone the repo to get both.
+  - a **git/GitLab URL** is cloned into `<state>/sources/` and scanned. Private-repo
+    auth reuses your machine's own git setup — if `git clone <url>` works in your
+    terminal, it works here. A `GITLAB_TOKEN` in the environment is honoured via a
+    transient credential that is **never** written to `.git/config` or the tool's state.
+  - a **bad root among good ones** is reported and skipped, not silently dropped.
+
+### Upgrading
+
+- No cache-schema change; existing scans are unaffected.
+- A run that resolves to zero projects now exits **4** (couldn't verify) instead of 0.
+  If a CI job was passing by scanning nothing, it will now correctly fail — that was a
+  false pass.
+
 ## v0.7.0-beta — 2026-07-20
 
 **The tool now reports what it has not been taught, and can see seven more languages.**
