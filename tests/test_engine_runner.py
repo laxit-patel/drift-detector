@@ -25,8 +25,11 @@ def test_run_scan_invokes_ast_grep_and_recovers_metadata(tmp_path):
 
     rules = _rules(tmp_path)
     res = run_scan("/repo", str(rules), engine="ast-grep", run=fake_run)
-    assert seen["args"] == ["ast-grep", "scan", "-r", str(rules), "--json=compact", "/repo"]
-    # metadata comes from the rule file; the @lang suffix is stripped; line is 1-indexed
+    assert seen["args"] == ["ast-grep", "scan", "-r", str(rules),
+                            "--include-metadata", "--json=compact", "/repo"]
+    # this fake emits BARE matches (no metadata), so run_scan falls back to reading the
+    # rule file — proving the fallback still recovers {vendor, techKey, kind}. A live
+    # engine echoes metadata via --include-metadata and this re-read never runs.
     m = res["matches"][0]
     assert {k: m[k] for k in ("checkId", "vendor", "techKey", "kind", "path", "line")} == {
         "checkId": "stripe-endpoint", "vendor": "Stripe", "techKey": "api:stripe",
@@ -79,3 +82,17 @@ def test_a_fixture_under_a_tests_dir_is_still_scannable_as_its_own_root(tmp_path
     raw = astgrep_fake.canned(astgrep_fake.hit("stripe-endpoint", str(root / "Api.php"), 1))
     res = run_scan(str(root), str(_rules(tmp_path)), run=lambda a: raw)
     assert len(res["matches"]) == 1
+
+
+def test_metadata_from_the_match_is_preferred_over_the_rule_file(tmp_path):
+    """The --include-metadata path: when the engine echoes metadata on the match, that is
+    used directly and the rule file is NOT re-read (so a match's metadata wins even if the
+    ruleset path is unreadable)."""
+    import json as _json
+    raw = _json.dumps([{"ruleId": "x-endpoint@php", "file": "a.php",
+                        "range": {"start": {"line": 0}},
+                        "metadata": {"vendor": "FromMatch", "techKey": "api:m", "kind": "endpoint"}}])
+    # ruleset path deliberately does not exist — the re-read would yield {}; the match wins
+    res = run_scan("/repo", "/no/such/ruleset.yaml", run=lambda a: raw)
+    m = res["matches"][0]
+    assert m["vendor"] == "FromMatch" and m["techKey"] == "api:m" and m["kind"] == "endpoint"

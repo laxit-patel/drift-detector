@@ -5,8 +5,11 @@ repo and ~165x faster to start, with no Python runtime of its own. Two of its
 conventions have to be translated here, and both are easy to get silently wrong:
 
   • lines are 0-INDEXED (everything downstream is 1-indexed);
-  • rule metadata is NOT echoed in results, so the rule file is read back to
-    recover each rule's {kind, vendor, techKey}.
+  • rule metadata travels in the results via `--include-metadata` (ast-grep 0.44+),
+    so each rule's {kind, vendor, techKey} flows through the SAME channel as the
+    match — no second read of the rule file in production. If the engine did not
+    echo metadata (an older build, or an injected test fake), we fall back to
+    reading the rule file back, lazily.
 
 Rule ids are `{base}@{language}` because ast-grep rules are single-language; the
 suffix is stripped so downstream code sees the base id.
@@ -28,8 +31,9 @@ def _default_run(args: list) -> str:  # pragma: no cover - spawns the real engin
 def _rule_metadata(ruleset_path: str) -> dict:
     """base rule id -> {kind, vendor, techKey}, read back from the rule file.
 
-    ast-grep accepts a `metadata:` block but drops it from results, so we recover
-    it here rather than threading a second argument through the scanner.
+    FALLBACK ONLY: with `--include-metadata` the engine echoes this in the results
+    (see run_scan). This path exists for an engine that doesn't, and for injected
+    test fakes that emit bare matches.
     """
     try:
         with open(ruleset_path, encoding="utf-8") as fh:
@@ -63,7 +67,8 @@ def _is_skipped(file_path: str, repo_path: str) -> bool:
 
 def run_scan(repo_path: str, ruleset_path: str, *, engine: str = "ast-grep",
              run=_default_run) -> dict:
-    out = run([engine, "scan", "-r", ruleset_path, "--json=compact", repo_path])
+    out = run([engine, "scan", "-r", ruleset_path, "--include-metadata",
+               "--json=compact", repo_path])
     errors = []
     try:
         data = json.loads(out) if out and out.strip() else []
@@ -75,13 +80,17 @@ def run_scan(repo_path: str, ruleset_path: str, *, engine: str = "ast-grep",
         errors.append({"message": f"engine output was not valid JSON ({exc}); "
                                   "treating the scan as FAILED, not empty",
                        "path": repo_path})
-    meta_by_rule = _rule_metadata(ruleset_path)
-    matches = []
+    meta_by_rule = None                      # lazy: only re-read the rule file if the
+    matches = []                             # engine did not echo metadata for a match
     for m in data:
         if _is_skipped(m.get("file", ""), repo_path):
             continue
         base = str(m.get("ruleId", "")).split("@")[0]
-        meta = meta_by_rule.get(base, {})
+        meta = m.get("metadata")
+        if meta is None:                     # engine didn't echo it (old build / test fake)
+            if meta_by_rule is None:
+                meta_by_rule = _rule_metadata(ruleset_path)
+            meta = meta_by_rule.get(base, {})
         matches.append({
             "checkId": base,
             "vendor": meta.get("vendor", ""), "techKey": meta.get("techKey", ""),

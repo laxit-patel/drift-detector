@@ -248,3 +248,34 @@ def test_catalog_accessor_coverage_over_the_real_client_js():
     from agent.lib.dashboard_render import _CLIENT_JS
     verify.check_accessor_coverage(_CLIENT_JS, {"catalog": {
         "vendor", "verdict", "callSites", "catalogEntries", "checked", "reasons", "source"}})
+
+
+# ------------------------------------------------- number-format determinism (port insurance)
+def test_number_format_passes_on_clean_numbers():
+    from agent.lib.verify import check_number_formats
+    check_number_formats({"counts": {"fixes": 6}, "score": 7.5,          # int + one-decimal float
+                          "rows": [{"n": 0}, {"n": 12}], "flag": True})   # bools are not numbers
+
+
+def test_number_format_catches_a_multi_decimal_float():
+    import pytest
+    from agent.lib.verify import check_number_formats, Violation
+    with pytest.raises(Violation) as e:
+        check_number_formats({"a": {"b": 7.55}})
+    assert e.value.check == "number-format" and "7.55" in str(e.value)
+
+
+def test_number_format_catches_scientific_notation():
+    import pytest
+    from agent.lib.verify import check_number_formats, Violation
+    # 1e16 / 3e-05 are the exact values Python and Go format differently
+    for bad in (1e16, 3e-05):
+        with pytest.raises(Violation):
+            check_number_formats({"x": bad})
+
+
+def test_number_format_holds_on_the_real_payload():
+    from agent.lib.verify import check_number_formats
+    from tests.test_verify import _real_payload
+    payload, _ = _real_payload()
+    check_number_formats(payload)                     # the live payload must already comply

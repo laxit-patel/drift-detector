@@ -154,7 +154,13 @@ def check_blob_matches_payload(html: str, payload_json: str) -> None:
                         "— the file being verified is not the file being read")
 
 
-_CELL_SPLIT = re.compile(r"(?<!\\)\|")   # a pipe NOT preceded by a backslash
+# A pipe NOT preceded by a backslash. NB — PORT LANDMINE: this lookbehind `(?<!…)` is a
+# Python/PCRE feature that Rust's `regex` crate and Go's `regexp` (RE2) do NOT support. A
+# port must rewrite it (e.g. split on `|`, then rejoin any piece ending in an odd run of
+# backslashes) — a mechanical transliteration would fail to compile, or worse, a "fix" that
+# drops the lookbehind would silently mis-split escaped pipes and defeat the very check
+# that catches the GitHub table-truncation bug. See CLAUDE.md's Rust-port notes.
+_CELL_SPLIT = re.compile(r"(?<!\\)\|")
 
 
 def _parse_md_tables(md_text: str) -> list:
@@ -275,12 +281,47 @@ def check_mermaid_wellformed(md_text: str) -> None:
                                 f"it (#quot;) or Mermaid renders an error box")
 
 
+def check_number_formats(payload: dict) -> None:
+    """Every number in drift.json serializes the SAME across languages.
+
+    Cheap insurance for byte-identical output, and a landmine remover for a future Rust/Go
+    port: Python, Go, and Rust's serde all use shortest-round-trip float formatting but
+    DISAGREE on where scientific notation kicks in and on decimal padding — Python emits
+    `1e+16` and `3e-05` where Go emits `10000000000000000` and `0.00003`. A single float
+    that trips that would silently break determinism. Today the only float is a one-decimal
+    CVSS score (e.g. 7.5), which formats identically everywhere; this keeps it that way by
+    rejecting any number that serializes with an exponent or more than one decimal place.
+    """
+    import json
+
+    def walk(v, path="$"):
+        if isinstance(v, bool):
+            return
+        if isinstance(v, float):
+            s = json.dumps(v)
+            frac = s.split(".", 1)[1] if "." in s else ""
+            if "e" in s or "E" in s or len(frac) > 1:
+                raise Violation("number-format",
+                                f"{path} = {s} formats differently across languages "
+                                f"(exponent or >1 decimal) — round to one decimal or store "
+                                f"as a string, or it will break byte-identical output")
+        elif isinstance(v, dict):
+            for k, x in v.items():
+                walk(x, f"{path}.{k}")
+        elif isinstance(v, list):
+            for i, x in enumerate(v):
+                walk(x, f"{path}[{i}]")
+
+    walk(payload)
+
+
 def verify_payload(payload: dict, findings: list) -> list:
     """Run every payload invariant. Returns the violations rather than raising, so
     `drift verify` can report all of them in one pass instead of one per run."""
     out = []
     for fn, args in ((check_tile_counts, (payload, findings)),
-                     (check_row_labels_distinct, (payload,))):
+                     (check_row_labels_distinct, (payload,)),
+                     (check_number_formats, (payload,))):
         try:
             fn(*args)
         except Violation as v:
