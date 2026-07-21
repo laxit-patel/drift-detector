@@ -143,6 +143,31 @@ def _cmd_unschedule(args) -> int:
     return 0
 
 
+def _cmd_plan(args) -> int:
+    """Resolve the sources and report what WOULD scan — without scanning.
+
+    The approval gate before a run: clones URLs, classifies local paths (git repo / plain
+    folder / cloned / error), and prints one line per source so a human can confirm the
+    right things resolved before any audit happens. Exit 0 if at least one project
+    resolves, 4 if nothing does — a plan that resolves to nothing is not a clean plan.
+    """
+    from agent.lib import source_resolver
+    resolved = source_resolver.resolve_sources(args.root, args.state)
+    projects, errors = resolved["projects"], resolved["errors"]
+    kind_label = {"local-git": "git repo", "remote": "cloned (git)",
+                  "local-plain": "plain folder — no history/permalinks"}
+    print(f"drift plan · {len(projects)} project(s) will scan"
+          + (f", {len(errors)} unreadable" if errors else ""))
+    for abs_, ident, kind in projects:
+        print(f"  ✓ {ident:<28} {kind_label.get(kind, kind):<34} {abs_}")
+    for e in errors:
+        print(f"  ✗ {e['reason']}")
+    if not projects:
+        print("Nothing would scan — fix the sources above before running.", file=sys.stderr)
+        return 4
+    return 0
+
+
 def _cmd_catalog_refresh(args) -> int:
     """Reconcile a vendor's published API specs against our sunset catalog.
 
@@ -415,6 +440,11 @@ def main(argv: list[str]) -> int:
     pv = sub.add_parser("verify")         # do the report's numbers agree with its data?
     pv.add_argument("--state", required=True)
     pv.set_defaults(func=_cmd_verify)
+
+    ppl = sub.add_parser("plan")          # resolve sources + report what WOULD scan
+    ppl.add_argument("--root", action="append", required=True)
+    ppl.add_argument("--state", required=True)
+    ppl.set_defaults(func=_cmd_plan)
 
     pa = sub.add_parser("audit")
     pa.add_argument("--in", dest="in_json", required=True)

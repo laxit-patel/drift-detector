@@ -181,3 +181,25 @@ def test_clone_via_https_does_not_persist_a_token_in_git_config(tmp_path):
     assert ok
     cfg = (dest / ".git" / "config").read_text()
     assert "glpat-SHOULDNOTPERSIST" not in cfg, "a token must never be written to .git/config"
+
+
+# ------------------------------------------------- the plan command (approval gate)
+def test_plan_reports_projects_and_errors_without_scanning(tmp_path, capsys):
+    from agent.cli import main
+    _make_repo(tmp_path / "repo")
+    plain = tmp_path / "plain"; plain.mkdir()
+    (plain / "a.php").write_text('<?php $u="https://x/orders/v0/o";')
+    rc = main(["plan", "--root", str(tmp_path / "repo"), "--root", str(plain),
+               "--root", str(tmp_path / "nope"), "--state", str(tmp_path / "s")])
+    out = capsys.readouterr().out
+    assert rc == 0
+    assert "git repo" in out and "plain folder" in out
+    assert "2 project(s) will scan" in out
+    # a scan would have written inventory.json; plan must NOT
+    assert not (tmp_path / "s" / "inventory.json").exists()
+
+
+def test_plan_exits_4_when_nothing_resolves(tmp_path):
+    from agent.cli import main
+    rc = main(["plan", "--root", str(tmp_path / "gone"), "--state", str(tmp_path / "s")])
+    assert rc == 4
