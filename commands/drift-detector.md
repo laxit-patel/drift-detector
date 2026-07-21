@@ -39,7 +39,7 @@ If the runner reports `uv`/python missing, run `"$SCAN" doctor`, relay the fix, 
 Run these steps IN ORDER. Do not skip the plan, and never scan the current directory or run on empty input.
 
 **1 · Intake — only when no source was given in `$ARGUMENTS`.** Ask a short menu (if a path/URL was already given, skip straight to step 2):
-- **Source type** — a local folder, a GitLab URL, a GitHub URL, or a mix.
+- **Source type** — a local folder, a single git/GitLab URL, a **whole GitLab group or user namespace** (`https://git.example.com/acme` — scans every repo the token can access under it, so you cannot miss one), a GitHub URL, or a mix.
 - **Private?** (only if a URL) — a private clone reuses the machine's own git auth (a configured credential helper, an SSH key, or a `GITLAB_TOKEN`/`DRIFT_GIT_TOKEN` in the environment, used transiently and never written to disk). If none is set, say plainly that the clone will fail and how to fix it — do not proceed hoping.
 - **Local folder** — note that it does not need to be a git repo; a plain source folder scans too (it just won't have "changed since last scan" or clickable `file:line`).
 - **Share the report?** — a hosted **Claude artifact** (rendered in chat, shareable by URL, but it leaves the machine for claude.ai) or **local-only** (the files + the report pasted in chat). **Ask this ONCE and remember it for the session.** Default **local-only** — the safe choice when the repos are a client's, not the user's own.

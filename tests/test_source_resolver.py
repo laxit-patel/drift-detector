@@ -90,7 +90,8 @@ def test_a_second_resolve_updates_the_existing_clone_not_re_clones(tmp_path):
 # --------------------------------------------------------------------- errors, never silent
 def test_a_failing_clone_is_an_error_not_a_silent_drop(tmp_path):
     out = sr.resolve_sources(["https://no.such.host.invalid/x/y.git"], str(tmp_path / "s"),
-                             clone=lambda url, dest: (False, "host not found"))
+                             clone=lambda url, dest: (False, "host not found"),
+                             expand_group=lambda url: None)
     assert out["projects"] == []
     assert out["errors"] and "could not clone" in out["errors"][0]["reason"]
 
@@ -203,3 +204,36 @@ def test_plan_exits_4_when_nothing_resolves(tmp_path):
     from agent.cli import main
     rc = main(["plan", "--root", str(tmp_path / "gone"), "--state", str(tmp_path / "s")])
     assert rc == 4
+
+
+# ------------------------------------------------- GitLab group expansion (fleet scan)
+def test_a_gitlab_group_url_expands_to_every_member_repo(tmp_path):
+    """The consultancy case: point at a group, scan the whole fleet. Each member repo is
+    cloned and scanned; you cannot miss one you didn't list."""
+    _make_repo(tmp_path / "web")
+    _make_repo(tmp_path / "api")
+    group = [{"url": f"file://{tmp_path/'web'}", "path": "acme/web", "archived": False},
+             {"url": f"file://{tmp_path/'api'}", "path": "acme/api", "archived": False},
+             {"url": f"file://{tmp_path/'old'}", "path": "acme/old", "archived": True}]
+    out = sr.resolve_sources(["https://git.x/acme"], str(tmp_path / "state"),
+                             expand_group=lambda url: group)
+    # both active repos cloned + scanned; the archived one skipped, no error for it
+    assert len(out["projects"]) == 2
+    assert all(k == "remote" for _, _, k in out["projects"])
+    assert not out["errors"]
+
+
+def test_an_empty_or_all_archived_group_is_an_error_not_a_silent_pass(tmp_path):
+    out = sr.resolve_sources(["https://git.x/ghost"], str(tmp_path / "s"),
+                             expand_group=lambda url: [{"url": "file:///x", "path": "g/z",
+                                                        "archived": True}])
+    assert out["projects"] == []
+    assert out["errors"] and "no active projects" in out["errors"][0]["reason"]
+
+
+def test_a_non_group_url_falls_back_to_single_repo_clone(tmp_path):
+    """expand_group returns None (it's a project, not a group) -> the URL is cloned directly."""
+    _make_repo(tmp_path / "solo")
+    out = sr.resolve_sources([f"file://{tmp_path/'solo'}"], str(tmp_path / "s"),
+                             expand_group=lambda url: None)
+    assert len(out["projects"]) == 1 and out["projects"][0][2] == "remote"

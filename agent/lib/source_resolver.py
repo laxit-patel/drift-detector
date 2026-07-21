@@ -27,6 +27,7 @@ import subprocess
 from pathlib import Path
 
 from agent.lib.repo_discovery import discover_repos, diagnose_root
+from agent.lib import gitlab
 
 _URL_RE = re.compile(r"^(https?://|git@|ssh://|git://|file://)")
 _CODE_GLOBS = ("*.php", "*.js", "*.ts", "*.py", "*.rb", "*.go", "*.java", "*.cs")
@@ -85,49 +86,70 @@ def _default_clone(url: str, dest: str) -> tuple[bool, str]:
         return False, str(exc)[:200]
 
 
-def resolve_sources(roots: list, state_dir: str, *, clone=None) -> dict:
+def resolve_sources(roots: list, state_dir: str, *, clone=None, expand_group=None) -> dict:
     """Resolve every root to scannable projects. Returns:
 
         {"projects": [(abs_dir, identity, kind)], "errors": [{"root", "reason"}]}
 
     kind ∈ {remote, local-git, local-plain} — carried into the report so a reader knows a
     plain-folder result has no history behind it, rather than assuming a full scan.
+
+    `clone` and `expand_group` are injected so this is testable without network.
     """
     clone = clone or _default_clone
+    expand_group = expand_group if expand_group is not None else gitlab.expand_group
     sources_root = Path(state_dir) / "sources"
     projects: list = []
     errors: list = []
 
-    for root in roots:
-        s = str(root)
-        if is_url(s):
-            dest = sources_root / slug(s)
-            ok, msg = clone(s, str(dest))
-            if not ok:
-                errors.append({"root": s, "reason": f"could not clone {s!r}: {msg} — "
-                               "this reuses your machine's git auth; can you `git clone` it "
-                               "in a terminal?"})
-                continue
-            local, from_url = str(dest), True
-        else:
-            p = Path(s)
-            if not p.exists() or p.is_file():
-                errors.append({"root": s, "reason": diagnose_root(s)})
-                continue
-            local, from_url = s, False
+    def _clone_url(url: str) -> None:
+        """Clone one repo URL into <state>/sources and add its projects (or an error)."""
+        dest = sources_root / slug(url)
+        ok, msg = clone(url, str(dest))
+        if not ok:
+            errors.append({"root": url, "reason": f"could not clone {url!r}: {msg} — this "
+                           "reuses your machine's git auth; can you `git clone` it in a "
+                           "terminal?"})
+            return
+        _add_local(str(dest), url, from_url=True)
 
+    def _add_local(local: str, label: str, *, from_url: bool) -> None:
         repos = discover_repos([local])          # git checkouts under the resolved dir
         if repos:
             kind = "remote" if from_url else "local-git"
             for abs_, identity in repos:
                 projects.append((abs_, identity, kind))
         elif _has_code(local):
-            ident = slug(s) if from_url else Path(local).resolve().name
+            ident = slug(label) if from_url else Path(local).resolve().name
             projects.append((str(Path(local).resolve()), ident,
                              "remote" if from_url else "local-plain"))
         else:
-            errors.append({"root": s, "reason": (diagnose_root(local)
-                           or f"{s!r} resolved to a folder with no scannable code")})
+            errors.append({"root": label, "reason": (diagnose_root(local)
+                           or f"{label!r} resolved to a folder with no scannable code")})
+
+    for root in roots:
+        s = str(root)
+        if is_url(s):
+            # A GitLab GROUP url expands to its member repos; a project url (or non-GitLab
+            # host) comes back None and is cloned directly.
+            group = expand_group(s) if gitlab.is_group_url(s) else None
+            if group is not None:
+                active = [p for p in group if not p["archived"]]
+                if not active:
+                    skipped = f" ({len(group)} archived, skipped)" if group else ""
+                    errors.append({"root": s, "reason": f"GitLab group {s!r} has no active "
+                                   f"projects to scan{skipped}."})
+                    continue
+                for proj in active:
+                    _clone_url(proj["url"])
+            else:
+                _clone_url(s)
+        else:
+            p = Path(s)
+            if not p.exists() or p.is_file():
+                errors.append({"root": s, "reason": diagnose_root(s)})
+                continue
+            _add_local(s, s, from_url=False)
 
     # dedupe by absolute dir, deterministic order
     seen: set = set()
