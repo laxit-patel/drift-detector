@@ -112,6 +112,10 @@ def _build_projection(inventory: dict, audit: dict) -> dict:
                          if r.get("verdict") != "CURRENT"),
     }
     return {
+        # the payload IS drift.json; it names its own contract so any consumer — the
+        # Markdown renderer, an agent, an external validator — can check the version
+        # it is reading against docs/schema/
+        "schemaVersion": "drift/v1",
         "generated": audit.get("generated", ""),
         "counts": counts,
         "delta": audit.get("delta"),

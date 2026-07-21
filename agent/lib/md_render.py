@@ -59,9 +59,10 @@ def render_markdown(payload: dict, now: str) -> str:
     actions = payload.get("actions", [])
     L: list = []
 
-    # --- front matter: the projection self-identifies its source ---
+    # --- front matter: the projection self-identifies its source + contract version,
+    # taken FROM the payload so the two cannot disagree ---
     L += ["---",
-          f"schemaVersion: {SCHEMA_VERSION}",
+          f"schemaVersion: {_esc(payload.get('schemaVersion', SCHEMA_VERSION))}",
           "generatedFrom: drift.json",
           f"generated: {_esc(payload.get('generated', now))}",
           "---", ""]
