@@ -2,6 +2,39 @@
 
 All notable changes to the Drift Detector plugin. Dates are YYYY-MM-DD.
 
+## v0.12.0-beta — 2026-07-21
+
+**Scan a whole client fleet from one URL — and a build you can reproduce.**
+
+### Added
+
+- **Scan a whole GitLab group or user namespace.** Point at `https://git.example.com/acme`
+  and the tool enumerates every repo the token can access under it — group *or* user
+  namespace — clones each, and scans the fleet. You cannot miss a repo you didn't list. It
+  enumerates via `membership=true` (so group-inherited, user-owned, and direct-member repos
+  all appear), a URL that is itself a project clones directly, and a mid-enumeration failure
+  aborts rather than silently scanning a subset. The plan/approve step previews the whole
+  fleet before any scan runs.
+
+### Changed / reproducibility
+
+- **The ast-grep engine is now pinned** (0.44.1; override via `$DRIFT_AST_GREP_VERSION`).
+  Previously it fetched "latest", so two machines could get different engines and silently
+  different output — at odds with the tool's deterministic guarantee. First run on an
+  existing install re-fetches the pinned engine.
+- **Rule metadata now travels with each match** (`--include-metadata`), so a scan no longer
+  re-reads the rule file — one fewer failure point, same result.
+- **`verify` gained a number-format check** — every number in `drift.json` must serialize
+  identically across environments (no exponent, ≤1 decimal), guarding byte-identical output.
+
+### Packaging & metadata
+
+- **Fixed the marketplace listing** — it advertised the wrong engine ("Opengrep") and a
+  stale version. Now correct and synced to `plugin.json`.
+- Added `LICENSE` (MIT), and `homepage`/`repository`/`license`/`displayName` to the manifest.
+- Removed leftover build cruft and internal planning docs from the package.
+- The plugin now carries its collection identity: **Ashen Oracle** — *Know before it breaks.*
+
 ## v0.11.2-beta — 2026-07-21
 
 ### Fixed
