@@ -7,7 +7,7 @@ unreachable it is skipped and noted in coverage — never fabricated, never a ha
 """
 from __future__ import annotations
 
-from agent.lib import osv, eol, vendor_sunsets, catalog_coverage
+from agent.lib import osv, eol, vendor_sunsets, catalog_coverage, version_lifecycle
 from agent.lib.http_util import default_http
 from agent.lib.version_floor import floor
 from agent.lib.purl import osv_ecosystem
@@ -96,6 +96,39 @@ def _sunset_findings(repo: dict, sun_index: dict, now: str) -> list:
     return out
 
 
+def _lifecycle_findings(repo: dict, now: str) -> list:
+    """Findings for vendors whose retirement dates are COMPUTED from a published rule
+    (see version_lifecycle) rather than curated one date at a time.
+
+    Groups the repo's endpoints by (vendor, version), dates each version with the vendor's
+    rule, and emits one sunset finding per version — same shape as _sunset_findings, so it
+    ranks and groups identically. This is what lets Shopify be covered without a hand-typed
+    entry per quarter, and without going stale as new versions ship."""
+    path, out = repo.get("path"), []
+    groups: dict = {}
+    for e in repo.get("endpoints", []):
+        vendor, version = e.get("vendor"), e.get("version")
+        lc = version_lifecycle.lifecycle_sunset(vendor, version) if version else None
+        if not lc:
+            continue
+        groups.setdefault((vendor, version, lc["retires"], lc["source"], lc["replacement"]),
+                          []).append(e)
+    for (vendor, version, retires, source, replacement), eps in groups.items():
+        files = list(dict.fromkeys(f for e in eps for f in e.get("files", [])))[:6]
+        status = vendor_sunsets.status_for(retires, now, confirmed=True)
+        rec = f"{replacement} before {retires}"
+        out.append({
+            "repo": path, "kind": "sunset", "ref": vendor, "version": version,
+            "domain": None, "operation": None, "path": None,
+            "status": status, "severity": "SUNSET",
+            "detail": f"{vendor} {version} accessible until {retires} (computed from the "
+                      f"published version-support rule) · used at " + ", ".join(files),
+            "date": retires, "source_url": source, "tier": 1,
+            "recommendation": rec, "files": files,
+        })
+    return out
+
+
 def audit_inventory(doc: dict, now: str, *, http=None,
                     osv_query=None, eol_check=None, sunsets=None) -> dict:
     http = http or default_http
@@ -177,6 +210,7 @@ def audit_inventory(doc: dict, now: str, *, http=None,
                 })
         # --- endpoints -> vendor-sunset catalog (the code-level layer) ---
         findings.extend(_sunset_findings(r, sun_index, now))
+        findings.extend(_lifecycle_findings(r, now))       # computed (Shopify &c.)
 
     coverage["notes"].append("Vendor API sunsets: curated catalog (agent/vendor_sunsets.yaml) joined against endpoints — extend it with your vendors' announcements.")
     plain = [r.get("path") for r in repos if r.get("sourceKind") == "local-plain"]

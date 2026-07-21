@@ -101,7 +101,9 @@ def domain_in_line(line: str, domains) -> str:
     return ""
 
 
-_VERSION_SEG = re.compile(r"/(v[0-9][0-9.]*|[0-9]{4}-[0-9]{2}-[0-9]{2})(/|$)")
+# YYYY-MM-DD (Amazon SP-API) is tried before YYYY-MM (Shopify's quarterly calendar
+# versions, e.g. /admin/api/2024-01/) so the longer full-date match always wins.
+_VERSION_SEG = re.compile(r"/(v[0-9][0-9.]*|[0-9]{4}-[0-9]{2}-[0-9]{2}|[0-9]{4}-[0-9]{2})(/|$)")
 
 # An API OPERATION name — the unit some vendors deprecate independently of the host.
 # eBay's Trading API is the motivating case: one host (api.ebay.com), one path
