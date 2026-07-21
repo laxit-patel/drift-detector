@@ -2,6 +2,43 @@
 
 All notable changes to the Drift Detector plugin. Dates are YYYY-MM-DD.
 
+## v0.9.0-beta — 2026-07-21
+
+**One canonical report, three views that cannot disagree — and a report you can read
+in the chat, not just open in a browser.**
+
+### Added
+
+- **`drift.json`** — the canonical, machine-readable report, now with a published contract
+  at `docs/schema/drift-v1.schema.json` and a `schemaVersion` field. This is the spec;
+  everything else is a view of it. (Renamed from the internal `dashboard.json`.)
+- **`drift.md`** — the report as Markdown: the alarm headline, a summary table, per-family
+  findings with dates and call-sites, and both coverage verdicts. It renders in any
+  Markdown surface — a terminal, VS Code, GitHub, or **inline in a Claude chat** — so the
+  report no longer requires opening an HTML file. Because its source is plain text, it is
+  also the view an agent can actually read and check, which the HTML never was.
+- **`drift-scan verify` now certifies all three agree.** A green line means `drift.md`,
+  `dashboard.html` and `drift.json` are the same data — the claim anyone (or any agent)
+  is allowed to make about the report. It re-parses `drift.md`'s tables (splitting on
+  unescaped pipes) and fails on a column that an unescaped `|` would truncate on GitHub,
+  a summary number that disagrees with the data, or two findings rows that render
+  identically.
+- Findings now show **call-sites** (located files) rather than a match count, and each
+  carries its own **retirement/EOL date** column.
+
+### Changed
+
+- `dashboard.html` is now one viewer among several rather than the report itself. It is
+  unchanged in content and still self-contained; `drift.md` is the primary view.
+- `/drift-detector` verifies before reporting, reports from `drift.md` (not by eyeballing
+  the HTML), surfaces per-vendor catalog verdicts, and can publish the report in-chat.
+
+### Upgrading
+
+- The state directory now also contains `drift.json` and `drift.md`. Anything that read
+  `dashboard.json` should read `drift.json` (identical content, canonical name).
+- No cache-schema change.
+
 ## v0.8.0-beta — 2026-07-21
 
 **Point it at anything — a checkout, a folder, or a URL — and a scan of nothing can
