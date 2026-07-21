@@ -14,10 +14,21 @@ Locate the runner (used by every mode):
 ```bash
 set -- $ARGUMENTS
 SCAN=""
+# 1. harness env (authoritative in-session)
 for c in "${CLAUDE_PLUGIN_ROOT:-}/bin/drift-scan" "${CLAUDE_SKILL_DIR:-}/../bin/drift-scan"; do
   [ -n "$c" ] && [ -x "$c" ] && { SCAN="$c"; break; }
 done
-[ -z "$SCAN" ] && SCAN="$(find "$HOME/.claude/plugins" -type f -name drift-scan -path '*drift-detector*' 2>/dev/null | head -1)"
+# 2. the installed record (authoritative when env is unset — ad-hoc shells, cron)
+if [ -z "$SCAN" ]; then
+  REG="$HOME/.claude/plugins/installed_plugins.json"
+  if [ -f "$REG" ] && command -v python3 >/dev/null 2>&1; then
+    P="$(python3 -c "import json,sys;d=json.load(open(sys.argv[1]));e=d.get('plugins',{}).get('drift-detector@tops-tools') or [];print(e[0]['installPath'] if e else '')" "$REG" 2>/dev/null)"
+    [ -n "$P" ] && [ -x "$P/bin/drift-scan" ] && SCAN="$P/bin/drift-scan"
+  fi
+fi
+# 3. newest cached version by SEMVER — `sort -V`, never `head -1`: a lexical/dir-order pick
+#    grabs a STALE build ("0.10.0-beta" sorts before "0.4.0-beta" as plain strings).
+[ -z "$SCAN" ] && SCAN="$(find "$HOME/.claude/plugins" -type f -name drift-scan -path '*drift-detector*' 2>/dev/null | sort -V | tail -1)"
 [ -z "$SCAN" ] && { echo "drift-detector: runner not found — is the plugin installed?" >&2; exit 4; }
 ```
 

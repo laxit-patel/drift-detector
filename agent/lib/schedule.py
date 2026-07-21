@@ -57,14 +57,36 @@ def _default_crontab(action: str, content: str | None = None) -> str:
 def _wrapper_script(root: str, state_dir: str, plugin_root: str,
                     pull: bool, path_env: str) -> str:
     q = shlex.quote
-    scan = f'{q(plugin_root + "/bin/drift-scan")} run --root {q(root)} --state {q(state_dir)} --now "$(date +%F)"'
+    # Resolve the runner at RUN TIME, not install time. Pinning plugin_root/bin/drift-scan
+    # froze the cron to whatever version ran `schedule` — so after an upgrade the job kept
+    # executing the OLD scanner from a stale cache dir, silently, forever. The wrapper now
+    # reads installed_plugins.json (authoritative) and falls back to the newest cached
+    # version by SEMVER (sort -V; a lexical sort mis-picks, "0.10.0" < "0.4.0"). The
+    # version active at schedule time is only the LAST resort.
+    args = f'run --root {q(root)} --state {q(state_dir)} --now "$(date +%F)"'
     if pull:
-        scan += " --pull"
+        args += " --pull"
     log = q(os.path.join(state_dir, LOG_NAME))
-    return ("#!/usr/bin/env bash\n"
-            "# drift-detector scheduled run — generated; remove via /drift-detector unschedule\n"
-            f"export PATH={q(path_env)}\n"
-            f"{scan} >> {log} 2>&1\n")
+    reg = q(os.path.expanduser("~/.claude/plugins/installed_plugins.json"))
+    pinned = q(plugin_root + "/bin/drift-scan")
+    return (
+        "#!/usr/bin/env bash\n"
+        "# drift-detector scheduled run — generated; remove via /drift-detector unschedule\n"
+        f"export PATH={q(path_env)}\n"
+        "SCAN=\"\"\n"
+        f"REG={reg}\n"
+        "if [ -f \"$REG\" ] && command -v python3 >/dev/null 2>&1; then\n"
+        "  P=\"$(python3 -c \"import json,sys;"
+        "d=json.load(open(sys.argv[1]));"
+        "e=d.get('plugins',{}).get('drift-detector@tops-tools') or [];"
+        "print(e[0]['installPath'] if e else '')\" \"$REG\" 2>/dev/null)\"\n"
+        "  [ -n \"$P\" ] && [ -x \"$P/bin/drift-scan\" ] && SCAN=\"$P/bin/drift-scan\"\n"
+        "fi\n"
+        "[ -z \"$SCAN\" ] && SCAN=\"$(find \"$HOME/.claude/plugins\" -type f -name drift-scan "
+        "-path '*drift-detector*' 2>/dev/null | sort -V | tail -1)\"\n"
+        f"[ -z \"$SCAN\" ] && [ -x {pinned} ] && SCAN={pinned}\n"
+        "[ -z \"$SCAN\" ] && { echo \"drift-detector: runner not found\" >&2; exit 4; }\n"
+        f"\"$SCAN\" {args} >> {log} 2>&1\n")
 
 
 def install_cron(root: str, state_dir: str, when: str, *, plugin_root: str,

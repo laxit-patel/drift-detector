@@ -17,10 +17,19 @@ Run the tool first — do not read source files to build an inventory yourself:
 ```bash
 set -- $ARGUMENTS
 SCAN=""
+# version-aware runner locator (see drift-detector.md): env → installed record → newest
+# cached version by SEMVER. Never `find | head -1`, which grabs a STALE cached build.
 for c in "${CLAUDE_PLUGIN_ROOT:-}/bin/drift-scan" "${CLAUDE_SKILL_DIR:-}/../bin/drift-scan"; do
   [ -n "$c" ] && [ -x "$c" ] && { SCAN="$c"; break; }
 done
-[ -z "$SCAN" ] && SCAN="$(find "$HOME/.claude/plugins" -type f -name drift-scan -path '*drift-detector*' 2>/dev/null | head -1)"
+if [ -z "$SCAN" ]; then
+  REG="$HOME/.claude/plugins/installed_plugins.json"
+  if [ -f "$REG" ] && command -v python3 >/dev/null 2>&1; then
+    P="$(python3 -c "import json,sys;d=json.load(open(sys.argv[1]));e=d.get('plugins',{}).get('drift-detector@tops-tools') or [];print(e[0]['installPath'] if e else '')" "$REG" 2>/dev/null)"
+    [ -n "$P" ] && [ -x "$P/bin/drift-scan" ] && SCAN="$P/bin/drift-scan"
+  fi
+fi
+[ -z "$SCAN" ] && SCAN="$(find "$HOME/.claude/plugins" -type f -name drift-scan -path '*drift-detector*' 2>/dev/null | sort -V | tail -1)"
 [ -z "$SCAN" ] && { echo "drift-detector: runner not found — is the plugin installed?" >&2; exit 4; }
 
 F="$1"; [ -z "$F" ] && { echo "Which folder should I deepen?" >&2; exit 2; }
