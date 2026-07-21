@@ -2,6 +2,18 @@
 
 All notable changes to the Drift Detector plugin. Dates are YYYY-MM-DD.
 
+## v0.11.1-beta — 2026-07-21
+
+### Fixed
+
+- **A scan across repos that vendor the same SDK no longer fails verification.** When the
+  same finding (a shared vendor SDK, a common runtime) appeared in two repos with an
+  identical repo-relative call-site, the Markdown report rendered byte-identical rows and
+  `drift-scan verify` rejected it. The findings tables now lead with a **Repo** column, so
+  each repo's exposure is its own row — the disambiguator, and the thing you most want to
+  know (which of my repos does this hit). Presentation only; finding totals unchanged, and
+  the dashboard already showed the repo.
+
 ## v0.11.0-beta — 2026-07-21
 
 **Fix: the plugin could silently run a stale cached build.**
