@@ -168,6 +168,21 @@ def _cmd_plan(args) -> int:
     return 0
 
 
+def _cmd_catalog_check(args) -> int:
+    """Re-check vendors' live sources against our catalog (the freshness loop).
+
+    Reports only. Exit 0 when everything is up to date, 3 when a vendor lists a new or
+    moved retirement (or a computed rule has drifted) — action a human should take — and
+    4 if a source was unreachable, since 'could not check' is never 'up to date'.
+    """
+    from agent import catalog_check
+    report = catalog_check.check_all(now=args.now)
+    print(catalog_check.render(report))
+    if any(r.get("error") for r in report):
+        return 4
+    return 3 if catalog_check.needs_attention(report) else 0
+
+
 def _cmd_catalog_refresh(args) -> int:
     """Reconcile a vendor's published API specs against our sunset catalog.
 
@@ -436,6 +451,10 @@ def main(argv: list[str]) -> int:
     pcr = sub.add_parser("catalog-refresh")   # vendor specs vs our curated catalog
     pcr.add_argument("--vendor", required=True)
     pcr.set_defaults(func=_cmd_catalog_refresh)
+
+    pcc = sub.add_parser("catalog-check")     # re-check live vendor sources (freshness)
+    pcc.add_argument("--now", required=True)
+    pcc.set_defaults(func=_cmd_catalog_check)
 
     pv = sub.add_parser("verify")         # do the report's numbers agree with its data?
     pv.add_argument("--state", required=True)
