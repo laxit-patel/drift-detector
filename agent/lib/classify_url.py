@@ -125,23 +125,40 @@ def operation_of(line: str) -> str:
 
 
 def api_path_of(s: str) -> str:
-    """The API-family prefix of a path or URL, up to and including its version segment:
-    '/products/fees/v0/listings/{SellerSKU}/feesEstimate' -> '/products/fees/v0'.
+    """The API-family prefix of a path or URL, anchored on its version segment:
+    '/products/fees/v0/listings/{SellerSKU}/feesEstimate' -> '/products/fees/v0'
+    '/v3/insights/refunds'                                -> '/v3/insights/refunds'
 
     Amazon retires SP-API per (family, version), not per version: `/fba/inbound/v0` died
     2025-01-21 and `/finances/v0` lives until 2027-08-27. Both are "v0", so a catalog
-    entry scoped on the version alone would tag 78 call-sites with one date and invent
-    most of them. This is the same lesson the operation axis taught for eBay — the
-    vendor's unit of retirement has to be expressible, or the audit cannot be stated
-    truthfully. Returns '' when there is no version segment to anchor on.
+    entry scoped on the version alone would tag every v0 call-site with one date and
+    invent most of them. The retiring unit has to be expressible.
+
+    Two URL conventions carry the family differently, and both must survive:
+      • version DEEP in the path (Amazon `/products/fees/v0/…`): the family is everything
+        UP TO the version — stop there.
+      • version FIRST (Walmart `/v3/insights/refunds`): `/v3` alone is every Walmart call,
+        so the family is what FOLLOWS the version — extend through static segments,
+        stopping at a path parameter. Without this, /v3/insights/refunds and /v3/feeds
+        collapse into one `/v3` record and cannot be scoped apart.
+    Returns '' when there is no version segment to anchor on.
     """
     s = str(s or "")
     if "://" in s:                                  # drop scheme + host
         s = "/" + s.split("://", 1)[1].partition("/")[2]
-    m = _VERSION_SEG.search(s if s.startswith("/") else "/" + s)
+    norm = (s if s.startswith("/") else "/" + s).split("?")[0].split("#")[0]
+    m = _VERSION_SEG.search(norm)
     if not m:
         return ""
-    return (s if s.startswith("/") else "/" + s)[:m.end(1)]
+    base = norm[:m.end(1)]
+    if m.start() == 0:                              # front-loaded version → extend
+        for seg in norm[m.end(1):].split("/")[:6]:  # cap depth; stop at a path parameter
+            if not seg:
+                continue
+            if seg.startswith("{") or seg.startswith(":"):
+                break
+            base += "/" + seg
+    return base
 
 
 def path_literal_of(line: str) -> str:

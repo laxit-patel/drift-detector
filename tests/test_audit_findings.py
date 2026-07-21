@@ -233,3 +233,24 @@ def test_gate_accepts_a_dateless_deprecation_only_when_declared():
         [{"vendor": "X", "version": "v1", "retires": "soon", "source": src}]))
     assert any("no source URL" in p for p in check_sunsets(
         [{"vendor": "X", "version": "v1", "retires": "2026-01-01"}]))
+
+
+def test_walmart_sub_apis_are_scoped_apart_by_front_loaded_path():
+    """Walmart front-loads the version (/v3/insights/refunds), so the scoping must
+    distinguish sub-APIs — a retired /v3/insights/items/trending must fire while a live
+    /v3/feeds stays silent, not collapse into one /v3 finding."""
+    from agent.audit import audit_inventory
+    doc = {"generated": "2026-07-21", "repos": [{"path": "wm", "sdks": [], "endpoints": [
+        {"vendor": "Walmart", "domain": "marketplace.walmartapis.com", "version": "v3",
+         "apiPath": "/v3/insights/items/trending", "classified": True,
+         "files": ["a.php:1"], "file_count": 1},
+        {"vendor": "Walmart", "domain": "marketplace.walmartapis.com", "version": "v3",
+         "apiPath": "/v3/feeds", "classified": True, "files": ["a.php:2"], "file_count": 1},
+    ]}]}
+    audit = audit_inventory(doc, "2026-07-21",
+                            http=lambda *a, **k: (_ for _ in ()).throw(ConnectionError()))
+    wm = {f["path"]: f for f in audit["findings"] if f.get("ref") == "Walmart"}
+    assert "/v3/insights/items/trending" in wm            # the dead one fires
+    assert wm["/v3/insights/items/trending"]["date"] == "2025-03-31"
+    assert wm["/v3/insights/items/trending"]["status"] == "DEPRECATED"
+    assert "/v3/feeds" not in wm                          # the live one stays silent

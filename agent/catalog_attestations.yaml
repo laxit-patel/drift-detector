@@ -59,3 +59,13 @@
     catalog entry, and the coverage cannot go stale as new quarters ship. Note Shopify
     "falls forward" — a retired version is served by the oldest accessible version, not
     a 4xx, so an out-of-date version is silent behavioural drift.
+
+- vendor: Walmart
+  checked: "2026-07-21"
+  source: https://developer.walmart.com/us-marketplace/docs/walmart-marketplace-api-deprecation-guide
+  note: >-
+    Reconciled against Walmart's deprecation guide. 6 endpoints with both a path and a
+    date were catalogued (path-scoped). NOT catalogued, because they lack a path or a
+    parseable date: Price management (no endpoint path; sunset "2026"), and the Get /
+    Confirm / Print / Cancel carrier-rate-quote operations (endpoints not specified in
+    the guide). Recorded here rather than invented.

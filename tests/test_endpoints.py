@@ -57,11 +57,25 @@ def test_known_vendor_kept_even_if_its_registrable_is_on_ignore_list(tmp_path):
     assert len(eps) == 1 and eps[0]["vendor"] == "Meta Graph API"    # graph.* kept, www.* ignored
 
 
-def test_same_vendor_version_groups_and_counts(tmp_path):
-    _write(tmp_path, "a.php", '"https://api.stripe.com/v1/a";\n')
-    _write(tmp_path, "b.php", '"https://api.stripe.com/v1/b";\n')
+def test_same_resource_groups_and_counts(tmp_path):
+    """Two call-sites to the SAME resource group into one endpoint. (Same-vendor,
+    same-version, DIFFERENT resources now split — a front-loaded version like Stripe's
+    /v1/a vs /v1/b names distinct API families, the same granularity Amazon already has,
+    and the granularity per-sub-API sunset scoping needs.)"""
+    _write(tmp_path, "a.php", '"https://api.stripe.com/v1/charges";\n')
+    _write(tmp_path, "b.php", '"https://api.stripe.com/v1/charges";\n')
     eps = build_endpoints([_url("a.php", 1), _url("b.php", 1)], str(tmp_path), [_STRIPE])
     assert len(eps) == 1 and eps[0]["file_count"] == 2 and set(eps[0]["files"]) == {"a.php:1", "b.php:1"}
+
+
+def test_different_resources_under_one_version_split(tmp_path):
+    """The Walmart-shaped case: /v3/insights/refunds and /v3/feeds are distinct APIs on
+    separate lifecycles, so they must NOT collapse into one /v3 record."""
+    _write(tmp_path, "a.php", '"https://api.stripe.com/v1/charges";\n')
+    _write(tmp_path, "b.php", '"https://api.stripe.com/v1/refunds";\n')
+    eps = build_endpoints([_url("a.php", 1), _url("b.php", 1)], str(tmp_path), [_STRIPE])
+    assert len(eps) == 2
+    assert {e["apiPath"] for e in eps} == {"/v1/charges", "/v1/refunds"}
 
 
 def test_no_version_when_url_has_none(tmp_path):

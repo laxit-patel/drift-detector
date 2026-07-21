@@ -231,3 +231,39 @@
   retires: '2026-09-30'
   source: https://www.edp.ebay.com/rss/api-deprecation#UploadSiteHostedPictures
   note: Trading API. Deprecated 2025-11-06, decommissioned 2026-09-30.
+
+# ── Walmart Marketplace ──────────────────────────────────────────────────────────────
+# Fetched 2026-07-21 from the vendor's deprecation guide
+# (developer.walmart.com/us-marketplace/docs/walmart-marketplace-api-deprecation-guide).
+# `retires` is the SUNSET date, after which the guide says the API is permanently retired.
+# Scoped by `path` (Walmart front-loads the version: /v3/insights/refunds is the family).
+- vendor: Walmart
+  path: /v3/insights/items/trending
+  retires: '2025-03-31'
+  source: https://developer.walmart.com/us-marketplace/docs/walmart-marketplace-api-deprecation-guide#:~:text=Trending%20items
+  note: Trending items (GET). Sunset — already retired (status 2024-10-12).
+- vendor: Walmart
+  path: /v3/insights/prosellerbadge
+  retires: '2025-08-13'
+  source: https://developer.walmart.com/us-marketplace/docs/walmart-marketplace-api-deprecation-guide#:~:text=proseller%20badge
+  note: Insights proseller badge (GET). Sunset — already retired (status 2024-12-13).
+- vendor: Walmart
+  path: /v3/carrier-rate-quotes
+  retires: '2027-02-06'
+  source: https://developer.walmart.com/us-marketplace/docs/walmart-marketplace-api-deprecation-guide#:~:text=Create%20carrier%20rate%20quote
+  note: Create carrier rate quote (POST). Legacy since 2026-02-06.
+- vendor: Walmart
+  path: /v3/insights/refunds
+  retires: '2027-03-27'
+  source: https://developer.walmart.com/us-marketplace/docs/walmart-marketplace-api-deprecation-guide#:~:text=Refunds%20Performance%20Metrics
+  note: Refunds Performance Metrics (GET). Deprecated 2026-03-26.
+- vendor: Walmart
+  path: /v3/insights/refundsOrdersReport
+  retires: '2027-03-27'
+  source: https://developer.walmart.com/us-marketplace/docs/walmart-marketplace-api-deprecation-guide#:~:text=Refunds%20Performance%20Report
+  note: Refunds Performance Report (GET). Deprecated 2026-03-26.
+- vendor: Walmart
+  path: /v3/inventory/wfs
+  status: deprecated-no-date
+  source: https://developer.walmart.com/us-marketplace/docs/walmart-marketplace-api-deprecation-guide#:~:text=WFS%20inventory
+  note: WFS inventory (GET). Legacy since 2025-09-03; vendor states sunset "2026" with no specific day, so no date is invented.
