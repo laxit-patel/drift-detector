@@ -100,6 +100,16 @@ def _build_projection(inventory: dict, audit: dict) -> dict:
         "fixes": sum(1 for a in actions if a["status"] == "DEPRECATED"),
         "eol": sum(1 for a in actions if a["kind"] == "eol"),
         "sunsets": sum(1 for a in actions if a["kind"] == "sunset"),
+        # PM ask: a vendor API that is ALREADY retired (past its removal date) is a
+        # different, more urgent thing than a CVE "fix" or an upcoming deadline — an
+        # integration that is broken NOW, not one to plan around. Its own count.
+        # A sunset is DEPRECATED only when its date is in the PAST (status_for gives future
+        # dates REVIEW), so `DEPRECATED and date` is exactly "retired, date known" — and it
+        # recomputes from the action alone, so verify needs no `now`. A deprecated-no-date
+        # sunset is deliberately excluded: no announced deadline means not yet past-due.
+        "pastDue": sum(1 for a in actions
+                       if a["kind"] == "sunset" and a["status"] == "DEPRECATED"
+                       and a.get("date")),
         "apis": len({e["vendor"] for e in endpoints if e["classified"]}),
         "unknown": sum(1 for e in endpoints if not e["classified"]),
         "reposAffected": (audit.get("counts") or {}).get("reposAffected", 0),
@@ -196,6 +206,7 @@ def render_payload(projection: dict, now: str) -> str:
     parts.append(_tile_group("Integrations", [
         ("apis", "APIs used", c["apis"]),
         ("sunsets", "Sunsets", c["sunsets"]),
+        ("pastdue", "Past-due", c["pastDue"]),
         ("unknown", "Unknown hosts", c["unknown"]),
         ("private", "Private / unreachable", c["private"]),
         ("unaudited", "Vendors unaudited", c["unaudited"])]))
@@ -295,6 +306,9 @@ _CLIENT_JS = r"""
       if(f==="fixes")    return a.status==="DEPRECATED";
       if(f==="eol")      return a.kind==="eol";
       if(f==="sunsets")  return a.kind==="sunset";
+      // "Past-due" = a sunset already retired (DEPRECATED with a passed date) — an
+      // integration broken NOW, distinct from an upcoming deadline or a CVE fix.
+      if(f==="pastdue")  return a.kind==="sunset" && a.status==="DEPRECATED" && a.date;
       return true;
     });
   }

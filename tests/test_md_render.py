@@ -105,9 +105,12 @@ def test_parity_catches_an_unescaped_pipe_truncation():
     import pytest
     from agent.lib.verify import check_md_matches_payload, Violation
     out = md.render_markdown(_payload(), "2026-07-21")
-    # forge a broken row: an unescaped pipe inside the first findings cell
-    broken = out.replace("| Amazon SP-API \\| /fba", "| Amazon SP-API | /fba", 1) \
-        if "\\|" in out else out.replace("/fba/inbound/v0", "/fba|inbound/v0", 1)
+    # forge a broken row: an unescaped pipe inside the findings-TABLE cell. Anchor on the
+    # cell delimiters (`| … |`) so we corrupt the table row, not the identical vendor/unit
+    # string that also appears in the prose "Most urgent" callout (which parity ignores).
+    broken = out.replace("| Amazon SP-API /fba/inbound/v0 |",
+                         "| Amazon SP-API /fba|inbound/v0 |", 1)
+    assert broken != out                                   # the anchor must have matched
     with pytest.raises(Violation):
         check_md_matches_payload(broken, _payload())
 

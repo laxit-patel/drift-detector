@@ -109,6 +109,29 @@ def test_zero_sunsets_when_no_sunset_actions():
     assert data["counts"]["sunsets"] == 0
 
 
+def _sunset(repo, status, date, ref="eBay"):
+    return {"repo": repo, "ref": ref, "kind": "sunset", "version": "v1",
+            "severity": "SUNSET", "status": status, "first_seen": "2026-07-15",
+            "detail": "x", "date": date, "recommendation": "migrate",
+            "source_url": "https://developer.ebay.com/x", "tier": 1,
+            "files": [f"src/{repo}.php:1"]}
+
+
+def test_pastdue_counts_only_retired_sunsets():
+    # retired (DEPRECATED + past date) counts; upcoming (REVIEW + future date) and a
+    # deprecated-but-no-date-announced sunset do NOT — "past-due" means a passed deadline.
+    findings = [_sunset("a", "DEPRECATED", "2025-01-01"),   # retired -> past-due
+                _sunset("b", "REVIEW", "2027-01-01"),        # upcoming deadline -> not
+                _sunset("c", "DEPRECATED", None)]            # deprecated, no date -> not
+    data = _blob(render_dashboard(_inv(), _audit(findings), "2026-07-15"))
+    assert data["counts"]["sunsets"] == 3
+    assert data["counts"]["pastDue"] == 1
+    # the tile is present and the JS filter selects the retired subset
+    html = render_dashboard(_inv(), _audit(findings), "2026-07-15")
+    assert 'data-filter="pastdue"' in html
+    assert 'f==="pastdue"' in html
+
+
 def test_output_is_byte_identical_across_calls():
     inv, audit = _inv(), _audit([_cve(ref="b/z"), _cve(ref="a/y", severity="CRITICAL")])
     assert render_dashboard(inv, audit, "2026-07-15") == render_dashboard(inv, audit, "2026-07-15")

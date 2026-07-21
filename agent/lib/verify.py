@@ -90,6 +90,9 @@ def check_tile_counts(payload: dict, findings: list) -> None:
 
     # tile <-> table: replicate the page's own filters
     pairs = [("sunsets", [a for a in actions if a["kind"] == "sunset"]),
+             ("pastDue", [a for a in actions
+                          if a["kind"] == "sunset" and a.get("status") == "DEPRECATED"
+                          and a.get("date")]),
              ("eol", [a for a in actions if a["kind"] == "eol"]),
              ("private", payload.get("private", [])),
              # the panel lists vendors nobody has checked; CURRENT ones are not rows
@@ -229,6 +232,7 @@ def check_md_matches_payload(md_text: str, payload: dict) -> None:
     if summary:
         by_label = {r[0]: r[1] for r in summary["rows"] if len(r) >= 2}
         checks = {"Vendor API sunsets": counts.get("sunsets", 0),
+                  "— of which already retired (past-due)": counts.get("pastDue", 0),
                   "Runtime/framework EOL": counts.get("eol", 0),
                   "Fixes needed (action-required)": counts.get("fixes", 0),
                   "Unaudited vendors": counts.get("unaudited", 0)}

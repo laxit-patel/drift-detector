@@ -143,12 +143,26 @@ def render_markdown(payload: dict, now: str) -> str:
         L.append(f"**No action-required findings across {scanned} repo(s) scanned.**")
     L.append("")
 
+    # --- most-urgent callout: name the single most pressing surface so the reader has one
+    # thing to do first. Most-overdue retired sunset wins; else the soonest deadline. Prose
+    # (not parity-checked) — a pointer INTO the tables below, never a substitute for them.
+    dated = [a for a in sunsets if a.get("date")]
+    overdue = sorted((a for a in dated if str(a["date"]) <= now), key=lambda a: str(a["date"]))
+    upcoming = sorted((a for a in dated if str(a["date"]) > now), key=lambda a: str(a["date"]))
+    pick = overdue[0] if overdue else (upcoming[0] if upcoming else None)
+    if pick:
+        verb = "already retired" if str(pick["date"]) <= now else "retires"
+        L.append(f"**Most urgent:** {_esc(_action_label(pick))} in "
+                 f"`{_esc(pick.get('repo', ''))}` — {verb} {_esc(pick['date'])}.")
+        L.append("")
+
     # --- summary (the tiles, as a table) ---
     L.append("## Summary")
     L.append("")
     L += _table(["Metric", "Count"], [
         ["Fixes needed (action-required)", counts.get("fixes", 0)],
         ["Vendor API sunsets", counts.get("sunsets", 0)],
+        ["— of which already retired (past-due)", counts.get("pastDue", 0)],
         ["Runtime/framework EOL", counts.get("eol", 0)],
         ["Critical CVEs", counts.get("critical", 0)],
         ["Unaudited vendors", counts.get("unaudited", 0)],
