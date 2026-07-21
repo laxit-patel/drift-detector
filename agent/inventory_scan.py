@@ -9,6 +9,7 @@ from agent.lib.vendor_rules import write_ruleset, rule_kinds_by_language
 from agent.lib import shapes
 from agent.lib.repo_scan import scan_repo
 from agent.lib.repo_discovery import discover_repos, diagnose_root
+from agent.lib import source_resolver
 from agent.lib.inv_rollups import build_rollups
 from agent.lib.inventory_diff import diff_inventories
 
@@ -96,14 +97,17 @@ def scan_folder(root, state_dir, now, *, engine=None, run=None, git=None, progre
     rules_path = os.path.join(state_dir, "rules.generated.yaml")
     write_ruleset(vendors, rules_path)
 
-    _p("discovering git repos under " + ", ".join(str(r) for r in roots) + " …")
-    discovered = discover_repos(roots)     # [(abs_path, identity)], sorted, deduped
+    _p("resolving sources under " + ", ".join(str(r) for r in roots) + " …")
+    # A checkout, a plain folder, or a git/GitLab URL (cloned into <state>/sources/) all
+    # resolve to scannable projects here; anything that resolves to nothing is an error
+    # carried through, never a silent drop.
+    resolved = source_resolver.resolve_sources(roots, state_dir)
+    discovered = [(abs_, ident) for abs_, ident, _kind in resolved["projects"]]
+    source_kind = {abs_: kind for abs_, _ident, kind in resolved["projects"]}
+    unscannable = resolved["errors"]
     n = len(discovered)
-    _p(f"  {n} repo(s) found")
-    # When a root yields nothing, say WHY. A URL, a typo, or a plain source folder
-    # otherwise vanishes and the run reports a clean bill — the failure the PM hit.
-    unscannable = [{"root": str(r), "reason": diagnose_root(r)}
-                   for r in roots if diagnose_root(r)]
+    _p(f"  {n} project(s) resolved" +
+       (f", {len(unscannable)} unreadable" if unscannable else ""))
     repos: list = []
     # what the ruleset can even SEE, per language — the shape verdict needs this to
     # tell "no rules for this language" apart from "looked and found nothing"
@@ -125,6 +129,7 @@ def scan_folder(root, state_dir, now, *, engine=None, run=None, git=None, progre
             _p(f"{tag}  scan: git · manifests · AST endpoints")
             record, note = scan_repo(abs_, name, i + 1, vendors, rules_path,
                                      engine=engine, run=run, git=git)
+            record["sourceKind"] = source_kind.get(abs_, "local-git")
             record["shape"] = _shape_of(abs_, name, record, rule_kinds, attestations)
             repos.append(record)
             if sha:

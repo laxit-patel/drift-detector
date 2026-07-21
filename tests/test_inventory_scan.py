@@ -72,8 +72,8 @@ def test_scan_folder_progress_callback(tmp_path):
     msgs = []
     scan_folder(str(root), str(tmp_path / "state"), "2026-07-14",
                 engine="semgrep", run=_empty_run, progress=msgs.append)
-    assert any("discovering" in m for m in msgs)
-    assert any("1 repo(s) found" in m for m in msgs)
+    assert any("resolving sources" in m for m in msgs)
+    assert any("1 project(s) resolved" in m for m in msgs)
     assert any("web" in m and "scan:" in m for m in msgs)       # per-repo phase line
     assert any("aggregating" in m for m in msgs)
 

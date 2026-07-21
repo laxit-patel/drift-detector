@@ -179,6 +179,13 @@ def audit_inventory(doc: dict, now: str, *, http=None,
         findings.extend(_sunset_findings(r, sun_index, now))
 
     coverage["notes"].append("Vendor API sunsets: curated catalog (agent/vendor_sunsets.yaml) joined against endpoints — extend it with your vendors' announcements.")
+    plain = [r.get("path") for r in repos if r.get("sourceKind") == "local-plain"]
+    if plain:
+        coverage["notes"].append(
+            f"{len(plain)} project(s) scanned as a plain folder (no .git): "
+            f"{', '.join(plain[:5])}. These have no commit history, so 'changed since "
+            f"last scan' and clickable file:line are unavailable for them — clone the repo "
+            f"to get both.")
 
     # --- which vendors has anyone actually CHECKED a retirement list for? ---
     # Without this a vendor with 272 call-sites and an empty catalog reports the same

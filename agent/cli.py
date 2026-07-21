@@ -97,6 +97,11 @@ def _cmd_run(args) -> int:
               file=sys.stderr)
         return 4                           # 'found nothing to scan' is 'couldn't verify'
 
+    # A root that failed to resolve is surfaced even when OTHERS scanned fine — a typo'd
+    # or unreachable root buried in a good run must not disappear.
+    for u in (out.get("rootsUnscannable") or []):
+        print(f"⚠ skipped: {u['reason']}", file=sys.stderr)
+
     c = out["auditCounts"]
     print(f"✓ scan+audit: 🔴 {c.get('DEPRECATED', 0)} action-required · 🟠 {c.get('REVIEW', 0)} review")
     if getattr(args, "fail_on_deprecated", False):

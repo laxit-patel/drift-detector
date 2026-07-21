@@ -40,11 +40,27 @@ def test_a_real_git_repo_is_not_flagged(tmp_path):
 
 def test_zero_repos_scanned_exits_4_not_0(tmp_path):
     """The end-to-end guarantee: a run that scans nothing returns 'couldn't verify',
-    never success."""
+    never success. A NONEXISTENT path resolves to nothing — unlike a plain code folder,
+    which is now scanned as a project."""
+    from agent.cli import main
+    state = tmp_path / "state"
+    rc = main(["run", "--root", str(tmp_path / "does-not-exist"),
+               "--state", str(state), "--now", "2026-07-21"])
+    assert rc == 4, "a scan of zero repos must exit 4 (couldn't verify), not 0 (clean)"
+
+
+def test_a_plain_code_folder_is_now_scanned_not_rejected(tmp_path):
+    """The ingestion feature: a folder of code with no .git is scanned as a project,
+    finds its endpoints, and exits normally — the case the PM hit, now working."""
     from agent.cli import main
     src = tmp_path / "src"
     src.mkdir()
-    (src / "OrdersApi.php").write_text('<?php $u="https://sellingpartnerapi-na.amazon.com/orders/v0/o";')
+    (src / "OrdersApi.php").write_text(
+        '<?php $u="https://sellingpartnerapi-na.amazon.com/orders/v0/orders";')
     state = tmp_path / "state"
     rc = main(["run", "--root", str(src), "--state", str(state), "--now", "2026-07-21"])
-    assert rc == 4, "a scan of zero repos must exit 4 (couldn't verify), not 0 (clean)"
+    assert rc == 0, "a plain code folder must now scan, not be rejected"
+    import json
+    inv = json.loads((state / "inventory.json").read_text())
+    assert inv["scope"]["reposScanned"] == 1
+    assert inv["repos"][0]["sourceKind"] == "local-plain"
