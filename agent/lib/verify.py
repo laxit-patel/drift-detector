@@ -232,8 +232,10 @@ def check_md_matches_payload(md_text: str, payload: dict) -> None:
                                 f"Summary says {label!r} = {by_label[label]}, payload says "
                                 f"{expected} — the Markdown disagrees with drift.json")
 
+    # findings tables are identified by their "First call-site" column (the coverage
+    # tables have neither), so this keeps working now that findings tables lead with Repo.
     for t in tables:
-        if t["header"][0] in ("API", "Component", "Package"):
+        if "First call-site" in t["header"]:
             seen = set()
             for row in t["rows"]:
                 key = tuple(row)

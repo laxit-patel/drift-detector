@@ -169,3 +169,26 @@ def test_no_graph_when_nothing_is_retiring():
     p = _payload(actions=[], counts={"fixes": 0, "sunsets": 0, "eol": 0, "critical": 0,
                                      "unaudited": 0, "reposAffected": 0, "reposScanned": 1})
     assert "```mermaid" not in md.render_markdown(p, "2026-07-21")
+
+
+def test_same_finding_in_two_repos_renders_distinct_rows_by_repo():
+    """A vendored SDK (or shared runtime) appears in several repos with an IDENTICAL
+    repo-relative call-site. Without the Repo column those rows render byte-identical and
+    md-row-identity rejects the report; with it, each repo's exposure is its own row."""
+    from agent.lib.verify import check_md_matches_payload
+    dup = dict(kind="sunset", ref="Amazon SP-API", unit="/catalog/v0", status="DEPRECATED",
+               date="2026-06-30", finding_count=1, files=[{"loc": "src/Api/Catalog.php:1"}])
+    p = _payload(actions=[{**dup, "repo": "repoA"}, {**dup, "repo": "repoB"}],
+                 counts={"fixes": 2, "sunsets": 2, "eol": 0, "critical": 0, "unaudited": 0,
+                         "reposAffected": 2, "reposScanned": 2})
+    out = md.render_markdown(p, "2026-07-21")
+    check_md_matches_payload(out, p)                       # must NOT raise now
+    # two TABLE rows (lines starting with |), identical but for the Repo column
+    rows = [ln for ln in out.splitlines() if ln.startswith("| ") and "/catalog/v0" in ln]
+    assert len(rows) == 2 and rows[0] != rows[1]
+    assert "| repoA |" in out and "| repoB |" in out
+
+
+def test_findings_tables_lead_with_repo():
+    out = md.render_markdown(_payload(), "2026-07-21")
+    assert "| Repo | API | Status | Retires | Call-sites | First call-site |" in out

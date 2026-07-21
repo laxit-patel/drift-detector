@@ -157,10 +157,15 @@ def render_markdown(payload: dict, now: str) -> str:
     L.append("")
 
     # --- findings by kind ---
+    # Repo is the FIRST column: the same finding (a vendored SDK, a shared runtime) can
+    # appear in several repos with an identical repo-relative call-site, so without the
+    # repo those rows render byte-identical — a reader cannot tell which repo is exposed,
+    # and the md-row-identity check (correctly) rejects the report. The repo is the
+    # disambiguator AND the thing a reader most needs: which of my repos does this hit.
     for kind, title, cols in (
-        ("sunset", "Vendor API sunsets", ["API", "Status", "Retires", "Call-sites", "First call-site"]),
-        ("eol", "Runtime / framework end-of-life", ["Component", "Status", "EOL", "Call-sites", "First call-site"]),
-        ("cve", "Package vulnerabilities", ["Package", "Status", "Fix", "Call-sites", "First call-site"]),
+        ("sunset", "Vendor API sunsets", ["Repo", "API", "Status", "Retires", "Call-sites", "First call-site"]),
+        ("eol", "Runtime / framework end-of-life", ["Repo", "Component", "Status", "EOL", "Call-sites", "First call-site"]),
+        ("cve", "Package vulnerabilities", ["Repo", "Package", "Status", "Fix", "Call-sites", "First call-site"]),
     ):
         group = [a for a in actions if a.get("kind") == kind]
         if not group:
@@ -173,7 +178,8 @@ def render_markdown(payload: dict, now: str) -> str:
             # call-sites the reader can act on (the located files), not finding_count —
             # which for a family-scoped sunset is ~always 1 and tells the reader nothing
             sites = len(a.get("files") or []) or a.get("finding_count", 0)
-            rows.append([_action_label(a), a.get("status", ""), when, sites, _first_loc(a)])
+            rows.append([a.get("repo", ""), _action_label(a), a.get("status", ""),
+                         when, sites, _first_loc(a)])
         L += _table(cols, rows)
         L.append("")
         # the exposure graph rides UNDER the sunsets table, never replacing it
