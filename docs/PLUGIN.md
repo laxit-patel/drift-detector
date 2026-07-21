@@ -2,7 +2,7 @@
 
 A Claude Code plugin that scans a folder of cloned repos for **code-level third-party
 integration usage** (which APIs/SDKs each project uses, `file:line`, versions) and reports it
-**in chat** — with the heavy work done by cheap, deterministic Python (Opengrep), not by an
+**in chat** — with the heavy work done by cheap, deterministic Python (ast-grep), not by an
 expensive autonomous LLM agent.
 
 ## What it is
@@ -29,7 +29,7 @@ Then run `/drift-detector <folder>` (see Use below). The first run bootstraps it
 
 ## Prerequisites
 
-Just **`uv`** (recommended — https://docs.astral.sh/uv/) **or** python ≥ 3.11 with `venv`, and internet access on the first run. The bundled runner `bin/drift-scan` creates a plugin-local venv and installs the scan engine (semgrep) itself — **no separate Opengrep/Semgrep install, no manual Python setup**. Later runs reuse the venv. The scan **fails loud** if it can't provision the engine — no silent empty inventory.
+Just **`uv`** (recommended — https://docs.astral.sh/uv/) **or** python ≥ 3.11 with `venv`, and internet access on the first run. The bundled runner `bin/drift-scan` creates a plugin-local venv and installs the scan engine (ast-grep) itself — **no separate engine install, no manual Python setup**. Later runs reuse the venv. The scan **fails loud** if it can't provision the engine — no silent empty inventory.
 
 ## Use
 

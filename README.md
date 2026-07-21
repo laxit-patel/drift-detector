@@ -126,7 +126,7 @@ see [docs/EVAL.md](docs/EVAL.md) (`bin/drift-eval`).
 
 - Endpoint **version** is best-effort from the URL on the matched line — `None` when a
   repo builds the URL from a base constant with the version appended elsewhere
-  (needs dataflow; a future Opengrep taint rule).
+  (needs dataflow; out of scope).
 - Detects hard-coded endpoints + manifest-declared SDKs. An SDK used only via its
   client library (no hard-coded URL) shows via the manifest, not as a call-site.
 - Versions are **lockfile-exact where a lockfile exists**, else the declared manifest floor

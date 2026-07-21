@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Self-bootstrapping runner for the Drift Detector EVAL harness. Reuses the plugin's
-# .venv (semgrep + deps) and runs `python -m agent.eval.cli`. Works from any cwd.
+# .venv (ast-grep + deps) and runs `python -m agent.eval.cli`. Works from any cwd.
 set -euo pipefail
 
 PLUGIN_ROOT="${CLAUDE_PLUGIN_ROOT:-}"

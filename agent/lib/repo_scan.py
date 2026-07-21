@@ -1,4 +1,4 @@
-"""Scan one repo: git metadata + manifests + Opengrep endpoints -> a superset record."""
+"""Scan one repo: git metadata + manifests + ast-grep endpoints -> a superset record."""
 from __future__ import annotations
 
 from agent.lib.scan_util import git_meta, _default_git
