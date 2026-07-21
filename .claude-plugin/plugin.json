@@ -1,10 +1,15 @@
 {
   "name": "drift-detector",
-  "description": "Detect third-party integration drift across a folder of repos — code-level API/SDK/runtime usage (via ast-grep), operation-level vendor sunsets, an interactive dashboard, and an honest coverage verdict that says where it is blind. Cheap, deterministic, zero LLM tokens.",
+  "displayName": "Drift Detector",
   "version": "0.11.2-beta",
+  "description": "Detect third-party integration drift across a folder of repos — code-level API/SDK/runtime usage (via ast-grep), operation-level vendor sunsets, an interactive dashboard, and an honest coverage verdict that says where it is blind. Cheap, deterministic, zero LLM tokens.",
   "author": {
-    "name": "TOPS"
+    "name": "TOPS",
+    "email": "harshad@topsinfosolutions.com"
   },
+  "homepage": "https://github.com/laxit-patel/drift-detector",
+  "repository": "https://github.com/laxit-patel/drift-detector",
+  "license": "MIT",
   "keywords": [
     "drift",
     "integration",
@@ -15,5 +20,9 @@
     "sunset",
     "coverage",
     "inventory"
+  ],
+  "commands": [
+    "./commands/drift-detector.md",
+    "./commands/drift-deepen.md"
   ]
 }

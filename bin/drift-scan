@@ -146,9 +146,21 @@ if [ ! -x "$VENV/bin/ast-grep" ]; then
     *)              _asset="" ;;
   esac
   if [ -n "$_asset" ] && command -v curl >/dev/null 2>&1 && command -v unzip >/dev/null 2>&1; then
-    echo "drift-detector: fetching the ast-grep engine (one-time)…" >&2
-    _url=$(curl -fsSL https://api.github.com/repos/ast-grep/ast-grep/releases/latest 2>/dev/null \
+    # PINNED, not "latest": an unpinned engine means two machines can fetch DIFFERENT
+    # ast-grep builds, silently changing scan output — which breaks the tool's central
+    # "deterministic, byte-identical" guarantee (the rule node-kinds in AST_STRING_KINDS
+    # were verified against this exact version). Bump AST_GREP_VERSION deliberately, after
+    # re-verifying the ruleset. Falls back to latest only if the pin can't be resolved.
+    AST_GREP_VERSION="${DRIFT_AST_GREP_VERSION:-0.44.1}"
+    echo "drift-detector: fetching the ast-grep engine ${AST_GREP_VERSION} (one-time)…" >&2
+    _rel="https://api.github.com/repos/ast-grep/ast-grep/releases/tags/${AST_GREP_VERSION}"
+    _url=$(curl -fsSL "$_rel" 2>/dev/null \
            | grep -o "\"browser_download_url\": \"[^\"]*${_asset}\"" | cut -d'"' -f4)
+    if [ -z "$_url" ]; then
+      echo "drift-detector: pinned ast-grep ${AST_GREP_VERSION} not found — falling back to latest." >&2
+      _url=$(curl -fsSL https://api.github.com/repos/ast-grep/ast-grep/releases/latest 2>/dev/null \
+             | grep -o "\"browser_download_url\": \"[^\"]*${_asset}\"" | cut -d'"' -f4)
+    fi
     if [ -n "$_url" ]; then
       _tmp=$(mktemp -d)
       if curl -fsSL -o "$_tmp/sg.zip" "$_url" && unzip -qo "$_tmp/sg.zip" -d "$_tmp" 2>/dev/null \
