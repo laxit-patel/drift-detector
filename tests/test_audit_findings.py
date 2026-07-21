@@ -254,3 +254,35 @@ def test_walmart_sub_apis_are_scoped_apart_by_front_loaded_path():
     assert wm["/v3/insights/items/trending"]["date"] == "2025-03-31"
     assert wm["/v3/insights/items/trending"]["status"] == "DEPRECATED"
     assert "/v3/feeds" not in wm                          # the live one stays silent
+
+
+def test_recommendation_is_date_aware_past_vs_future():
+    """The PM's report: 'plan migration before 2025-01-21' when that date is 18 months
+    gone. A past retirement must read as already-gone; only a future one is a deadline."""
+    from agent.audit import _sunset_recommendation
+    now = "2026-07-21"
+    # past date -> "already retired", never "before"
+    past = _sunset_recommendation("the Metadata API", "2025-01-21", now)
+    assert "already retired 2025-01-21" in past and "before" not in past
+    # future date -> a real deadline
+    future = _sunset_recommendation("the Metadata API", "2027-03-27", now)
+    assert "before 2027-03-27" in future
+    # today counts as past (retired as of today)
+    assert "already retired" in _sunset_recommendation(None, "2026-07-21", now)
+    # no date -> neither
+    assert "no fixed retirement date" in _sunset_recommendation("X", None, now)
+
+
+def test_past_sunset_findings_do_not_say_migrate_before_a_gone_date():
+    """End to end: a repo calling an already-dead Amazon API must not be told to plan
+    migration BEFORE a date in the past."""
+    from agent.audit import audit_inventory
+    doc = {"generated": "2026-07-21", "repos": [{"path": "r", "sdks": [], "endpoints": [
+        {"vendor": "Amazon SP-API", "domain": "sellingpartnerapi-na.amazon.com",
+         "version": "v0", "apiPath": "/fba/inbound/v0", "classified": True,
+         "files": ["a.php:1"], "file_count": 1}]}]}
+    audit = audit_inventory(doc, "2026-07-21",
+                            http=lambda *a, **k: (_ for _ in ()).throw(ConnectionError()))
+    f = next(x for x in audit["findings"] if x.get("path") == "/fba/inbound/v0")
+    assert "already retired" in f["recommendation"]
+    assert "before 2025-01-21" not in f["recommendation"]     # the exact PM complaint

@@ -105,7 +105,8 @@ def test_domain_scoped_entry_flags_only_the_matching_host():
     assert f["files"] == ["src/Ebay/find.php:37"]                 # ONLY the dead host's call-site
     assert "src/Ebay/oauth.php:6" not in f["files"]               # live host NOT flagged
     assert "svcs.ebay.com" in f["detail"]
-    assert "migrate to Browse API before 2025-02-05" in f["recommendation"]
+    # 2025-02-05 is past now (2026-07-15) -> "already retired", not "before"
+    assert "migrate to Browse API NOW — already retired 2025-02-05" in f["recommendation"]
 
 
 def test_domain_scoped_entry_ignores_repo_without_that_host():

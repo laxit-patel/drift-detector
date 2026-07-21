@@ -28,6 +28,18 @@ def _runtime_products(repo: dict):
         yield name, (fw or {}).get("ver")
 
 
+def _sunset_recommendation(replacement, retires, now: str) -> str:
+    """Advice that reads correctly against TODAY. "plan migration before 2025-01-21" is
+    nonsense once that date has passed — the API is already gone, not something to plan
+    around. Past dates say so and demand action now; only a future date is a deadline."""
+    target = f"migrate to {replacement}" if replacement else "migrate off this API"
+    if not retires:
+        return f"{target} — deprecated, no fixed retirement date announced"
+    if str(retires) <= now:
+        return f"{target} NOW — already retired {retires}"
+    return f"{target} before {retires}"
+
+
 def _sunset_findings(repo: dict, sun_index: dict, now: str) -> list:
     """Join the repo's endpoints against the vendor-sunset catalog (the file:line layer)."""
     path, eps, out = repo.get("path"), repo.get("endpoints", []), []
@@ -82,9 +94,7 @@ def _sunset_findings(repo: dict, sun_index: dict, now: str) -> list:
                 vlabel = str(cver) if confirmed else f"{cver}?"
             when = f"retires {entry['retires']}" if entry.get("retires") else "deprecated"
             verify = "" if confirmed else " — version undetermined, verify"
-            rec = f"migrate to {entry['replacement']}" if entry.get("replacement") else "plan migration"
-            if entry.get("retires"):
-                rec += f" before {entry['retires']}"
+            rec = _sunset_recommendation(entry.get("replacement"), entry.get("retires"), now)
             out.append({
                 "repo": path, "kind": "sunset", "ref": vendor, "version": cver, "domain": edomain,
                 "operation": eop, "path": epath,
@@ -116,7 +126,9 @@ def _lifecycle_findings(repo: dict, now: str) -> list:
     for (vendor, version, retires, source, replacement), eps in groups.items():
         files = list(dict.fromkeys(f for e in eps for f in e.get("files", [])))[:6]
         status = vendor_sunsets.status_for(retires, now, confirmed=True)
-        rec = f"{replacement} before {retires}"
+        # date-aware: a past retirement is "already gone", not "before <past date>"
+        rec = (f"{replacement} — already retired {retires}" if str(retires) <= now
+               else f"{replacement} before {retires}")
         out.append({
             "repo": path, "kind": "sunset", "ref": vendor, "version": version,
             "domain": None, "operation": None, "path": None,
