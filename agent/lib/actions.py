@@ -104,6 +104,9 @@ def build_actions(findings: list) -> list:
             # what is actually retiring — the row label is "eBay GetCategoryFeatures",
             # not a bare "eBay" repeated down twelve identical-looking rows.
             "unit": _sunset_unit(worst_f) if kind == "sunset" else None,
+            # the retirement/EOL date, as its own field so a table can show a clean date
+            # column instead of parsing it back out of the recommendation prose
+            "date": worst_f.get("date"),
             "current_version": worst_f.get("version"),
             "fix_version": fix_version,
             "command": _command(kind, eco, pkg, fix_version),

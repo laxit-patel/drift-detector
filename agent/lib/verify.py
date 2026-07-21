@@ -154,6 +154,96 @@ def check_blob_matches_payload(html: str, payload_json: str) -> None:
                         "— the file being verified is not the file being read")
 
 
+_CELL_SPLIT = re.compile(r"(?<!\\)\|")   # a pipe NOT preceded by a backslash
+
+
+def _parse_md_tables(md_text: str) -> list:
+    """Every GFM pipe table in `md_text` as {header:[...], rows:[[...]]}. Cells are split
+    on UNESCAPED pipes, so a raw `|` that slipped past the escaper shows up as an extra
+    cell — which is exactly the silent-truncation bug we want to catch, not hide."""
+    tables, cur = [], None
+
+    def cells(line):
+        parts = _CELL_SPLIT.split(line.strip())
+        if parts and parts[0] == "":
+            parts = parts[1:]
+        if parts and parts[-1] == "":
+            parts = parts[:-1]
+        return [c.strip() for c in parts]
+
+    lines = md_text.splitlines()
+    for i, line in enumerate(lines):
+        if line.lstrip().startswith("|"):
+            row = cells(line)
+            if cur is None:
+                # header row must be followed by a --- separator row
+                nxt = lines[i + 1] if i + 1 < len(lines) else ""
+                if set(nxt.replace("|", "").replace(" ", "")) <= {"-", ":"} and nxt.strip():
+                    cur = {"header": row, "rows": [], "_sep": True}
+                continue
+            if cur.get("_sep"):                 # this line IS the separator, skip it once
+                cur["_sep"] = False
+                continue
+            cur["rows"].append(row)
+        else:
+            if cur is not None:
+                cur.pop("_sep", None)
+                tables.append(cur)
+                cur = None
+    if cur is not None:
+        cur.pop("_sep", None)
+        tables.append(cur)
+    return tables
+
+
+def check_md_matches_payload(md_text: str, payload: dict) -> None:
+    """The Markdown view agrees with the payload it was rendered from.
+
+    The Markdown analog of check_blob_matches_payload, and the reason drift.md is a
+    TRUSTED projection rather than a hopeful one. Three checks, each catching a real
+    failure class:
+      • column integrity — every row has the header's column count, so an unescaped `|`
+        (which GitHub renders as dropped cells) fails here instead of silently;
+      • summary parity — the numbers in the Summary table equal the payload counts, so a
+        headline number cannot drift from the data (bug #1's class);
+      • row identity — no two rows in a findings table are byte-identical (bug #2's class).
+    """
+    tables = _parse_md_tables(md_text)
+
+    for t in tables:
+        ncol = len(t["header"])
+        for row in t["rows"]:
+            if len(row) != ncol:
+                raise Violation("md-column-integrity",
+                                f"a row under {t['header']} has {len(row)} cells, not "
+                                f"{ncol} — an unescaped '|' truncates it on GitHub: {row}")
+
+    counts = payload.get("counts", {})
+    summary = next((t for t in tables if t["header"][:2] == ["Metric", "Count"]), None)
+    if summary:
+        by_label = {r[0]: r[1] for r in summary["rows"] if len(r) >= 2}
+        checks = {"Vendor API sunsets": counts.get("sunsets", 0),
+                  "Runtime/framework EOL": counts.get("eol", 0),
+                  "Fixes needed (action-required)": counts.get("fixes", 0),
+                  "Unaudited vendors": counts.get("unaudited", 0)}
+        for label, expected in checks.items():
+            if label in by_label and by_label[label] != str(expected):
+                raise Violation("md-summary-parity",
+                                f"Summary says {label!r} = {by_label[label]}, payload says "
+                                f"{expected} — the Markdown disagrees with drift.json")
+
+    for t in tables:
+        if t["header"][0] in ("API", "Component", "Package"):
+            seen = set()
+            for row in t["rows"]:
+                key = tuple(row)
+                if key in seen:
+                    raise Violation("md-row-identity",
+                                    f"two findings rows render identically: {row} — a "
+                                    f"reader cannot tell them apart")
+                seen.add(key)
+
+
 def verify_payload(payload: dict, findings: list) -> list:
     """Run every payload invariant. Returns the violations rather than raising, so
     `drift verify` can report all of them in one pass instead of one per run."""
