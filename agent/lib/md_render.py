@@ -53,6 +53,64 @@ def _first_loc(a: dict) -> str:
     return f0.get("loc", "") if isinstance(f0, dict) else str(f0)
 
 
+# Chars that break a Mermaid label even inside quotes, mapped to HTML entity codes.
+# A grammar error renders as an error box that looks FINE in the source, so the only
+# safe move is to make one impossible by construction: entity-encode every breaker and
+# never derive node IDs from content (generated n0/n1… sidestep the o/x-prefix and
+# `end`-keyword traps too).
+# NB: `;` is deliberately NOT a breaker — it is fine inside a quoted label, and encoding
+# it would corrupt the trailing `;` of every entity code below (#123; -> #123#59;).
+_MM_BREAKERS = {"\\": "#92;", '"': "#quot;", "[": "#91;", "]": "#93;", "{": "#123;",
+                "}": "#125;", "(": "#40;", ")": "#41;", "|": "#124;"}
+
+
+def _mm_label(s) -> str:
+    out = str(s if s is not None else "")
+    for ch, rep in _MM_BREAKERS.items():
+        out = out.replace(ch, rep)
+    return out.replace("\n", " ").strip()
+
+
+def _mermaid_exposure(actions: list, now: str) -> list:
+    """A flowchart of exposure: each repo → the retiring API surfaces it calls, coloured
+    by whether the removal date has passed. A COMPLEMENT to the sunsets table — every fact
+    here is also a row there — so a silent Mermaid render error can never hide data.
+
+    Returns the fenced block as lines, or [] when there is nothing retiring to draw.
+    """
+    sunsets = [a for a in actions if a.get("kind") == "sunset"]
+    if not sunsets:
+        return []
+
+    repos, nodes, edges, dead_ids, due_ids = {}, [], [], [], []
+    for a in sunsets:
+        repo = a.get("repo") or "?"
+        if repo not in repos:
+            rid = f"r{len(repos)}"
+            repos[repo] = rid
+            nodes.append(f'  {rid}["{_mm_label(repo)}"]')
+        nid = f"n{len(edges)}"
+        date = a.get("date")
+        past = bool(date and str(date) <= now)
+        label = f"{_mm_label(a.get('ref') or '')} {_mm_label(a.get('unit') or '')}".strip()
+        when = (f"removed {_mm_label(date)}" if past else f"retires {_mm_label(date)}") if date else "deprecated"
+        nodes.append(f'  {nid}["{label}<br/>{when}"]')
+        edges.append(f"  {repos[repo]} --> {nid}")
+        (dead_ids if past else due_ids).append(nid)
+
+    L = ["```mermaid", "flowchart LR"]
+    L += nodes
+    L += edges
+    L.append("  classDef dead fill:#f7e4e2,stroke:#b4232a,color:#7a1519;")
+    L.append("  classDef due fill:#f6ecd8,stroke:#a2650b,color:#6b4407;")
+    if dead_ids:
+        L.append(f"  class {','.join(dead_ids)} dead;")
+    if due_ids:
+        L.append(f"  class {','.join(due_ids)} due;")
+    L.append("```")
+    return L
+
+
 def render_markdown(payload: dict, now: str) -> str:
     """The report as Markdown. `now` dates the header and splits past-due from upcoming."""
     counts = payload.get("counts", {})
@@ -118,6 +176,15 @@ def render_markdown(payload: dict, now: str) -> str:
             rows.append([_action_label(a), a.get("status", ""), when, sites, _first_loc(a)])
         L += _table(cols, rows)
         L.append("")
+        # the exposure graph rides UNDER the sunsets table, never replacing it
+        if kind == "sunset":
+            graph = _mermaid_exposure(group, now)
+            if graph:
+                L.append("**Exposure** — retiring surfaces this code calls "
+                         "(red = already removed, amber = deadline ahead):")
+                L.append("")
+                L += graph
+                L.append("")
 
     # --- coverage: shape + catalog verdicts (sentences + a table) ---
     grades = payload.get("coverageGrades", [])

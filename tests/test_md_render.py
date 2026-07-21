@@ -125,3 +125,47 @@ def test_parity_catches_two_identical_findings_rows():
     with pytest.raises(Violation) as e:
         check_md_matches_payload(out, p)
     assert e.value.check == "md-row-identity"
+
+
+# ------------------------------------------------- the mermaid exposure graph
+def test_exposure_graph_is_emitted_and_colours_by_removal_date():
+    out = md.render_markdown(_payload(), "2026-07-21")
+    assert "```mermaid" in out and "flowchart LR" in out
+    # the past-due family is classed dead, the future one due
+    assert "class n0 dead" in out or "dead;" in out
+    assert "due;" in out
+    assert "/fba/inbound/v0" in out and "/orders/v0" in out
+
+
+def test_graph_labels_are_sanitized_against_grammar_breakers():
+    """A family with grammar-breaking chars must not produce a raw label — that would
+    render a Mermaid error box that looks fine in source."""
+    p = _payload(actions=[{"kind": "sunset", "ref": "Vendor", "unit": '/a/{id}/"x"',
+                           "status": "DEPRECATED", "date": "2024-01-01", "finding_count": 1,
+                           "files": [{"loc": "a.php:1"}]}],
+                 counts={"fixes": 1, "sunsets": 1, "eol": 0, "critical": 0, "unaudited": 0,
+                         "reposAffected": 1, "reposScanned": 1})
+    out = md.render_markdown(p, "2026-07-21")
+    block = out.split("```mermaid")[1].split("```")[0]
+    assert '"x"' not in block.replace('["', '').replace('"]', '')  # no raw inner quote
+    assert "#123;" in block and "#quot;" in block                  # { and " encoded
+
+
+def test_mermaid_wellformed_passes_on_the_real_render():
+    from agent.lib.verify import check_mermaid_wellformed
+    check_mermaid_wellformed(md.render_markdown(_payload(), "2026-07-21"))
+
+
+def test_mermaid_check_catches_an_edge_to_an_undeclared_node():
+    import pytest
+    from agent.lib.verify import check_mermaid_wellformed, Violation
+    broken = '```mermaid\nflowchart LR\n  r0["repo"]\n  r0 --> n9\n```\n'
+    with pytest.raises(Violation) as e:
+        check_mermaid_wellformed(broken)
+    assert e.value.check == "mermaid-undeclared-node"
+
+
+def test_no_graph_when_nothing_is_retiring():
+    p = _payload(actions=[], counts={"fixes": 0, "sunsets": 0, "eol": 0, "critical": 0,
+                                     "unaudited": 0, "reposAffected": 0, "reposScanned": 1})
+    assert "```mermaid" not in md.render_markdown(p, "2026-07-21")

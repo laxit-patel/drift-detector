@@ -194,7 +194,8 @@ def _cmd_verify(args) -> int:
 
     violations = _verify.verify_payload(payload, audit.get("findings", []))
     for check, args_ in ((_verify.check_blob_matches_payload, (html, _json.dumps(payload))),
-                         (_verify.check_md_matches_payload, (drift_md, payload))):
+                         (_verify.check_md_matches_payload, (drift_md, payload)),
+                         (_verify.check_mermaid_wellformed, (drift_md,))):
         try:
             check(*args_)
         except _verify.Violation as v:

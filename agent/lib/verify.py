@@ -244,6 +244,35 @@ def check_md_matches_payload(md_text: str, payload: dict) -> None:
                 seen.add(key)
 
 
+def check_mermaid_wellformed(md_text: str) -> None:
+    """Every Mermaid block is structurally sound: each edge endpoint is a declared node,
+    and no label carries a raw grammar-breaking char.
+
+    This is not a full render (that needs Chromium, off-limits) — it is the structural
+    subset that catches the failures we actually cause: an edge to an undeclared node, or
+    an unescaped `"`/`[`/`{` that would make Mermaid draw an error box which looks FINE in
+    the source. The same silent-blindness class as the tile bug, one layer up.
+    """
+    for m in re.finditer(r"```mermaid\n(.*?)\n```", md_text, re.S):
+        block = m.group(1)
+        declared = set(re.findall(r'^\s*([A-Za-z_]\w*)\["', block, re.M))
+        referenced = set()
+        for edge in re.finditer(r"^\s*([A-Za-z_]\w*)\s*-->\s*([A-Za-z_]\w*)", block, re.M):
+            referenced.add(edge.group(1))
+            referenced.add(edge.group(2))
+        undeclared = referenced - declared
+        if undeclared:
+            raise Violation("mermaid-undeclared-node",
+                            f"the exposure graph draws an edge to undeclared node(s) "
+                            f"{sorted(undeclared)} — it would render broken")
+        # a raw " inside label text (beyond the wrapping pair) breaks the label silently
+        for label in re.findall(r'\["(.*?)"\]', block):
+            if '"' in label:
+                raise Violation("mermaid-unescaped-label",
+                                f"a graph label contains a raw quote: {label!r} — encode "
+                                f"it (#quot;) or Mermaid renders an error box")
+
+
 def verify_payload(payload: dict, findings: list) -> list:
     """Run every payload invariant. Returns the violations rather than raising, so
     `drift verify` can report all of them in one pass instead of one per run."""
