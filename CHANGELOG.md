@@ -2,6 +2,13 @@
 
 All notable changes to the Drift Detector plugin. Dates are YYYY-MM-DD.
 
+## v0.12.1-beta — 2026-07-21
+
+### Fixed
+
+- **Corrected the plugin's authorship** — author and marketplace owner are now Laxit Patel
+  (the creator), and the LICENSE copyright matches. No functional change.
+
 ## v0.12.0-beta — 2026-07-21
 
 **Scan a whole client fleet from one URL — and a build you can reproduce.**
