@@ -118,3 +118,66 @@ def test_one_or_many_mixed(tmp_path):
     assert not out["errors"]
     kinds = sorted(k for _, _, k in out["projects"])
     assert kinds == ["local-git", "local-plain"]
+
+
+# ------------------------------------------------- the private-URL auth path (security)
+def test_token_is_passed_to_git_but_never_written_to_argv_or_disk(tmp_path, monkeypatch):
+    """The claim behind 'clone reuses machine auth, token never persisted': a GITLAB_TOKEN
+    must reach git via a credential helper that READS the env var at run time, so the
+    secret value never appears in the process argv (visible in `ps`) nor in .git/config.
+    """
+    import subprocess as _sp
+    captured = {}
+
+    def fake_run(cmd, **kw):
+        captured["cmd"] = cmd
+        captured["env_has_token"] = "DRIFT_CLONE_TOKEN" in (kw.get("env") or {})
+        class R: returncode = 0; stdout = ""; stderr = ""
+        return R()
+
+    monkeypatch.setattr(_sp, "run", fake_run)
+    monkeypatch.setenv("GITLAB_TOKEN", "glpat-SECRETVALUE123")
+    ok, _ = sr._default_clone("https://git.topsdemo.in/chetan/amazonspapi.git",
+                              str(tmp_path / "dest"))
+    assert ok
+    argv = " ".join(captured["cmd"])
+    # the credential helper is wired, referencing the ENV VAR, not the literal secret
+    assert "credential.helper" in argv
+    assert "DRIFT_CLONE_TOKEN" in argv          # the env var name is referenced
+    assert "glpat-SECRETVALUE123" not in argv   # the SECRET itself is never in argv
+    assert captured["env_has_token"]            # it travels in the environment instead
+
+
+def test_no_token_means_plain_clone_reusing_machine_auth(tmp_path, monkeypatch):
+    """With no token in the env, the tool adds no credential args at all — git uses the
+    machine's own helper / SSH keys, exactly 'reuse machine auth'."""
+    import subprocess as _sp
+    captured = {}
+    monkeypatch.delenv("GITLAB_TOKEN", raising=False)
+    monkeypatch.delenv("DRIFT_GIT_TOKEN", raising=False)
+
+    def fake_run(cmd, **kw):
+        captured["cmd"] = cmd
+        class R: returncode = 0; stdout = ""; stderr = ""
+        return R()
+
+    monkeypatch.setattr(_sp, "run", fake_run)
+    sr._default_clone("https://x/y.git", str(tmp_path / "d"))
+    assert "credential.helper" not in " ".join(captured["cmd"])
+
+
+def test_clone_via_https_does_not_persist_a_token_in_git_config(tmp_path):
+    """End-to-end on a real (file://) clone with a token set: the stored remote URL must
+    be tokenless. file:// ignores the token, but the non-persistence property is the same
+    code path and is what a leaked-secret audit would check."""
+    import os
+    _make_repo(tmp_path / "origin")
+    dest = tmp_path / "dest"
+    os.environ["GITLAB_TOKEN"] = "glpat-SHOULDNOTPERSIST"
+    try:
+        ok, _ = sr._default_clone(f"file://{tmp_path/'origin'}", str(dest))
+    finally:
+        del os.environ["GITLAB_TOKEN"]
+    assert ok
+    cfg = (dest / ".git" / "config").read_text()
+    assert "glpat-SHOULDNOTPERSIST" not in cfg, "a token must never be written to .git/config"
