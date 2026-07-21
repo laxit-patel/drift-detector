@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="art/drift-detector.png" alt="Ashen Oracle — Drift Detector" width="160">
+</p>
+
 # Drift Detector
 
 > 🔮 **Ashen Oracle** — *Know before it breaks.*
