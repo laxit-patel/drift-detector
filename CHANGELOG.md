@@ -2,6 +2,17 @@
 
 All notable changes to the Drift Detector plugin. Dates are YYYY-MM-DD.
 
+## v0.11.2-beta — 2026-07-21
+
+### Fixed
+
+- **Advice now reads correctly against today's date.** The report used to say "plan
+  migration before 2025-01-21" for a date already long past. A retirement whose date has
+  gone now reads *"migrate off this API NOW — already retired 2025-01-21"*; only a future
+  retirement shows as a *"before <date>"* deadline. The finding's status was already
+  date-aware (past = red/action-required, future = amber/review); this brings the wording
+  in line.
+
 ## v0.11.1-beta — 2026-07-21
 
 ### Fixed
