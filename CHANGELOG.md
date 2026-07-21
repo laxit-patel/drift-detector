@@ -2,6 +2,34 @@
 
 All notable changes to the Drift Detector plugin. Dates are YYYY-MM-DD.
 
+## v0.11.0-beta — 2026-07-21
+
+**Fix: the plugin could silently run a stale cached build.**
+
+When `CLAUDE_PLUGIN_ROOT` was unset (ad-hoc shells, and especially **scheduled cron
+runs**), the runner locator fell back to `find … | head -1` — which picks a build by
+directory order, not version, and could grab an OLD cached copy. Symptom: a new
+subcommand failing with an argparse error, because an older scanner was executing.
+
+### Fixed
+
+- **Version-aware runner location.** The command files now consult
+  `installed_plugins.json` (authoritative) first, then fall back to the newest cached
+  build by **semver** (`sort -V`, never `head -1` — lexically `0.10.0-beta` sorts before
+  `0.4.0-beta`). Applied to both `/drift-detector` and `/drift-deepen`.
+- **Scheduled runs follow upgrades.** The cron wrapper used to pin the runner path at
+  install time, so a job kept executing the version that was current when it was
+  scheduled — even after upgrading. It now resolves the installed runner at run time.
+  **If you have an existing schedule, re-run `/drift-detector schedule <folder>` once** to
+  regenerate the wrapper with the fix.
+- **Self-check.** The runner warns (never fatal) when a cached build runs while a newer
+  one is installed — a stale build no longer executes completely silently.
+
+### Note
+
+Superseded cache directories are the plugin host's to garbage-collect; the version-aware
+locator makes any leftover stale build inert rather than a decoy.
+
 ## v0.10.0-beta — 2026-07-21
 
 **Two more vendors, a picture of your exposure, and a guided flow that plans before it
