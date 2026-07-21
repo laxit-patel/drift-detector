@@ -99,9 +99,9 @@ def render_markdown(payload: dict, now: str) -> str:
 
     # --- findings by kind ---
     for kind, title, cols in (
-        ("sunset", "Vendor API sunsets", ["API", "Status", "Retires", "Sites", "First call-site"]),
-        ("eol", "Runtime / framework end-of-life", ["Component", "Status", "EOL", "Sites", "First call-site"]),
-        ("cve", "Package vulnerabilities", ["Package", "Status", "Fix", "Sites", "First call-site"]),
+        ("sunset", "Vendor API sunsets", ["API", "Status", "Retires", "Call-sites", "First call-site"]),
+        ("eol", "Runtime / framework end-of-life", ["Component", "Status", "EOL", "Call-sites", "First call-site"]),
+        ("cve", "Package vulnerabilities", ["Package", "Status", "Fix", "Call-sites", "First call-site"]),
     ):
         group = [a for a in actions if a.get("kind") == kind]
         if not group:
@@ -111,8 +111,10 @@ def render_markdown(payload: dict, now: str) -> str:
         rows = []
         for a in group:
             when = a.get("date") or a.get("fix_version") or "—"
-            rows.append([_action_label(a), a.get("status", ""), when,
-                         a.get("finding_count", 0), _first_loc(a)])
+            # call-sites the reader can act on (the located files), not finding_count —
+            # which for a family-scoped sunset is ~always 1 and tells the reader nothing
+            sites = len(a.get("files") or []) or a.get("finding_count", 0)
+            rows.append([_action_label(a), a.get("status", ""), when, sites, _first_loc(a)])
         L += _table(cols, rows)
         L.append("")
 

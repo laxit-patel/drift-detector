@@ -130,13 +130,13 @@ def check_row_labels_distinct(payload: dict) -> None:
 
 
 def check_blob_matches_payload(html: str, payload_json: str) -> None:
-    """The data embedded in the page is the data in dashboard.json.
+    """The data embedded in the page is the data in drift.json.
 
-    This is what makes asserting on dashboard.json equivalent to asserting on the
+    This is what makes asserting on drift.json equivalent to asserting on the
     dashboard, and it is the only reason the checks above are trustworthy.
 
     Compared as parsed JSON, not as bytes: the embedded copy escapes `<` to \\u003c so a
-    scan string containing </script> cannot close the element, and dashboard.json is
+    scan string containing </script> cannot close the element, and drift.json is
     written indented for humans. Both are presentation; the DATA must be identical.
     """
     import json
@@ -150,7 +150,7 @@ def check_blob_matches_payload(html: str, payload_json: str) -> None:
         raise Violation("blob-parity", f"the embedded payload is not valid JSON ({exc})")
     if embedded != json.loads(payload_json):
         raise Violation("blob-parity",
-                        "the data embedded in dashboard.html differs from dashboard.json "
+                        "the data embedded in dashboard.html differs from drift.json "
                         "— the file being verified is not the file being read")
 
 

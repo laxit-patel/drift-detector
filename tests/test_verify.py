@@ -196,17 +196,19 @@ def test_drift_verify_cli_passes_clean_and_fails_tampered(tmp_path, capsys):
     on a consistent report and 3 on an inconsistent one — never the reverse."""
     from agent.cli import main
     from agent.lib.dashboard_render import render_payload
+    from agent.lib.md_render import render_markdown
     payload, _ = _real_payload()
-    (tmp_path / "dashboard.json").write_text(json.dumps(payload, indent=2))
+    (tmp_path / "drift.json").write_text(json.dumps(payload, indent=2))
     (tmp_path / "audit.json").write_text(json.dumps({"findings": TWELVE}))
     (tmp_path / "dashboard.html").write_text(render_payload(payload, "2026-07-20"))
+    (tmp_path / "drift.md").write_text(render_markdown(payload, "2026-07-20"))
 
     assert main(["verify", "--state", str(tmp_path)]) == 0
 
     # tamper exactly as bug #1 presented: the tile disagrees with its table
-    bad = json.loads((tmp_path / "dashboard.json").read_text())
+    bad = json.loads((tmp_path / "drift.json").read_text())
     bad["counts"]["sunsets"] = 1
-    (tmp_path / "dashboard.json").write_text(json.dumps(bad, indent=2))
+    (tmp_path / "drift.json").write_text(json.dumps(bad, indent=2))
     assert main(["verify", "--state", str(tmp_path)]) == 3
     assert "tile-vs-table" in capsys.readouterr().out
 

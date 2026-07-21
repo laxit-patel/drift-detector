@@ -143,7 +143,7 @@ def _blob(projection: dict) -> str:
 def build_payload(inventory: dict, audit: dict, *, diff: dict | None = None) -> dict:
     """The dashboard's DATA — everything the page displays, before any HTML exists.
 
-    This is the contract. `dashboard.json` is this dict and the page embeds this same
+    This is the contract. `drift.json` is this dict and the page embeds this same
     dict, so what a test asserts on is what a reader sees. Rendered HTML cannot be
     verified by anything that does not have eyes: two bugs shipped this week — a tile
     reading `Sunsets 1` over twelve findings, then twelve rows all labelled "eBay" —

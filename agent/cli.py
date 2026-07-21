@@ -184,18 +184,21 @@ def _cmd_verify(args) -> int:
         def _slurp(name):
             with open(os.path.join(state, name), encoding="utf-8") as fh:
                 return fh.read()
-        payload = _json.loads(_slurp("dashboard.json"))
+        payload = _json.loads(_slurp("drift.json"))
         audit = _json.loads(_slurp("audit.json"))
         html = _slurp("dashboard.html")
+        drift_md = _slurp("drift.md")
     except OSError as exc:
         print(f"drift verify: nothing to verify — {exc}", file=sys.stderr)
         return 4
 
     violations = _verify.verify_payload(payload, audit.get("findings", []))
-    try:
-        _verify.check_blob_matches_payload(html, _json.dumps(payload))
-    except _verify.Violation as v:
-        violations.append(v)
+    for check, args_ in ((_verify.check_blob_matches_payload, (html, _json.dumps(payload))),
+                         (_verify.check_md_matches_payload, (drift_md, payload))):
+        try:
+            check(*args_)
+        except _verify.Violation as v:
+            violations.append(v)
 
     if violations:
         print(f"✗ {len(violations)} invariant(s) violated:")
@@ -204,8 +207,8 @@ def _cmd_verify(args) -> int:
         return 3
     n = payload.get("counts", {})
     print(f"✓ report is self-consistent — {n.get('sunsets', 0)} sunsets, "
-          f"{n.get('eol', 0)} eol, {n.get('private', 0)} private, "
-          f"tiles match their tables, page matches dashboard.json")
+          f"{n.get('eol', 0)} eol, {n.get('unaudited', 0)} unaudited-vendor(s); "
+          f"drift.md, dashboard.html and drift.json all agree")
     return 0
 
 
