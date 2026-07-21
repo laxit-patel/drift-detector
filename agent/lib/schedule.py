@@ -15,6 +15,7 @@ import subprocess
 CONFIG_NAME = "agent.json"
 WRAPPER_NAME = "cron-run.sh"
 LOG_NAME = "cron.log"
+FRESHNESS_LOG = "catalog-check.log"     # latest weekly vendor-source freshness result
 
 
 def _marker(state_dir: str) -> str:
@@ -67,14 +68,16 @@ def _wrapper_script(root: str, state_dir: str, plugin_root: str,
     if pull:
         args += " --pull"
     log = q(os.path.join(state_dir, LOG_NAME))
-    reg = q(os.path.expanduser("~/.claude/plugins/installed_plugins.json"))
+    fresh_log = q(os.path.join(state_dir, FRESHNESS_LOG))
     pinned = q(plugin_root + "/bin/drift-scan")
     return (
         "#!/usr/bin/env bash\n"
         "# drift-detector scheduled run — generated; remove via /drift-detector unschedule\n"
         f"export PATH={q(path_env)}\n"
         "SCAN=\"\"\n"
-        f"REG={reg}\n"
+        # $HOME expanded at RUN time, not baked at generation time — correct even if cron
+        # runs as another user or in a different environment.
+        "REG=\"$HOME/.claude/plugins/installed_plugins.json\"\n"
         "if [ -f \"$REG\" ] && command -v python3 >/dev/null 2>&1; then\n"
         "  P=\"$(python3 -c \"import json,sys;"
         "d=json.load(open(sys.argv[1]));"
@@ -86,7 +89,11 @@ def _wrapper_script(root: str, state_dir: str, plugin_root: str,
         "-path '*drift-detector*' 2>/dev/null | sort -V | tail -1)\"\n"
         f"[ -z \"$SCAN\" ] && [ -x {pinned} ] && SCAN={pinned}\n"
         "[ -z \"$SCAN\" ] && { echo \"drift-detector: runner not found\" >&2; exit 4; }\n"
-        f"\"$SCAN\" {args} >> {log} 2>&1\n")
+        f"\"$SCAN\" {args} >> {log} 2>&1\n"
+        "# weekly freshness: re-check vendor sources against the catalog. Its own log, and\n"
+        "# non-fatal — a new/moved vendor retirement (exit 3) or an unreachable source\n"
+        "# (exit 4) is a heads-up for a human, never a reason to fail the scan job.\n"
+        f"\"$SCAN\" catalog-check --now \"$(date +%F)\" > {fresh_log} 2>&1 || true\n")
 
 
 def install_cron(root: str, state_dir: str, when: str, *, plugin_root: str,

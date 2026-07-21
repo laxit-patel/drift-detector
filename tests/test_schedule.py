@@ -88,3 +88,38 @@ def test_shlex_quotes_path_with_spaces(tmp_path):
     body = (state / "cron-run.sh").read_text()
     # the space-containing root is safely quoted (no bare `--root .../re po` that cron would split)
     assert shlex.quote(os.path.abspath(str(tmp_path / "re po"))) in body
+
+
+def test_wrapper_runs_catalog_check_for_weekly_freshness(tmp_path):
+    """The weekly cron re-checks vendor sources against the catalog, so a new/moved
+    retirement surfaces without anyone remembering to run it by hand."""
+    from agent.lib import schedule
+    state = tmp_path / "s"; state.mkdir()
+    schedule.install_cron(str(tmp_path / "r"), str(state), "0 7 * * 0", plugin_root="/plug",
+                          crontab_run=lambda *a: "")
+    body = (state / "cron-run.sh").read_text()
+    assert "catalog-check --now" in body
+    assert "catalog-check.log" in body
+    assert "|| true" in body                     # freshness is non-fatal to the scan job
+
+
+def test_wrapper_freshness_step_is_non_fatal_and_isolated(tmp_path):
+    """Simulate a run: a fake runner whose catalog-check exits 3 (changes found) must NOT
+    fail the wrapper, and writes its own log."""
+    import subprocess, os, stat
+    from agent.lib import schedule
+    state = tmp_path / "s"; state.mkdir()
+    # a fake drift-scan: `run` succeeds, `catalog-check` exits 3
+    fake_root = tmp_path / "plug"; (fake_root / "bin").mkdir(parents=True)
+    fake = fake_root / "bin" / "drift-scan"
+    fake.write_text('#!/usr/bin/env bash\n'
+                    'if [ "$1" = "catalog-check" ]; then echo "2 changes"; exit 3; fi\n'
+                    'echo "scan ok"; exit 0\n')
+    fake.chmod(fake.stat().st_mode | stat.S_IEXEC)
+    schedule.install_cron(str(tmp_path / "r"), str(state), "0 7 * * 0",
+                          plugin_root=str(fake_root), crontab_run=lambda *a: "")
+    # run the wrapper (no installed_plugins.json here -> falls back to the pinned fake)
+    rc = subprocess.run(["bash", str(state / "cron-run.sh")],
+                        env={**os.environ, "HOME": str(tmp_path)}).returncode
+    assert rc == 0, "catalog-check exit 3 must not fail the scheduled scan job"
+    assert (state / "catalog-check.log").read_text().strip() == "2 changes"
