@@ -121,6 +121,15 @@ def _build_projection(inventory: dict, audit: dict) -> dict:
         # unaudited+stale, because both mean "0 findings here is not evidence of clean".
         "unaudited": sum(1 for r in (audit.get("coverage") or {}).get("catalog", [])
                          if r.get("verdict") != "CURRENT"),
+        # the two delivery streams, tallied from the actions' owner field. devops =
+        # packages + runtimes; developer = API sunsets + frameworks. verify checks these
+        # sum back to the fixes/review totals so the two queues can't silently miscount.
+        "byOwner": {
+            o: {"fixes": sum(1 for a in actions
+                             if a.get("owner") == o and a["status"] == "DEPRECATED"),
+                "review": sum(1 for a in actions
+                              if a.get("owner") == o and a["status"] == "REVIEW")}
+            for o in ("devops", "developer")},
     }
     return {
         # the payload IS drift.json; it names its own contract so any consumer — the

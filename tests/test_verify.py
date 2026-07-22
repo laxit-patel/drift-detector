@@ -182,6 +182,36 @@ def test_live_invariants_hold_on_the_real_payload():
     assert verify.verify_payload(payload, TWELVE) == []
 
 
+# ------------------------------------------------------------------- the owner split
+def test_owner_split_holds_on_the_real_payload():
+    """Every sunset is a developer job; the per-owner counts must reflect that and the
+    integrity check must pass on the honest payload."""
+    payload, _ = _real_payload()
+    verify.check_owner_split(payload)                      # must not raise
+    by = payload["counts"]["byOwner"]
+    dep = sum(1 for a in payload["actions"] if a["status"] == "DEPRECATED")
+    assert by["developer"]["fixes"] == dep and by["devops"]["fixes"] == 0
+
+
+def test_owner_integrity_catches_a_mislabelled_action():
+    """A routing bug that sends a developer's API migration to the DevOps board must be
+    caught: the stored owner disagrees with owners.owner() recomputed from the action."""
+    payload, _ = _real_payload()
+    payload["actions"][0]["owner"] = "devops"             # a sunset is developer work
+    with pytest.raises(Violation) as e:
+        verify.check_owner_split(payload)
+    assert e.value.check == "owner-integrity"
+
+
+def test_owner_count_parity_catches_a_miscount():
+    """If a queue's tally drifts from its actions, the two streams disagree with the data."""
+    payload, _ = _real_payload()
+    payload["counts"]["byOwner"]["developer"]["fixes"] += 1
+    with pytest.raises(Violation) as e:
+        verify.check_owner_split(payload)
+    assert e.value.check == "owner-count-parity"
+
+
 def test_live_blob_parity_between_html_and_payload():
     """dashboard.html embeds exactly the payload dashboard.json holds."""
     from agent.lib.dashboard_render import render_payload

@@ -77,6 +77,43 @@ def sunset_unit(f: dict) -> str:
     return f.get("operation") or f.get("path") or f.get("domain") or f.get("version") or ""
 
 
+def check_owner_split(payload: dict) -> None:
+    """The delivery owner is a DERIVED field, re-checked here so the two issue streams and
+    the two report queues can never disagree with drift.json.
+
+    Two invariants: (1) every action's stored `owner` equals owners.owner() recomputed from
+    its own (kind, refKind) — a hand-edit or a routing bug that mislabels an action (sending
+    a developer's API migration to the DevOps board, say) is caught; (2) the per-owner
+    counts sum back to the DEPRECATED/REVIEW action totals, so neither queue silently
+    drops or double-counts a job.
+    """
+    from agent.lib import owners
+    actions = payload.get("actions", [])
+    for a in actions:
+        want = owners.owner(a)
+        if a.get("owner") != want:
+            raise Violation("owner-integrity",
+                            f"action {a.get('repo')}/{a.get('ref')} is labelled "
+                            f"owner={a.get('owner')!r} but its kind={a.get('kind')!r}/"
+                            f"refKind={a.get('refKind')!r} derives {want!r} — the stream "
+                            f"routing disagrees with the data")
+    by_owner = (payload.get("counts") or {}).get("byOwner") or {}
+    for status_key, status in (("fixes", "DEPRECATED"), ("review", "REVIEW")):
+        summed = sum((by_owner.get(o) or {}).get(status_key, 0) for o in owners.OWNERS)
+        total = sum(1 for a in actions if a.get("status") == status)
+        if summed != total:
+            raise Violation("owner-count-parity",
+                            f"per-owner {status_key} sum to {summed} but {total} actions are "
+                            f"{status} — a queue is miscounting")
+        for o in owners.OWNERS:
+            got = (by_owner.get(o) or {}).get(status_key, 0)
+            exp = sum(1 for a in actions if a.get("owner") == o and a.get("status") == status)
+            if got != exp:
+                raise Violation("owner-count-parity",
+                                f"counts.byOwner.{o}.{status_key}={got} but its filter yields "
+                                f"{exp} actions")
+
+
 def check_tile_counts(payload: dict, findings: list) -> None:
     """Each tile number must equal the rows its own filter yields, AND be reachable
     independently from the findings.
@@ -327,6 +364,7 @@ def verify_payload(payload: dict, findings: list) -> list:
     `drift verify` can report all of them in one pass instead of one per run."""
     out = []
     for fn, args in ((check_tile_counts, (payload, findings)),
+                     (check_owner_split, (payload,)),
                      (check_row_labels_distinct, (payload,)),
                      (check_number_formats, (payload,))):
         try:
