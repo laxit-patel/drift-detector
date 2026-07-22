@@ -70,7 +70,7 @@ def scan_endpoints(matches: list, repo_root: str, vendors: list, *, max_files: i
                    "classified": bool(techKey)}
             groups[key] = rec
         rec["file_count"] += 1
-        if len(rec["files"]) < max_files and loc not in rec["files"]:
+        if loc not in rec["files"]:        # collect all unique locs; sort + cap at the end
             rec["files"].append(loc)
 
     for m in sorted(matches, key=lambda x: 0 if x.get("kind") == "url" else 1):
@@ -164,7 +164,22 @@ def scan_endpoints(matches: list, repo_root: str, vendors: list, *, max_files: i
             if op:
                 residue_ops.append({"operation": op, "loc": loc})
 
-    return {"endpoints": list(groups.values()),
+    # Deterministic output regardless of the engine's match order (which is NOT stable
+    # run-to-run — a container double-run proved the endpoints list reordered between runs).
+    # Detection is order-INDEPENDENT (groups are keyed, attribution uses sets), so this only
+    # canonicalises presentation — but "byte-identical output" (CLAUDE.md principle 3)
+    # requires it. Sort the endpoints, each record's files (then cap), and the residue.
+    def _loc_key(loc):
+        path, _, ln = str(loc).rpartition(":")
+        return (path, int(ln) if ln.isdigit() else 0)
+    for rec in groups.values():
+        rec["files"] = sorted(rec["files"], key=_loc_key)[:max_files]
+    endpoints = sorted(groups.values(), key=lambda r: (
+        r.get("vendor") or "", r.get("domain") or "", str(r.get("version") or ""),
+        r.get("apiPath") or "", str(r.get("operation") or ""), r.get("example") or ""))
+    for lst in (residue_paths, residue_sinks, residue_ops):
+        lst.sort(key=lambda x: _loc_key(x["loc"]))
+    return {"endpoints": endpoints,
             "residue": {"pathLiterals": residue_paths, "sinks": residue_sinks,
                         "operations": residue_ops}}
 

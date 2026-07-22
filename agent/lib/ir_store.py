@@ -9,7 +9,8 @@ from pathlib import Path
 # Per-repo cache schema. BUMP when the record shape changes so pre-upgrade caches are
 # invalidated (a stale cache without new fields would silently under-report — e.g. a repo
 # scanned before privateSources/versionSource existed would look "clean").
-_CACHE_SCHEMA = 6      # 5->6: egress sinks for all 8 languages (ruleset changed)
+_CACHE_SCHEMA = 7      # 6->7: endpoints/files/residue now canonically sorted (determinism
+                       # fix) — a v6 cache holds the OLD match-order list, so invalidate it
 
 
 def _ir_path(state_dir: str) -> Path:

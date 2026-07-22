@@ -18,6 +18,22 @@ def _url(path, line):
     return {"kind": "url", "path": path, "line": line}
 
 
+def test_output_is_deterministic_regardless_of_match_order(tmp_path):
+    """SHIPPED-LATENT BUG: the engine's match order is not stable run-to-run, and endpoints
+    were emitted in insertion order — a container double-run produced two drift.json files
+    with the SAME endpoints in a DIFFERENT order, breaking the byte-identical guarantee.
+    The output must be identical regardless of the order matches arrive in."""
+    _write(tmp_path, "a.php", 'x\n"https://api.stripe.com/v1/charges";\n')
+    _write(tmp_path, "b.php", 'x\n"https://api.stripe.com/v1/refunds";\n')
+    _write(tmp_path, "c.php", 'x\n"https://sellingpartnerapi-na.amazon.com/orders/v0/orders";\n')
+    ms = [_url("a.php", 2), _url("b.php", 2), _url("c.php", 2)]
+    forward = scan_endpoints(ms, str(tmp_path), _VENDORS)
+    reverse = scan_endpoints(list(reversed(ms)), str(tmp_path), _VENDORS)
+    assert forward == reverse
+    assert [e["example"] for e in forward["endpoints"]] == \
+           [e["example"] for e in reverse["endpoints"]]
+
+
 def test_aggregates_endpoints_with_version_and_filelines(tmp_path):
     _write(tmp_path, "a.php", 'x\n$u = "https://sellingpartnerapi-na.amazon.com/orders/v0/orders";\n')
     _write(tmp_path, "b.php", '$v = "https://api.stripe.com/v1/charges";\n')
