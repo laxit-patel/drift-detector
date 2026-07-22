@@ -1,0 +1,64 @@
+# Drift Detector — scheduled fleet scan, run from the drift-ops persistence repo.
+#
+# Deterministic, ZERO AI: pulls the pinned scan container, scans the fleet, verifies, and
+# commits the report + learned overlay back to THIS repo (so history is just git log).
+#
+# One-time setup (see README.md):
+#   • Settings → CI/CD → Variables (masked + protected):
+#       GITLAB_TOKEN = a token with Reporter on every scanned repo (clone + file issues,
+#                      needs `api` scope) AND write access to THIS repo (to commit state).
+#   • Pin the image by DIGEST below — a moving tag would silently change the scanner.
+#   • Settings → CI/CD → Schedules: add a weekly schedule (e.g. Sundays 07:00).
+
+# Run ONLY on a schedule or a manual "Run pipeline" — never on push. The persist job pushes
+# a commit back, so running on push would loop forever.
+workflow:
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "schedule"'
+    - if: '$CI_PIPELINE_SOURCE == "web"'
+    - when: never
+
+default:
+  image: ghcr.io/laxit-patel/drift-detector-scan@sha256:REPLACE_WITH_PUBLISHED_IMAGE_DIGEST
+
+variables:
+  DRIFT_CATALOG_DIR: catalog        # the writable overlay in this checkout (absorbed entries)
+  GIT_DEPTH: "1"
+
+stages: [scan, persist]
+
+scan:
+  stage: scan
+  resource_group: drift-scan        # serialise: never let two scheduled runs race
+  script:
+    # build the --root list from config/fleet.yaml (python + pyyaml are in the image)
+    - ROOTS=$(python3 -c "import yaml;print(' '.join('--root '+r for r in (yaml.safe_load(open('config/fleet.yaml')) or {}).get('roots',[])))")
+    - test -n "$ROOTS" || { echo "config/fleet.yaml lists no roots"; exit 4; }
+    - drift run $ROOTS --state state --now "$(date +%F)" --pull
+    # exit 4 (nothing scanned / a source unreachable) FAILS the pipeline — red, not a green
+    # checkmark over an unread fleet. exit 3 (findings exist) does NOT fail: those are issues.
+    - drift verify --state state
+  artifacts:
+    when: always
+    expire_in: 30 days
+    paths:
+      - state/drift.md
+      - state/drift.json
+      - state/dashboard.html
+      - state/chart.html
+
+persist:
+  stage: persist
+  needs: [scan]
+  script:
+    - git config user.name "Drift Detector"
+    - git config user.email "drift@${CI_SERVER_HOST}"
+    - git add state catalog
+    - |
+      if git diff --cached --quiet; then
+        echo "no changes to persist"; exit 0
+      fi
+    - SUMMARY=$(python3 -c "import json;c=json.load(open('state/drift.json'))['counts'];bo=c.get('byOwner',{});print('%d fix / %d review — devops %d, developer %d' % (c.get('fixes',0), sum(o.get('review',0) for o in bo.values()), bo.get('devops',{}).get('fixes',0), bo.get('developer',{}).get('fixes',0)))" 2>/dev/null || echo "scan")
+    # [skip ci] so this state commit can never trigger another pipeline
+    - git commit -m "scan $(date +%F): ${SUMMARY} [skip ci]"
+    - git push "https://oauth2:${GITLAB_TOKEN}@${CI_SERVER_HOST}/${CI_PROJECT_PATH}.git" "HEAD:${CI_DEFAULT_BRANCH}"

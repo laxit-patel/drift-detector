@@ -1,0 +1,6 @@
+# The fleet to scan. Each root is a GitLab repo URL, or a group/namespace URL (which scans
+# every repo the token can see under it). The scan token (GITLAB_TOKEN) needs Reporter on
+# each. Edit this list to add or remove repos — no pipeline change needed.
+roots:
+  - https://git.topsdemo.in/chetan/amazonspapi
+  - https://git.topsdemo.in/rushikesh/ebayapi
