@@ -17,6 +17,8 @@ Deterministic: pure function of the payload, `json.dumps`-stable upstream.
 """
 from __future__ import annotations
 
+from agent.lib import owners
+
 SCHEMA_VERSION = "drift/v1"
 
 
@@ -170,22 +172,13 @@ def render_markdown(payload: dict, now: str) -> str:
     ])
     L.append("")
 
-    # --- findings by kind ---
-    # Repo is the FIRST column: the same finding (a vendored SDK, a shared runtime) can
-    # appear in several repos with an identical repo-relative call-site, so without the
-    # repo those rows render byte-identical — a reader cannot tell which repo is exposed,
-    # and the md-row-identity check (correctly) rejects the report. The repo is the
+    # --- findings, split into the two delivery queues (DevOps vs Developer) ---
+    # Repo is the FIRST column of every table: the same finding (a vendored SDK, a shared
+    # runtime) can appear in several repos with an identical repo-relative call-site, so
+    # without the repo those rows render byte-identical — a reader cannot tell which repo is
+    # exposed, and the md-row-identity check (correctly) rejects the report. The repo is the
     # disambiguator AND the thing a reader most needs: which of my repos does this hit.
-    for kind, title, cols in (
-        ("sunset", "Vendor API sunsets", ["Repo", "API", "Status", "Retires", "Call-sites", "First call-site"]),
-        ("eol", "Runtime / framework end-of-life", ["Repo", "Component", "Status", "EOL", "Call-sites", "First call-site"]),
-        ("cve", "Package vulnerabilities", ["Repo", "Package", "Status", "Fix", "Call-sites", "First call-site"]),
-    ):
-        group = [a for a in actions if a.get("kind") == kind]
-        if not group:
-            continue
-        L.append(f"## {title}")
-        L.append("")
+    def _render_group(group, cols, is_sunset):
         rows = []
         for a in group:
             when = a.get("date") or a.get("fix_version") or "—"
@@ -194,17 +187,51 @@ def render_markdown(payload: dict, now: str) -> str:
             sites = len(a.get("files") or []) or a.get("finding_count", 0)
             rows.append([a.get("repo", ""), _action_label(a), a.get("status", ""),
                          when, sites, _first_loc(a)])
-        L += _table(cols, rows)
+        L.extend(_table(cols, rows))
         L.append("")
         # the exposure graph rides UNDER the sunsets table, never replacing it
-        if kind == "sunset":
+        if is_sunset:
             graph = _mermaid_exposure(group, now)
             if graph:
                 L.append("**Exposure** — retiring surfaces this code calls "
                          "(red = already removed, amber = deadline ahead):")
                 L.append("")
-                L += graph
+                L.extend(graph)          # not L += graph: += would rebind L as a local
                 L.append("")
+
+    _C_SUN = ["Repo", "API", "Status", "Retires", "Call-sites", "First call-site"]
+    _C_EOL = ["Repo", "Component", "Status", "EOL", "Call-sites", "First call-site"]
+    _C_CVE = ["Repo", "Package", "Status", "Fix", "Call-sites", "First call-site"]
+    # each queue is the work ONE team owns; sub-categories keep the kind-specific columns.
+    # The eol split mirrors owners.owner(): refKind runtime -> DevOps, else Developer, so no
+    # eol action can fall between the two tables.
+    queues = (
+        ("devops", "DevOps queue — packages & runtimes", (
+            ("Package vulnerabilities", _C_CVE, lambda a: a.get("kind") == "cve", False),
+            ("Runtime end-of-life", _C_EOL,
+             lambda a: a.get("kind") == "eol" and a.get("refKind") == "runtime", False),
+        )),
+        ("developer", "Developer queue — vendor APIs & frameworks", (
+            ("Vendor API sunsets", _C_SUN, lambda a: a.get("kind") == "sunset", True),
+            ("Framework end-of-life", _C_EOL,
+             lambda a: a.get("kind") == "eol" and a.get("refKind") != "runtime", False),
+        )),
+    )
+    for owner_key, qtitle, cats in queues:
+        # honour the stored owner (a verified field); derive it only if a caller handed us
+        # an action without one, so the renderer never silently drops a job
+        q_actions = [a for a in actions if (a.get("owner") or owners.owner(a)) == owner_key]
+        if not q_actions:
+            continue
+        L.append(f"## {qtitle}")
+        L.append("")
+        for ctitle, cols, pred, is_sunset in cats:
+            group = [a for a in q_actions if pred(a)]
+            if not group:
+                continue
+            L.append(f"### {ctitle}")
+            L.append("")
+            _render_group(group, cols, is_sunset)
 
     # --- coverage: shape + catalog verdicts (sentences + a table) ---
     grades = payload.get("coverageGrades", [])

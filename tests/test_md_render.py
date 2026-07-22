@@ -37,6 +37,35 @@ def test_operation_appears_in_a_row_not_a_bare_vendor():
     assert "Amazon SP-API /orders/v0" in out
 
 
+def test_findings_split_into_the_two_owner_queues():
+    """A mixed payload routes package/runtime work to the DevOps queue and API/framework
+    work to the Developer queue — the split DevOps asked for."""
+    p = _payload(actions=[
+        {"kind": "cve", "ref": "composer/aws/aws-sdk-php", "unit": None, "owner": "devops",
+         "status": "DEPRECATED", "date": None, "fix_version": "3.283",
+         "finding_count": 4, "files": [{"loc": "composer.json:1"}]},
+        {"kind": "eol", "ref": "php", "refKind": "runtime", "owner": "devops",
+         "status": "DEPRECATED", "date": "2022-11-28", "finding_count": 1,
+         "files": [{"loc": "composer.json:5"}]},
+        {"kind": "eol", "ref": "laravel", "refKind": "framework", "owner": "developer",
+         "status": "REVIEW", "date": "2025-02-01", "finding_count": 1,
+         "files": [{"loc": "composer.json:6"}]},
+        {"kind": "sunset", "ref": "eBay", "unit": "GetCategories", "owner": "developer",
+         "status": "DEPRECATED", "date": "2025-01-01", "finding_count": 1,
+         "files": [{"loc": "src/Ebay.php:9"}]},
+    ], counts={"fixes": 3, "sunsets": 1, "pastDue": 1, "eol": 2, "critical": 0,
+               "unaudited": 0, "reposAffected": 1, "reposScanned": 1})
+    out = md.render_markdown(p, "2026-07-21")
+    devops, dev = out.index("## DevOps queue"), out.index("## Developer queue")
+    assert devops < dev                                          # DevOps queue first
+    # package + runtime land under DevOps; sunset + framework under Developer
+    assert out.index("composer/aws/aws-sdk-php") < dev
+    assert out.index("### Runtime end-of-life") < dev
+    assert out.index("### Vendor API sunsets") > dev
+    assert out.index("### Framework end-of-life") > dev
+    assert out.rindex("eBay GetCategories") > dev              # the row, under Developer
+
+
 def test_every_finding_has_its_own_date_column():
     out = md.render_markdown(_payload(), "2026-07-21")
     assert "2025-01-21" in out and "2027-03-27" in out
