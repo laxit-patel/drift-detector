@@ -1,0 +1,49 @@
+# Build and publish the deterministic, no-AI SCAN container to GHCR.
+#
+# The image is built FROM this public repo, so the GHCR image is just a build artifact of
+# code anyone can read. Make the package PUBLIC once in the repo's Packages settings so
+# GitLab CI can pull it with no cross-vendor pull secret. Every push is tagged by version
+# AND by commit sha; consumers pin by DIGEST (see docs/CONTAINER.md).
+name: container
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  build-push:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Derive tags + labels
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ghcr.io/laxit-patel/drift-detector-scan
+          tags: |
+            type=semver,pattern={{version}}
+            type=sha
+
+      - name: Build and push
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          provenance: false
