@@ -7,6 +7,8 @@ from pathlib import Path
 
 import yaml
 
+from agent.lib import catalog_overlay
+
 # Captures /v3, /v24.0, /2010-10-01, /2021-06-30 — the version forms in the PM's inventory.
 DEFAULT_VERSION_REGEX = r'/(v[0-9][0-9.]*|[0-9]{4}-[0-9]{2}-[0-9]{2}|[0-9]{4}-[0-9]{2})'
 
@@ -28,11 +30,13 @@ def vendor_slug(vendor: str) -> str:
 
 
 def load_vendors(path: str | None = None) -> list:
-    path = path or _DEFAULT_VENDORS
-    with open(path, "r", encoding="utf-8") as fh:
+    # a default (no explicit path) load layers the writable overlay on top of the package
+    # baseline; an explicit path means "load exactly this file" (tests, catalog tools).
+    overlay = catalog_overlay.load_list(catalog_overlay.VENDORS) if path is None else []
+    with open(path or _DEFAULT_VENDORS, "r", encoding="utf-8") as fh:
         raw = yaml.safe_load(fh) or []
     out = []
-    for d in raw:
+    for d in list(raw) + list(overlay):
         out.append(Vendor(
             vendor=d["vendor"], techKey=d["techKey"],
             domains=tuple(d.get("domains") or []),

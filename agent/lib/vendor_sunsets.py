@@ -11,6 +11,8 @@ from pathlib import Path
 
 import yaml
 
+from agent.lib import catalog_overlay
+
 _DEFAULT = str(Path(__file__).resolve().parent.parent / "vendor_sunsets.yaml")
 
 
@@ -29,6 +31,10 @@ def load_sunsets(path: str | None = None) -> list:
     """
     with open(path or _DEFAULT, encoding="utf-8") as fh:
         raw = yaml.safe_load(fh) or []
+    # a default load layers the writable overlay (baseline first); each overlay entry runs
+    # the SAME scope validation below, so a malformed absorbed sunset is an error, not a skip
+    if path is None:
+        raw = list(raw) + catalog_overlay.load_list(catalog_overlay.SUNSETS)
     out = []
     for i, s in enumerate(raw):
         # need a vendor plus a scope: a version (or "*"), a domain, an operation, or an

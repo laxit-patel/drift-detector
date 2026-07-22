@@ -63,13 +63,29 @@ the fleet config, the catalog overlay, and the committed-back state. A minimal s
 # .gitlab-ci.yml in drift-ops — pin by DIGEST, not a moving tag
 scan:
   image: ghcr.io/laxit-patel/drift-detector-scan@sha256:<digest>
+  variables:
+    GITLAB_TOKEN: $DRIFT_READ_TOKEN        # clone + group expansion; masked CI variable
+    DRIFT_CATALOG_DIR: catalog             # the writable overlay in the drift-ops checkout
   script:
     - drift run --root "$FLEET_GROUP_URL" --state state --now "$(date +%F)" --pull
     - drift verify --state state           # exit 4 fails the pipeline; exit 3 does NOT
-  variables:
-    GITLAB_TOKEN: $DRIFT_READ_TOKEN        # clone + group expansion; masked CI variable
 ```
 
 `--pull` needs `git` (baked in) and a read token (`GITLAB_TOKEN`/`DRIFT_GIT_TOKEN`, read at
 run time, never stored). `drift deliver` (the two issue streams) and committing state back to
 `drift-ops` are the next build steps.
+
+## The catalog overlay — how the container learns
+
+The catalogs inside the image are read-only, so a scan reads
+**`package baseline + overlay`**: point `DRIFT_CATALOG_DIR` at a directory (in production, the
+`catalog/` dir of the `drift-ops` checkout) holding any of `vendors.local.yaml`,
+`idioms.local.yaml`, `sunsets.local.yaml`, `attestations.local.yaml`. Each is a YAML list
+layered on top of the package file, baseline first (deterministic). Unset the env var and you
+get exactly the baseline.
+
+This is how the Learn loop's output reaches the next scan without an image rebuild: an
+`drift absorb` run (with `DRIFT_CATALOG_DIR` set) writes verified entries **into the overlay**,
+they land in `drift-ops` as a reviewed diff, and the next scheduled `drift run` reads them.
+Proven end to end: an overlay `sunsets.local.yaml` adding one Amazon `/sellers/v1` retirement
+turns up as a new finding at `src/Api/SellersApi.php:19`, no package edit and no rebuild.

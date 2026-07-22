@@ -26,6 +26,8 @@ from pathlib import Path
 
 import yaml
 
+from agent.lib import catalog_overlay
+
 _DEFAULT = str(Path(__file__).resolve().parent.parent / "catalog_attestations.yaml")
 
 # Vendors publish on their own cadence; a quarter is the coarsest window in which a
@@ -48,6 +50,10 @@ def load_attestations(path: str | None = None) -> dict:
             raw = yaml.safe_load(fh) or []
     except FileNotFoundError:
         return {}
+    # a default load layers the overlay (baseline first); a later entry for a vendor wins,
+    # so a re-attestation in the overlay updates the date the scan trusts.
+    if path is None:
+        raw = list(raw) + catalog_overlay.load_list(catalog_overlay.ATTESTATIONS)
     out = {}
     for a in raw:
         if isinstance(a, dict) and a.get("vendor") and a.get("checked") and a.get("source"):

@@ -15,6 +15,8 @@ import os
 
 import yaml
 
+from agent.lib import catalog_overlay
+
 _DEFAULT = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
                         "idioms.yaml")
 
@@ -57,6 +59,10 @@ def load_idioms(path: str | None = None) -> list:
         raw = yaml.safe_load(fh) or []
     if not isinstance(raw, list):
         raise IdiomError("idioms file must be a YAML list of instances")
+    # layer the writable overlay (baseline first) on a default load; the dup-id check below
+    # then runs over the COMBINED set, so an absorbed idiom cannot silently shadow a baseline
+    if path is None:
+        raw = list(raw) + catalog_overlay.load_list(catalog_overlay.IDIOMS)
     for i, inst in enumerate(raw):
         _validate(inst, f"idiom #{i} ({inst.get('id') if isinstance(inst, dict) else inst!r})")
     ids = [i["id"] for i in raw]
