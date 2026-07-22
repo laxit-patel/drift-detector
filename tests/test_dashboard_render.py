@@ -117,6 +117,20 @@ def _sunset(repo, status, date, ref="eBay"):
             "files": [f"src/{repo}.php:1"]}
 
 
+def test_owner_tiles_and_filter_split_the_two_streams():
+    cve = _cve(repo="web", severity="HIGH")                    # -> devops
+    sunset = _sunset("ebayapi", "DEPRECATED", "2025-01-01")    # -> developer
+    html = render_dashboard(_inv(), _audit([cve, sunset]), "2026-07-15")
+    data = _blob(html)
+    assert data["counts"]["byOwner"] == {"devops": {"fixes": 1, "review": 0},
+                                         "developer": {"fixes": 1, "review": 0}}
+    assert 'data-filter="devops"' in html and 'data-filter="developer"' in html
+    assert 'a.owner==="devops"' in html                        # the JS filter is wired
+    # each projected action carries its owner
+    owners = {a["ref"]: a["owner"] for a in data["actions"]}
+    assert owners["npm/axios"] == "devops" and owners["eBay"] == "developer"
+
+
 def test_pastdue_counts_only_retired_sunsets():
     # retired (DEPRECATED + past date) counts; upcoming (REVIEW + future date) and a
     # deprecated-but-no-date-announced sunset do NOT — "past-due" means a passed deadline.

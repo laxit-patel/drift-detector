@@ -208,7 +208,14 @@ def render_payload(projection: dict, now: str) -> str:
     parts.append('<button id="theme-toggle" title="Toggle light/dark">◐</button>')
     parts.append("</header>")
     # tile groups
+    bo = c.get("byOwner") or {}
+    _own = lambda o: (bo.get(o) or {}).get("fixes", 0) + (bo.get(o) or {}).get("review", 0)
     parts.append('<section class="tiles">')
+    # the two delivery streams: clicking filters the queue to that team's jobs. Totals are
+    # byOwner sums, which verify (check_owner_split) ties back to the actions per owner.
+    parts.append(_tile_group("Ownership", [
+        ("devops", "DevOps", _own("devops")),
+        ("developer", "Developer", _own("developer"))]))
     parts.append(_tile_group("Security", [
         ("critical", "Critical", c["critical"]),
         ("fixes", "Fixes", c["fixes"]),
@@ -315,6 +322,8 @@ _CLIENT_JS = r"""
       if(f==="critical") return a.worst==="CRITICAL";
       if(f==="fixes")    return a.status==="DEPRECATED";
       if(f==="eol")      return a.kind==="eol";
+      if(f==="devops")   return a.owner==="devops";      // the two delivery streams
+      if(f==="developer")return a.owner==="developer";
       if(f==="sunsets")  return a.kind==="sunset";
       // "Past-due" = a sunset already retired (DEPRECATED with a passed date) — an
       // integration broken NOW, distinct from an upcoming deadline or a CVE fix.
