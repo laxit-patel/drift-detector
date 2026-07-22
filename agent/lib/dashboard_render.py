@@ -32,7 +32,8 @@ def _project_action(a: dict) -> dict:
     return {
         "repo": a.get("repo"), "ref": a.get("ref"), "unit": a.get("unit"),
         "date": a.get("date"), "pkg": a.get("pkg"),
-        "kind": a.get("kind"), "current_version": a.get("current_version"),
+        "kind": a.get("kind"), "refKind": a.get("refKind"), "owner": a.get("owner"),
+        "current_version": a.get("current_version"),
         "fix_version": a.get("fix_version"), "command": a.get("command"),
         "recommendation": a.get("recommendation"), "worst": a.get("worst"),
         "status": a.get("status"), "finding_count": a.get("finding_count"),

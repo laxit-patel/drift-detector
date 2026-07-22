@@ -10,6 +10,7 @@ from __future__ import annotations
 
 from collections import OrderedDict
 
+from agent.lib import owners
 from agent.lib.ranking import severity_rank, semver_key, is_version
 
 _MAX_FILES = 6
@@ -101,6 +102,10 @@ def build_actions(findings: list) -> list:
             "eco": eco,
             "pkg": pkg,
             "kind": kind,
+            # refKind (runtime|framework|None) splits the eol stream; owner is the derived
+            # delivery stream, recomputed from (kind, refKind) so verify can re-check it.
+            "refKind": worst_f.get("refKind"),
+            "owner": owners.owner({"kind": kind, "refKind": worst_f.get("refKind")}),
             # what is actually retiring — the row label is "eBay GetCategoryFeatures",
             # not a bare "eBay" repeated down twelve identical-looking rows.
             "unit": _sunset_unit(worst_f) if kind == "sunset" else None,

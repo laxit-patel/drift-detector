@@ -7,7 +7,7 @@ unreachable it is skipped and noted in coverage — never fabricated, never a ha
 """
 from __future__ import annotations
 
-from agent.lib import osv, eol, vendor_sunsets, catalog_coverage, version_lifecycle
+from agent.lib import osv, eol, vendor_sunsets, catalog_coverage, version_lifecycle, owners
 from agent.lib.http_util import default_http
 from agent.lib.version_floor import floor
 from agent.lib.purl import osv_ecosystem
@@ -22,10 +22,13 @@ def _cve_status(severity: str) -> str:
 
 
 def _runtime_products(repo: dict):
+    # yields (product, version-spec, refKind) — refKind splits the eol stream: a runtime
+    # (php/node/python) is DevOps' base-image work, a framework (laravel/django) is the
+    # developers' app-code migration. See agent/lib/owners.py.
     for name, rt in (repo.get("runtimes") or {}).items():
-        yield name, (rt or {}).get("range")
+        yield name, (rt or {}).get("range"), "runtime"
     for name, fw in (repo.get("frameworks") or {}).items():
-        yield name, (fw or {}).get("ver")
+        yield name, (fw or {}).get("ver"), "framework"
 
 
 def _sunset_recommendation(replacement, retires, now: str) -> str:
@@ -195,7 +198,7 @@ def audit_inventory(doc: dict, now: str, *, http=None,
                     "recommendation": (f"upgrade to >= {v['fixed']}" if v.get("fixed") else "review advisory"),
                 })
         # --- runtimes + frameworks -> endoflife ---
-        for product, spec in _runtime_products(r):
+        for product, spec, ref_kind in _runtime_products(r):
             fl = floor(spec)
             if product_slug(product) is None or fl is None:
                 continue
@@ -214,7 +217,7 @@ def audit_inventory(doc: dict, now: str, *, http=None,
             if res and res["status"] != "OK":
                 findings.append({
                     "repo": path, "kind": "eol", "ref": product, "version": spec,
-                    "fixed": res.get("recommended"),
+                    "refKind": ref_kind, "fixed": res.get("recommended"),
                     "status": res["status"], "severity": "EOL",
                     "detail": f"{product} {res['cycle']} end-of-life {res.get('eol_date') or ''}".strip(),
                     "date": res.get("eol_date"), "source_url": res["source_url"], "tier": 1,
@@ -223,6 +226,12 @@ def audit_inventory(doc: dict, now: str, *, http=None,
         # --- endpoints -> vendor-sunset catalog (the code-level layer) ---
         findings.extend(_sunset_findings(r, sun_index, now))
         findings.extend(_lifecycle_findings(r, now))       # computed (Shopify &c.)
+
+    # stamp the delivery owner on every finding (devops = packages+runtimes,
+    # developer = API sunsets+frameworks) so both the two-queue report and the two issue
+    # streams are projections of one verified field. See agent/lib/owners.py.
+    for f in findings:
+        f["owner"] = owners.owner(f)
 
     coverage["notes"].append("Vendor API sunsets: curated catalog (agent/vendor_sunsets.yaml) joined against endpoints — extend it with your vendors' announcements.")
     plain = [r.get("path") for r in repos if r.get("sourceKind") == "local-plain"]
