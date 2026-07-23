@@ -59,6 +59,8 @@ persist:
         echo "no changes to persist"; exit 0
       fi
     - SUMMARY=$(python3 -c "import json;c=json.load(open('state/drift.json'))['counts'];bo=c.get('byOwner',{});print('%d fix / %d review — devops %d, developer %d' % (c.get('fixes',0), sum(o.get('review',0) for o in bo.values()), bo.get('devops',{}).get('fixes',0), bo.get('developer',{}).get('fixes',0)))" 2>/dev/null || echo "scan")
-    # [skip ci] so this state commit can never trigger another pipeline
-    - git commit -m "scan $(date +%F): ${SUMMARY} [skip ci]"
+    # [skip ci] so this state commit can never trigger another pipeline. Single-quoted so
+    # the ": " in the message is a literal string, not a YAML key/value (GitLab rejects a
+    # script item that parses as a mapping).
+    - 'git commit -m "scan $(date +%F): ${SUMMARY} [skip ci]"'
     - git push "https://oauth2:${GITLAB_TOKEN}@${CI_SERVER_HOST}/${CI_PROJECT_PATH}.git" "HEAD:${CI_DEFAULT_BRANCH}"

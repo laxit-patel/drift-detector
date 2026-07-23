@@ -33,6 +33,15 @@ def test_overlay_and_serialisation_are_configured():
     assert CI["scan"]["resource_group"]                 # no two runs race on the state push
 
 
+def test_every_script_line_is_a_string():
+    """GitLab rejects a script item that parses as anything but a string. A ': ' in a
+    command (e.g. a commit message) turns the line into a YAML mapping unless it's quoted —
+    which is exactly the config error that failed the first pipeline."""
+    for job in ("scan", "persist"):
+        for i, item in enumerate(CI[job]["script"]):
+            assert isinstance(item, str), f"{job}:script[{i}] is {type(item).__name__}: {item!r}"
+
+
 def test_scan_verifies_before_persisting():
     script = " ".join(CI["scan"]["script"])
     assert "drift run" in script and "drift verify" in script
