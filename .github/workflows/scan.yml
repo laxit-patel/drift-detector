@@ -1,0 +1,113 @@
+# Drift Detector — scheduled fleet scan on GitHub Actions (ephemeral compute), persisting to
+# a PRIVATE GitLab repo. No self-hosted runner, no container registry: GitHub runs the job,
+# GitLab holds the fleet, the learned overlay, the report history (and, later, the issues).
+#
+# The scanner code IS this repo — the job checks it out and runs it directly. The only
+# GitLab credential is a PAT stored as the `GITLAB_TOKEN` GitHub secret; it clones the fleet,
+# clones the drift-ops persistence repo, and pushes state back. Deterministic, zero AI.
+#
+# Setup:
+#   • Repo → Settings → Secrets and variables → Actions → New secret:
+#       GITLAB_TOKEN = a GitLab PAT with Reporter on every scanned repo (`api` scope) and
+#       write access to the drift-ops repo. (The same token the GitLab-CI path would use.)
+#   • Adjust GITLAB_HOST / DRIFT_OPS_PATH below to your instance + persistence repo.
+#   • The fleet to scan lives in the drift-ops repo at config/fleet.yaml.
+
+name: drift-scan
+
+on:
+  schedule:
+    - cron: "0 7 * * 0"        # Sundays 07:00 UTC
+  workflow_dispatch: {}         # manual "Run workflow"
+
+permissions:
+  contents: read                # we push to GitLab, not to this GitHub repo
+
+concurrency:
+  group: drift-scan             # never let two runs race on the state push
+  cancel-in-progress: false
+
+env:
+  GITLAB_HOST: git.topsdemo.in
+  DRIFT_OPS_PATH: root/drift-detector          # the GitLab persistence repo
+  AST_GREP_VERSION: "0.44.1"
+  AST_GREP_SHA256: "d2716ddc04f67af933ebaaab39404a184d4fae84e43402fe9b3232b1cdc83728"
+
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout the scanner (this repo)
+        uses: actions/checkout@v4
+
+      - name: Reachability — can GitHub reach the private GitLab?
+        run: |
+          if curl -fsS --max-time 20 -H "PRIVATE-TOKEN: ${GITLAB_TOKEN}" \
+               "https://${GITLAB_HOST}/api/v4/version" >/dev/null; then
+            echo "GitLab reachable and token accepted ✓"
+          else
+            echo "::error::Cannot reach https://${GITLAB_HOST} from GitHub runners (internal-only?), or the token was rejected."
+            exit 1
+          fi
+        env:
+          GITLAB_TOKEN: ${{ secrets.GITLAB_TOKEN }}
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install PyYAML + the pinned, sha256-verified engine
+        run: |
+          pip install --quiet --no-cache-dir pyyaml
+          curl -fsSL -o /tmp/sg.zip \
+            "https://github.com/ast-grep/ast-grep/releases/download/${AST_GREP_VERSION}/app-x86_64-unknown-linux-gnu.zip"
+          unzip -qo /tmp/sg.zip -d /tmp
+          echo "${AST_GREP_SHA256}  /tmp/ast-grep" | sha256sum -c -
+          sudo install -m 0755 /tmp/ast-grep /usr/local/bin/ast-grep
+
+      - name: Clone drift-ops (fleet config + learned overlay + state history)
+        run: |
+          git clone --depth 1 \
+            "https://oauth2:${GITLAB_TOKEN}@${GITLAB_HOST}/${DRIFT_OPS_PATH}.git" drift-ops
+        env:
+          GITLAB_TOKEN: ${{ secrets.GITLAB_TOKEN }}
+
+      - name: Scan the fleet + verify
+        env:
+          GITLAB_TOKEN: ${{ secrets.GITLAB_TOKEN }}
+          DRIFT_CATALOG_DIR: ${{ github.workspace }}/drift-ops/catalog
+        run: |
+          ROOTS=$(python3 -c "import yaml;print(' '.join('--root '+r for r in (yaml.safe_load(open('drift-ops/config/fleet.yaml')) or {}).get('roots',[])))")
+          test -n "$ROOTS" || { echo "::error::drift-ops/config/fleet.yaml lists no roots"; exit 4; }
+          python3 -m agent.cli run $ROOTS --state drift-ops/state --now "$(date +%F)" --pull
+          # exit 4 (nothing scanned / source unreachable) fails the job; exit 3 (findings) does not
+          python3 -m agent.cli verify --state drift-ops/state
+
+      - name: Persist state + overlay back to drift-ops
+        env:
+          GITLAB_TOKEN: ${{ secrets.GITLAB_TOKEN }}
+        run: |
+          cd drift-ops
+          BRANCH=$(git rev-parse --abbrev-ref HEAD)      # drift-ops' own default branch
+          git config user.name "Drift Detector"
+          git config user.email "drift@${GITLAB_HOST}"
+          git add state catalog
+          if git diff --cached --quiet; then
+            echo "no changes to persist"; exit 0
+          fi
+          SUMMARY=$(python3 -c "import json;c=json.load(open('state/drift.json'))['counts'];bo=c.get('byOwner',{});print('%d fix / %d review — devops %d, developer %d' % (c.get('fixes',0), sum(o.get('review',0) for o in bo.values()), bo.get('devops',{}).get('fixes',0), bo.get('developer',{}).get('fixes',0)))" 2>/dev/null || echo scan)
+          # [skip ci] in case a GitLab runner is ever added — the state push must not re-trigger
+          git commit -m "scan $(date +%F): ${SUMMARY} [skip ci]"
+          git push origin "HEAD:${BRANCH}"               # origin carries the token from the clone URL
+
+      - name: Upload the report as a run artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: drift-report
+          path: |
+            drift-ops/state/drift.md
+            drift-ops/state/drift.json
+            drift-ops/state/dashboard.html
+            drift-ops/state/chart.html
+          if-no-files-found: ignore
