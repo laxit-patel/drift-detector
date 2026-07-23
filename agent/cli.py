@@ -421,6 +421,54 @@ def _cmd_mute(args) -> int:
     return 0
 
 
+def _cmd_deliver(args) -> int:
+    """Project the verified findings into GitLab: DevOps issues + Developer draft MRs.
+
+    Runs AFTER `verify` (delivery is a projection of the verified payload — only verified
+    data leaves the machine). --dry-run prints the plan and writes nothing. Idempotent: a
+    re-scan updates issues/MRs in place, never duplicates. Exit 0 ok, 4 nothing to deliver,
+    3 something was unroutable (a developer finding with no known GitLab project).
+    """
+    import json as _json
+    import os as _os
+    from agent.lib import delivery, gitlab_api
+
+    try:
+        with open(_os.path.join(args.state, "drift.json"), encoding="utf-8") as fh:
+            payload = _json.load(fh)
+        with open(_os.path.join(args.state, "inventory.json"), encoding="utf-8") as fh:
+            inventory = _json.load(fh)
+    except OSError as exc:
+        print(f"drift deliver: nothing to deliver — {exc}", file=sys.stderr)
+        return 4
+
+    repo_meta = {}
+    for r in inventory.get("repos", []):
+        pp = delivery.project_path(r.get("remote_url"))
+        if pp:
+            repo_meta[r.get("path")] = {"project": pp}
+
+    token = _os.environ.get("GITLAB_TOKEN") or _os.environ.get("DRIFT_GIT_TOKEN")
+    gl = gitlab_api.GitLab(args.gitlab_host, token)
+    dev_projects = sorted({m["project"] for m in repo_meta.values()})
+    existing = delivery.fetch_existing(gl, args.devops_project, dev_projects)
+    plan = delivery.build_plan(payload, repo_meta, existing, args.devops_project)
+
+    print(delivery.plan_summary(plan))
+    print()
+    print(delivery.plan_detail(plan))
+    unroutable = [m for m in plan["mrs"] if m["op"] == "unroutable"]
+
+    if args.dry_run:
+        print("\n(dry run — nothing written)")
+        return 3 if unroutable else 0
+
+    done = delivery.execute_plan(gl, plan)
+    print(f"\n✓ delivered: {done['created']} created · {done['updated']} updated · "
+          f"{done['closed']} closed" + (f" · {done['unroutable']} UNROUTABLE" if done['unroutable'] else ""))
+    return 3 if unroutable else 0
+
+
 def main(argv: list[str]) -> int:
     p = argparse.ArgumentParser(prog="drift-detector")
     sub = p.add_subparsers(dest="cmd", required=True)
@@ -434,6 +482,15 @@ def main(argv: list[str]) -> int:
     pr.add_argument("--fail-on-deprecated", action="store_true",
                     help="exit 3 if any un-muted DEPRECATED finding (CI gate)")
     pr.set_defaults(func=_cmd_run)
+
+    pdl = sub.add_parser("deliver")       # findings -> GitLab issues (DevOps) + draft MRs (Dev)
+    pdl.add_argument("--state", required=True)
+    pdl.add_argument("--gitlab-host", required=True)
+    pdl.add_argument("--devops-project", required=True,
+                     help="GitLab project path where DevOps issues are filed (e.g. root/drift-detector)")
+    pdl.add_argument("--dry-run", action="store_true",
+                     help="print the create/update/close plan without writing anything")
+    pdl.set_defaults(func=_cmd_deliver)
 
     psc = sub.add_parser("schedule")
     psc.add_argument("--root", required=True)
