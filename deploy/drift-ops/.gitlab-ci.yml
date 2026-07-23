@@ -1,17 +1,17 @@
 # Drift Detector — scheduled fleet scan, run from the drift-ops persistence repo.
 #
-# Deterministic, ZERO AI: pulls the pinned scan container, scans the fleet, verifies, and
-# commits the report + learned overlay back to THIS repo (so history is just git log).
+# CONTAINER-FREE: runs on the stock public python image and pulls the pinned scan engine at
+# run time, so it needs NO container registry. (A prebuilt image is also available — see the
+# plugin's Dockerfile — if your GitLab has a container registry; then set `image:` to it.)
+# The scanner itself is bundled in scanner/ (no AI: just the agent/ package). Deterministic.
 #
 # One-time setup (see README.md):
-#   • Settings → CI/CD → Variables (masked + protected):
-#       GITLAB_TOKEN = a token with Reporter on every scanned repo (clone + file issues,
-#                      needs `api` scope) AND write access to THIS repo (to commit state).
-#   • Pin the image by DIGEST below — a moving tag would silently change the scanner.
+#   • Settings → CI/CD → Variables (masked): GITLAB_TOKEN = a token with Reporter on every
+#     scanned repo (clone + file issues, `api` scope) AND write to THIS repo (commit state).
 #   • Settings → CI/CD → Schedules: add a weekly schedule (e.g. Sundays 07:00).
 
-# Run ONLY on a schedule or a manual "Run pipeline" — never on push. The persist job pushes
-# a commit back, so running on push would loop forever.
+# Run ONLY on a schedule or a manual "Run pipeline" — never on push. The persist job pushes a
+# commit back, so running on push would loop forever.
 workflow:
   rules:
     - if: '$CI_PIPELINE_SOURCE == "schedule"'
@@ -19,25 +19,37 @@ workflow:
     - when: never
 
 default:
-  image: ghcr.io/laxit-patel/drift-detector-scan@sha256:REPLACE_WITH_PUBLISHED_IMAGE_DIGEST
+  image: python:3.12-slim
 
 variables:
-  DRIFT_CATALOG_DIR: catalog        # the writable overlay in this checkout (absorbed entries)
+  DRIFT_CATALOG_DIR: catalog                 # the writable overlay in this checkout
+  PYTHONPATH: "$CI_PROJECT_DIR/scanner"      # the bundled agent/ package
+  # the scan engine, pinned + sha256-verified at run time. No 'latest' fallback: a mismatch
+  # or a failed fetch fails the job. Bump both together, after re-verifying the ruleset.
+  AST_GREP_VERSION: "0.44.1"
+  AST_GREP_SHA256: "d2716ddc04f67af933ebaaab39404a184d4fae84e43402fe9b3232b1cdc83728"
   GIT_DEPTH: "1"
 
 stages: [scan, persist]
 
 scan:
   stage: scan
-  resource_group: drift-scan        # serialise: never let two scheduled runs race
+  resource_group: drift-scan                 # serialise: never let two scheduled runs race
+  before_script:
+    - apt-get update -qq && apt-get install -y -qq --no-install-recommends git curl unzip ca-certificates >/dev/null
+    - pip install --quiet --no-cache-dir pyyaml
+    # fetch the pinned engine (x86_64 linux) and verify its bytes before trusting it
+    - curl -fsSL -o /tmp/sg.zip "https://github.com/ast-grep/ast-grep/releases/download/${AST_GREP_VERSION}/app-x86_64-unknown-linux-gnu.zip"
+    - unzip -qo /tmp/sg.zip -d /tmp
+    - echo "${AST_GREP_SHA256}  /tmp/ast-grep" | sha256sum -c -
+    - install -m 0755 /tmp/ast-grep /usr/local/bin/ast-grep
   script:
-    # build the --root list from config/fleet.yaml (python + pyyaml are in the image)
     - ROOTS=$(python3 -c "import yaml;print(' '.join('--root '+r for r in (yaml.safe_load(open('config/fleet.yaml')) or {}).get('roots',[])))")
     - test -n "$ROOTS" || { echo "config/fleet.yaml lists no roots"; exit 4; }
-    - drift run $ROOTS --state state --now "$(date +%F)" --pull
-    # exit 4 (nothing scanned / a source unreachable) FAILS the pipeline — red, not a green
+    - python3 -m agent.cli run $ROOTS --state state --now "$(date +%F)" --pull
+    # exit 4 (nothing scanned / a source unreachable) FAILS the pipeline — never a green
     # checkmark over an unread fleet. exit 3 (findings exist) does NOT fail: those are issues.
-    - drift verify --state state
+    - python3 -m agent.cli verify --state state
   artifacts:
     when: always
     expire_in: 30 days
@@ -50,6 +62,8 @@ scan:
 persist:
   stage: persist
   needs: [scan]
+  before_script:
+    - apt-get update -qq && apt-get install -y -qq --no-install-recommends git >/dev/null
   script:
     - git config user.name "Drift Detector"
     - git config user.email "drift@${CI_SERVER_HOST}"
@@ -58,9 +72,7 @@ persist:
       if git diff --cached --quiet; then
         echo "no changes to persist"; exit 0
       fi
-    - SUMMARY=$(python3 -c "import json;c=json.load(open('state/drift.json'))['counts'];bo=c.get('byOwner',{});print('%d fix / %d review — devops %d, developer %d' % (c.get('fixes',0), sum(o.get('review',0) for o in bo.values()), bo.get('devops',{}).get('fixes',0), bo.get('developer',{}).get('fixes',0)))" 2>/dev/null || echo "scan")
-    # [skip ci] so this state commit can never trigger another pipeline. Single-quoted so
-    # the ": " in the message is a literal string, not a YAML key/value (GitLab rejects a
-    # script item that parses as a mapping).
+    - SUMMARY=$(python3 -c "import json;c=json.load(open('state/drift.json'))['counts'];bo=c.get('byOwner',{});print('%d fix / %d review — devops %d, developer %d' % (c.get('fixes',0), sum(o.get('review',0) for o in bo.values()), bo.get('devops',{}).get('fixes',0), bo.get('developer',{}).get('fixes',0)))" 2>/dev/null || echo scan)
+    # single-quoted: the ": " in the message must stay a string, not a YAML key/value
     - 'git commit -m "scan $(date +%F): ${SUMMARY} [skip ci]"'
     - git push "https://oauth2:${GITLAB_TOKEN}@${CI_SERVER_HOST}/${CI_PROJECT_PATH}.git" "HEAD:${CI_DEFAULT_BRANCH}"

@@ -23,9 +23,20 @@ def test_state_commit_cannot_trigger_a_pipeline():
     assert "[skip ci]" in CI_TEXT                       # belt-and-braces against the loop
 
 
-def test_image_is_pinned_by_digest():
-    img = CI["default"]["image"]
-    assert img.startswith("ghcr.io/") and "@sha256:" in img
+def test_runs_on_a_stock_public_image_no_registry_needed():
+    assert CI["default"]["image"] == "python:3.12-slim"
+
+
+def test_engine_is_pinned_sha_verified_and_matches_the_runner():
+    """Container-free: the engine is fetched at run time, so determinism rides on the version
+    pin + sha256 check (no 'latest' fallback), and the pin must match the plugin runner."""
+    v = CI["variables"]
+    assert re.fullmatch(r"\d+\.\d+\.\d+", str(v["AST_GREP_VERSION"]))
+    assert re.fullmatch(r"[0-9a-f]{64}", str(v["AST_GREP_SHA256"]))
+    assert "sha256sum -c" in CI_TEXT and "releases/latest" not in CI_TEXT
+    runner = re.search(r"DRIFT_AST_GREP_VERSION:-([0-9.]+)",
+                       (Path(__file__).resolve().parent.parent / "bin" / "drift-scan").read_text())
+    assert str(v["AST_GREP_VERSION"]) == runner.group(1)   # no drift across the two
 
 
 def test_overlay_and_serialisation_are_configured():
@@ -44,8 +55,12 @@ def test_every_script_line_is_a_string():
 
 def test_scan_verifies_before_persisting():
     script = " ".join(CI["scan"]["script"])
-    assert "drift run" in script and "drift verify" in script
+    assert "agent.cli run" in script and "agent.cli verify" in script
     assert CI["persist"]["needs"] == ["scan"]           # persist only after a green scan
+
+
+def test_scanner_is_on_the_pythonpath():
+    assert "scanner" in CI["variables"]["PYTHONPATH"]   # the bundled agent/ package
 
 
 def test_fleet_config_is_a_nonempty_root_list():
