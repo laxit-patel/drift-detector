@@ -4,7 +4,3 @@ state/sources/
 state/repos_v*/
 state/prof/
 state/*.log
-
-# python caches in the bundled scanner
-scanner/**/__pycache__/
-scanner/**/*.pyc
