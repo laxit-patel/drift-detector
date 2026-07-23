@@ -83,6 +83,20 @@ jobs:
           # exit 4 (nothing scanned / source unreachable) fails the job; exit 3 (findings) does not
           python3 -m agent.cli verify --state drift-ops/state
 
+      - name: Deliver — issues (DevOps) + draft MRs (Developer)
+        # DRY-RUN by default: prints the create/update/close plan, writes nothing. Flip to
+        # live by setting a repo variable DRIFT_DELIVER=live (or =off to skip). Runs only
+        # after a green verify — delivery is a projection of the verified payload.
+        if: ${{ (vars.DRIFT_DELIVER || 'dry-run') != 'off' }}
+        env:
+          GITLAB_TOKEN: ${{ secrets.GITLAB_TOKEN }}
+        run: |
+          MODE="${{ vars.DRIFT_DELIVER || 'dry-run' }}"
+          FLAG=""; [ "$MODE" = "dry-run" ] && FLAG="--dry-run"
+          echo "delivery mode: $MODE"
+          python3 -m agent.cli deliver --state drift-ops/state \
+            --gitlab-host "${GITLAB_HOST}" --devops-project "${DRIFT_OPS_PATH}" $FLAG
+
       - name: Persist state + overlay back to drift-ops
         env:
           GITLAB_TOKEN: ${{ secrets.GITLAB_TOKEN }}

@@ -47,6 +47,12 @@ def test_overlay_is_wired_from_drift_ops():
     assert "drift-ops/config/fleet.yaml" in WF_TEXT
 
 
+def test_delivery_is_wired_and_defaults_to_dry_run():
+    assert "agent.cli deliver" in WF_TEXT
+    assert "DRIFT_DELIVER" in WF_TEXT and "dry-run" in WF_TEXT   # safe default: no writes
+    assert WF_TEXT.index("agent.cli verify") < WF_TEXT.index("agent.cli deliver")  # deliver after verify
+
+
 def test_token_comes_from_a_secret_never_a_literal():
     assert "secrets.GITLAB_TOKEN" in WF_TEXT
     assert not re.search(r"glpat-[A-Za-z0-9_-]{15,}", WF_TEXT)
