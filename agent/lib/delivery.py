@@ -138,13 +138,28 @@ def mr_description(repo: str, actions: list) -> str:
     return "\n".join(lines)
 
 
+def _issue_op(fp: str, title: str, body: str, by_fp: dict, project: str) -> dict:
+    """create / update / skip / reopen an issue by its marker fingerprint."""
+    iss = by_fp.get(fp)
+    if iss is None:
+        return {"op": "create", "fp": fp, "project": project, "title": title, "body": body}
+    changed = (iss.get("description") != body) or (iss.get("state") == "closed")
+    return {"op": "update" if changed else "skip", "fp": fp, "project": project,
+            "iid": iss.get("iid"), "title": title, "body": body,
+            "reopen": iss.get("state") == "closed"}
+
+
 # ----------------------------------------------------------------------- the planner (pure)
-def build_plan(payload: dict, repo_meta: dict, existing: dict, devops_project: str) -> dict:
+def build_plan(payload: dict, repo_meta: dict, existing: dict, devops_project: str,
+               *, dev_as_issues: bool = False) -> dict:
     """Compute the create/update/close plan. PURE: no I/O.
 
     `repo_meta`   : {repo -> {"project": "group/repo"}} for the scanned repos.
     `existing`    : {"issues": [issue dicts from devops_project],
                      "mrs": {project -> [mr dicts]}} already on GitLab.
+    `dev_as_issues`: file the Developer stream as ISSUES (one per repo, in devops_project)
+                     instead of draft MRs — the Reporter-friendly fallback when we lack
+                     Developer access on the scanned repos.
     Returns {"issues": [...], "mrs": [...]} where each item has an `op`
     (create|update|close|skip) and the rendered content.
     """
@@ -152,39 +167,37 @@ def build_plan(payload: dict, repo_meta: dict, existing: dict, devops_project: s
     devops = [a for a in actions if a.get("owner") == "devops"]
     developer = [a for a in actions if a.get("owner") == "developer"]
 
-    # ---- issues (DevOps) ----
     existing_issues = existing.get("issues", [])
     by_fp = {}
     for iss in existing_issues:
         for fp in markers_in(iss.get("description", "")):
             by_fp[fp] = iss
     issue_plan, live_fps = [], set()
+
+    # ---- issues (DevOps: one per action) ----
     for a in devops:
         fp = action_fingerprint(a)
         live_fps.add(fp)
         display = (repo_meta.get(a.get("repo")) or {}).get("project") or a.get("repo")
-        title, body = issue_title(a), issue_body(a, display)
-        iss = by_fp.get(fp)
-        if iss is None:
-            issue_plan.append({"op": "create", "fp": fp, "project": devops_project,
-                               "title": title, "body": body})
-        else:
-            changed = (iss.get("description") != body) or (iss.get("state") == "closed")
-            issue_plan.append({"op": "update" if changed else "skip", "fp": fp,
-                               "project": devops_project, "iid": iss.get("iid"),
-                               "title": title, "body": body,
-                               "reopen": iss.get("state") == "closed"})
-    # close issues we filed that no longer correspond to a finding
-    for fp, iss in by_fp.items():
-        if fp not in live_fps and iss.get("state") != "closed":
-            issue_plan.append({"op": "close", "fp": fp, "project": devops_project,
-                               "iid": iss.get("iid"), "title": iss.get("title")})
+        issue_plan.append(_issue_op(fp, issue_title(a), issue_body(a, display),
+                                    by_fp, devops_project))
 
-    # ---- draft MRs (Developer), one per scanned repo ----
+    # ---- Developer stream: one per scanned repo, as a draft MR OR (fallback) an issue ----
     by_repo = {}
     for a in developer:
         by_repo.setdefault(a.get("repo"), []).append(a)
     mr_plan = []
+
+    if dev_as_issues:
+        for repo, acts in by_repo.items():
+            project = (repo_meta.get(repo) or {}).get("project") or repo
+            fp = repo_fingerprint(project)          # same key the body marker uses
+            live_fps.add(fp)
+            title = f"[drift] API migrations for {project}"
+            issue_plan.append(_issue_op(fp, title, migrations_md(project, acts),
+                                        by_fp, devops_project))
+        return _finish(issue_plan, mr_plan, by_fp, live_fps, devops_project)
+
     for repo, acts in by_repo.items():
         meta = repo_meta.get(repo) or {}
         project = meta.get("project")
@@ -206,6 +219,16 @@ def build_plan(payload: dict, repo_meta: dict, existing: dict, devops_project: s
             item["iid"] = mine.get("iid")
         mr_plan.append(item)
 
+    return _finish(issue_plan, mr_plan, by_fp, live_fps, devops_project)
+
+
+def _finish(issue_plan, mr_plan, by_fp, live_fps, devops_project) -> dict:
+    """Close issues we filed whose fingerprint is no longer among the findings — a resolved
+    finding must not leave a stale open issue (the human 'cannot see = clean' trap)."""
+    for fp, iss in by_fp.items():
+        if fp not in live_fps and iss.get("state") != "closed":
+            issue_plan.append({"op": "close", "fp": fp, "project": devops_project,
+                               "iid": iss.get("iid"), "title": iss.get("title")})
     return {"issues": issue_plan, "mrs": mr_plan}
 
 

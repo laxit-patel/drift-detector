@@ -93,7 +93,10 @@ jobs:
         run: |
           MODE="${{ vars.DRIFT_DELIVER || 'dry-run' }}"
           FLAG=""; [ "$MODE" = "dry-run" ] && FLAG="--dry-run"
-          echo "delivery mode: $MODE"
+          # DRIFT_DEV_AS_ISSUES=1 files the Developer stream as issues (Reporter-friendly)
+          # instead of draft MRs (which need Developer access on the scanned repos)
+          [ "${{ vars.DRIFT_DEV_AS_ISSUES }}" = "1" ] && FLAG="$FLAG --dev-as-issues"
+          echo "delivery mode: $MODE  (flags:$FLAG)"
           python3 -m agent.cli deliver --state drift-ops/state \
             --gitlab-host "${GITLAB_HOST}" --devops-project "${DRIFT_OPS_PATH}" $FLAG
 

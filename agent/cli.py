@@ -452,7 +452,8 @@ def _cmd_deliver(args) -> int:
     gl = gitlab_api.GitLab(args.gitlab_host, token)
     dev_projects = sorted({m["project"] for m in repo_meta.values()})
     existing = delivery.fetch_existing(gl, args.devops_project, dev_projects)
-    plan = delivery.build_plan(payload, repo_meta, existing, args.devops_project)
+    plan = delivery.build_plan(payload, repo_meta, existing, args.devops_project,
+                               dev_as_issues=args.dev_as_issues)
 
     print(delivery.plan_summary(plan))
     print()
@@ -490,6 +491,9 @@ def main(argv: list[str]) -> int:
                      help="GitLab project path where DevOps issues are filed (e.g. root/drift-detector)")
     pdl.add_argument("--dry-run", action="store_true",
                      help="print the create/update/close plan without writing anything")
+    pdl.add_argument("--dev-as-issues", action="store_true",
+                     help="file the Developer stream as issues (in --devops-project) instead "
+                          "of draft MRs — the Reporter-friendly fallback")
     pdl.set_defaults(func=_cmd_deliver)
 
     psc = sub.add_parser("schedule")

@@ -89,6 +89,21 @@ def test_resolved_finding_closes_its_issue():
     assert next(i for i in plan["issues"] if i["op"] == "close")["iid"] == 9
 
 
+def test_dev_as_issues_files_the_developer_stream_as_issues_not_mrs():
+    """The Reporter-friendly fallback: developer findings become one issue per repo in the
+    devops project, and no MRs are attempted."""
+    plan = delivery.build_plan(_payload([_cve(), _sunset()]), _META,
+                               {"issues": [], "mrs": {}}, "root/drift-detector",
+                               dev_as_issues=True)
+    assert plan["mrs"] == []                                  # no MRs attempted
+    titles = [i["title"] for i in plan["issues"]]
+    assert any("API migrations for g/ebayapi" in t for t in titles)   # one per repo
+    assert all(i["project"] == "root/drift-detector" for i in plan["issues"])
+    # idempotent: the per-repo issue carries the repo marker
+    dev_issue = next(i for i in plan["issues"] if "migrations" in i["title"])
+    assert delivery.repo_fingerprint("g/ebayapi") in dev_issue["body"]   # keyed on project path
+
+
 def test_developer_finding_with_no_known_project_is_unroutable_not_silent():
     plan = delivery.build_plan(_payload([_sunset(repo="mystery")]), {},  # no repo_meta
                                {"issues": [], "mrs": {}}, "root/drift-detector")
