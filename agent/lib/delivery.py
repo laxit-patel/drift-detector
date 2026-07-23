@@ -83,10 +83,10 @@ def issue_title(a: dict) -> str:
     return f"[drift] {_label_of(a)}{tail}"
 
 
-def issue_body(a: dict) -> str:
+def issue_body(a: dict, display: str | None = None) -> str:
     fp = action_fingerprint(a)
     lines = [marker(fp), "",
-             f"**{_label_of(a)}** in `{a.get('repo')}` — {a.get('status')}", ""]
+             f"**{_label_of(a)}** in `{display or a.get('repo')}` — {a.get('status')}", ""]
     if a.get("recommendation"):
         lines += [f"➡️ {a['recommendation']}", ""]
     if a.get("command"):
@@ -162,7 +162,8 @@ def build_plan(payload: dict, repo_meta: dict, existing: dict, devops_project: s
     for a in devops:
         fp = action_fingerprint(a)
         live_fps.add(fp)
-        title, body = issue_title(a), issue_body(a)
+        display = (repo_meta.get(a.get("repo")) or {}).get("project") or a.get("repo")
+        title, body = issue_title(a), issue_body(a, display)
         iss = by_fp.get(fp)
         if iss is None:
             issue_plan.append({"op": "create", "fp": fp, "project": devops_project,
@@ -192,9 +193,11 @@ def build_plan(payload: dict, repo_meta: dict, existing: dict, devops_project: s
             continue
         mrs = existing.get("mrs", {}).get(project, [])
         mine = next((m for m in mrs if m.get("source_branch") == MR_BRANCH), None)
+        # display by the clean project path, not the internal clone slug (chetan/amazonspapi,
+        # not chetan-amazonspapi-f5043548)
         item = {"repo": repo, "project": project, "branch": MR_BRANCH,
-                "title": mr_title(repo), "description": mr_description(repo, acts),
-                "file_path": MIGRATIONS_PATH, "file_content": migrations_md(repo, acts),
+                "title": mr_title(project), "description": mr_description(project, acts),
+                "file_path": MIGRATIONS_PATH, "file_content": migrations_md(project, acts),
                 "count": len(acts)}
         if mine is None:
             item["op"] = "create"

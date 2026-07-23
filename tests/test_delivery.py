@@ -54,7 +54,7 @@ def test_new_findings_create_an_issue_and_a_draft_mr():
 
 def test_existing_issue_with_same_body_is_skipped_not_duplicated():
     a = _cve()
-    body = delivery.issue_body(a)
+    body = delivery.issue_body(a, "root/web")            # the planner displays by project path
     fp = delivery.action_fingerprint(a)
     existing = {"issues": [{"iid": 7, "state": "opened", "description": body,
                             "title": delivery.issue_title(a)}], "mrs": {}}
