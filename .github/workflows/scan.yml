@@ -59,7 +59,7 @@ jobs:
       - name: Install PyYAML + the pinned, sha256-verified engine
         run: |
           pip install --quiet --no-cache-dir pyyaml
-          curl -fsSL -o /tmp/sg.zip \
+          curl -fsSL --retry 3 --retry-delay 3 --retry-connrefused -o /tmp/sg.zip \
             "https://github.com/ast-grep/ast-grep/releases/download/${AST_GREP_VERSION}/app-x86_64-unknown-linux-gnu.zip"
           unzip -qo /tmp/sg.zip -d /tmp
           echo "${AST_GREP_SHA256}  /tmp/ast-grep" | sha256sum -c -

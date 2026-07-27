@@ -521,8 +521,10 @@ def _cmd_notify(args) -> int:
         with open(_os.path.join(args.state, "drift.json"), encoding="utf-8") as fh:
             payload = _json.load(fh)
     except OSError as exc:
-        print(f"notify: nothing to send — {exc}", file=sys.stderr)
-        return 4
+        # best-effort push: no report (e.g. the scan failed upstream) is a skip, NOT an error
+        # — notify must never turn a failure into a second red.
+        print(f"notify: no report to send — skipping ({exc})")
+        return 0
     card = notify.chat_card(payload, report_url=args.report_url, run_url=args.run_url)
     try:
         notify.post(webhook, card)
