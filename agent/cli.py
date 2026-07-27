@@ -506,6 +506,33 @@ def _cmd_deliver(args) -> int:
     return 3 if unroutable else 0
 
 
+def _cmd_notify(args) -> int:
+    """Push a one-line scan summary to a Google Chat space (or any {text} webhook). Opt-in:
+    no webhook (--webhook / $DRIFT_CHAT_WEBHOOK) → no-op, exit 0."""
+    import json as _json
+    import os as _os
+    from agent.lib import notify
+
+    webhook = args.webhook or _os.environ.get("DRIFT_CHAT_WEBHOOK")
+    if not webhook:
+        print("notify: no webhook configured — skipping")
+        return 0
+    try:
+        with open(_os.path.join(args.state, "drift.json"), encoding="utf-8") as fh:
+            payload = _json.load(fh)
+    except OSError as exc:
+        print(f"notify: nothing to send — {exc}", file=sys.stderr)
+        return 4
+    text = notify.chat_message(payload, report_url=args.report_url, run_url=args.run_url)
+    try:
+        notify.post(webhook, text)
+    except Exception as exc:                    # a chat outage must not fail the pipeline
+        print(f"notify: post failed (non-fatal) — {exc}", file=sys.stderr)
+        return 0
+    print("notify: sent ✓")
+    return 0
+
+
 def main(argv: list[str]) -> int:
     p = argparse.ArgumentParser(prog="drift-detector")
     sub = p.add_subparsers(dest="cmd", required=True)
@@ -535,6 +562,13 @@ def main(argv: list[str]) -> int:
                      help="file the Developer stream as issues (in --devops-project) instead "
                           "of draft MRs — the Reporter-friendly fallback")
     pdl.set_defaults(func=_cmd_deliver)
+
+    pn = sub.add_parser("notify")         # push a one-line summary to a Google Chat webhook
+    pn.add_argument("--state", required=True)
+    pn.add_argument("--webhook", help="Google Chat webhook URL (or $DRIFT_CHAT_WEBHOOK)")
+    pn.add_argument("--report-url")
+    pn.add_argument("--run-url")
+    pn.set_defaults(func=_cmd_notify)
 
     psc = sub.add_parser("schedule")
     psc.add_argument("--root", required=True)

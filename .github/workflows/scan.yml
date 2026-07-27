@@ -148,6 +148,17 @@ jobs:
             python3 -c "import re;t=open('${REPORT}').read();print(re.sub(r'^---\n.*?\n---\n','',t,count=1,flags=re.S))"
           } >> "$GITHUB_STEP_SUMMARY"
 
+      - name: Notify a Google Chat space (if configured)
+        # Opt-in: add a repo secret GCHAT_WEBHOOK to push a one-line summary + report link.
+        # No secret → the CLI no-ops. A chat outage never fails the pipeline.
+        if: always()
+        env:
+          DRIFT_CHAT_WEBHOOK: ${{ secrets.GCHAT_WEBHOOK }}
+        run: |
+          python3 -m agent.cli notify --state drift-ops/state \
+            --report-url "https://${GITLAB_HOST}/${DRIFT_OPS_PATH}" \
+            --run-url "${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+
       - name: Upload the report as a run artifact
         if: always()
         uses: actions/upload-artifact@v4
