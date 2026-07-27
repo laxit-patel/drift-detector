@@ -256,6 +256,14 @@ def _cmd_verify(args) -> int:
                        (chart, _json.dumps(payload), "chart.html")))
     except OSError:
         pass
+    # sbom.json is the OPTIONAL CycloneDX projection: absent is fine, but if present it must
+    # equal a fresh projection of inventory.json + audit.json (never a stale/hand-edited BOM).
+    try:
+        sbom_doc = _json.loads(_slurp("sbom.json"))
+        inventory = _json.loads(_slurp("inventory.json"))
+        checks.append((_verify.check_sbom_matches_inventory, (sbom_doc, inventory, audit)))
+    except OSError:
+        pass
     for check, args_ in checks:
         try:
             check(*args_)
@@ -433,6 +441,33 @@ def _cmd_mute(args) -> int:
     else:
         add_to_baseline(args.state, args.fingerprint)
         print(f"muted {args.fingerprint} (excluded from action counts until unmuted)")
+    return 0
+
+
+def _cmd_sbom(args) -> int:
+    """Emit a CycloneDX SBOM — components (packages, runtimes, frameworks) plus the CVE
+    findings as vulnerabilities (SBOM + VEX) — from the scan state. A verified projection of
+    inventory.json + audit.json; `verify` re-derives it and fails if it drifts. Writes
+    <state>/sbom.json (or --out)."""
+    import json as _json
+    from agent.lib import sbom as _sbom
+    try:
+        with open(os.path.join(args.state, "inventory.json"), encoding="utf-8") as fh:
+            inventory = _json.load(fh)
+        with open(os.path.join(args.state, "audit.json"), encoding="utf-8") as fh:
+            audit = _json.load(fh)
+    except OSError as exc:
+        print(f"sbom: nothing to build from — run a scan first ({exc})", file=sys.stderr)
+        return 4
+    now = args.now or inventory.get("generated") or ""
+    doc = _sbom.build_sbom(inventory, audit, now)
+    out = args.out or os.path.join(args.state, "sbom.json")
+    with open(out, "w", encoding="utf-8") as fh:
+        _json.dump(doc, fh, ensure_ascii=False, indent=2, sort_keys=True)
+        fh.write("\n")
+    nc, nv = len(doc.get("components", [])), len(doc.get("vulnerabilities", []))
+    print(f"✓ SBOM: {nc} component(s), {nv} vulnerabilit{'y' if nv == 1 else 'ies'} — "
+          f"CycloneDX {doc['specVersion']} → {out}")
     return 0
 
 
@@ -628,6 +663,12 @@ def main(argv: list[str]) -> int:
     pn.add_argument("--report-url")
     pn.add_argument("--run-url")
     pn.set_defaults(func=_cmd_notify)
+
+    psb = sub.add_parser("sbom")          # CycloneDX SBOM (+ CVE vulnerabilities) from the state
+    psb.add_argument("--state", required=True)
+    psb.add_argument("--out", help="output path (default <state>/sbom.json)")
+    psb.add_argument("--now", help="timestamp date (default: inventory.generated)")
+    psb.set_defaults(func=_cmd_sbom)
 
     pcp = sub.add_parser("config-preflight")   # 5s gate: tokens + reachability + config, PRE-scan
     pcp.add_argument("--config", required=True)

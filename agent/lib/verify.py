@@ -318,6 +318,26 @@ def check_unscannable_surfaced(md_text: str, payload: dict) -> None:
                             f"— 'cannot see' must not render as 'clean'")
 
 
+def check_sbom_matches_inventory(sbom_doc: dict, inventory: dict, audit: dict) -> None:
+    """sbom.json is a faithful projection of inventory.json + audit.json.
+
+    The old CycloneDX exporter was deleted for being a hand-built surface nobody re-derived.
+    This makes the SBOM a VERIFIED projection like drift.md: rebuild it from the inventory and
+    audit and fail if the file on disk disagrees — so a stale or hand-edited sbom.json (wrong
+    components, a dropped vulnerability) cannot ship as if it were the real parts list.
+    """
+    from agent.lib import sbom as _sbom
+    now = str(sbom_doc.get("metadata", {}).get("timestamp", "")).split("T")[0]
+    expected = _sbom.build_sbom(inventory, audit, now)
+    if sbom_doc.get("components") != expected.get("components"):
+        raise Violation("sbom-components",
+                        "sbom.json components do not match a fresh projection of "
+                        "inventory.json — the SBOM is stale or hand-edited")
+    if sbom_doc.get("vulnerabilities", []) != expected.get("vulnerabilities", []):
+        raise Violation("sbom-vulnerabilities",
+                        "sbom.json vulnerabilities do not match the audit's CVE findings")
+
+
 def check_mermaid_wellformed(md_text: str) -> None:
     """Every Mermaid block is structurally sound: each edge endpoint is a declared node,
     and no label carries a raw grammar-breaking char.

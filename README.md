@@ -8,6 +8,13 @@
 > The TOPS relic that reads the ashes: it names the dying, sunset, and end-of-life
 > third-party APIs in your repos — with dates — before they break in production.
 
+**A DevSecOps supply-chain scanner for third-party integrations.** In one deterministic,
+zero-LLM-token pass it does **SBOM + SCA** — a CycloneDX **SBOM** of every component, **SCA**
+against **OSV** CVEs and **endoflife.date** EOL — *plus* the layer no SBOM or CVE scanner has:
+which third-party **APIs your code calls, at `file:line`**, and when the vendor **retires**
+them (**vendor-API sunsets**). Every finding is dated and sourced; every report is
+`verify`-certified; where it's blind, it says so.
+
 A Claude Code plugin — a **goal-driven agent** for keeping third-party API integrations
 green. It builds a **code-level inventory** of the integrations your repos use (which
 APIs/SDKs/runtimes, with `file:line` and versions), reports **what changed since the last
@@ -18,10 +25,12 @@ schedule**. Everything runs locally as a
 **deterministic pipeline** (ast-grep AST matching + manifest parsing + public API
 lookups) — **zero LLM tokens**; Claude only orchestrates, narrates, and sets things up.
 
-Its one thing no CVE scanner or SBOM can do: the **endpoint layer** — it knows *which
-third-party APIs your code calls, at which `file:line`*, and flags when a vendor **retires**
-one (e.g. *"eBay's Finding API — called at `src/Ebay/…:37` — was decommissioned 2025-02-05;
-migrate to Browse API"*). Packages are the demo; **retired-API detection is the point**.
+It emits a standard **CycloneDX SBOM** (components + CVE vulnerabilities — SBOM + VEX) like
+any SCA tool, then adds the one thing no SBOM or CVE scanner can: the **endpoint layer** — it
+knows *which third-party APIs your code calls, at which `file:line`*, and flags when a vendor
+**retires** one (e.g. *"eBay's Finding API — called at `src/Ebay/…:37` — was decommissioned
+2025-02-05; migrate to Browse API"*). Packages are the demo; **retired-API detection is the
+point**.
 
 ## Install
 
@@ -69,6 +78,20 @@ classifying each finding **DEPRECATED** (act now) / **REVIEW** (assess), with a 
   the thing package/CVE scanners can't see. Entries can be **domain-scoped** so a dead legacy
   host is flagged without false-flagging a live one that shares its version string. Extend it
   with your vendors' announcements (each entry cites a source).
+
+### SBOM — CycloneDX export (SBOM + SCA + VEX)
+
+```
+drift-scan sbom --state <dir>          # writes <state>/sbom.json (CycloneDX 1.5)
+```
+
+A standard **CycloneDX** Software Bill of Materials for the whole fleet: every component
+(packages, runtimes, frameworks, each with a **PURL** and the repos it appears in) plus the
+**OSV CVE** findings as `vulnerabilities` — i.e. **SBOM + SCA + VEX** in one file, for your
+DevSecOps / supply-chain compliance needs (EO 14028, EU CRA). It is a **verified projection**
+of `inventory.json` + `audit.json`: `drift-scan verify` re-derives it and fails if the SBOM is
+stale or hand-edited, so it can never quietly disagree with the scan. The scheduled pipeline
+emits `sbom.json` alongside every run.
 
 **Findings roll up into actions.** Thirty CVEs against one package are **one** job —
 *upgrade `torch` to `2.10.0`* — so the report doesn't drown you in 300 rows. The dashboard

@@ -330,3 +330,16 @@ def test_verify_passes_when_the_unscannable_root_is_named():
                "rootsUnscannable": [{"root": "https://git.x/team/ghost", "reason": "404"}]}
     md_that_names_it = "# Drift report\n\n## Couldn't scan\n\nhttps://git.x/team/ghost — 404\n"
     verify.check_unscannable_surfaced(md_that_names_it, payload)   # no raise
+
+
+def test_verify_catches_a_stale_or_tampered_sbom():
+    """A verified projection: sbom.json must equal a fresh build from inventory+audit. A
+    hand-edited BOM (dropped component/vuln) must fail, or the SBOM isn't trustworthy."""
+    from agent.lib import verify, sbom
+    inv = {"repos": [{"path": "r", "sdks": [{"eco": "npm", "pkg": "axios", "resolved": "0.21.1"}]}]}
+    audit = {"findings": []}
+    good = sbom.build_sbom(inv, audit, "2026-07-27")
+    verify.check_sbom_matches_inventory(good, inv, audit)          # no raise
+    tampered = {**good, "components": []}                           # someone dropped the parts list
+    with pytest.raises(verify.Violation):
+        verify.check_sbom_matches_inventory(tampered, inv, audit)
