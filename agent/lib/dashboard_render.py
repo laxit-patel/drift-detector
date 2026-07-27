@@ -127,6 +127,10 @@ def _build_projection(inventory: dict, audit: dict) -> dict:
         # "1 repos" read as "it only scanned one". Both numbers, or neither.
         "reposScanned": (inventory.get("scope") or {}).get("reposScanned", 0),
         "private": len(private),
+        # sources you ASKED to scan that could not be read (URL 404/no-access, a typo, a
+        # plain folder with no code). "cannot see" is NOT "clean" — this count exists so the
+        # report can never render green over a repo it silently failed to open.
+        "unscannable": len(cov.get("rootsUnscannable", [])),
         # vendors we CALL but whose retirement list nobody has checked. Counted as
         # unaudited+stale, because both mean "0 findings here is not evidence of clean".
         "unaudited": sum(1 for r in (audit.get("coverage") or {}).get("catalog", [])
@@ -160,6 +164,10 @@ def _build_projection(inventory: dict, audit: dict) -> dict:
             for g in residue.get("byRepo", [])],
         "shapes": cov.get("shapes", []),
         "residueSamples": residue.get("pathLiterals", []),
+        # the roots the scanner could not open, carried verbatim from inventory coverage so
+        # every projection (drift.md, the dashboard) can surface them and verify can enforce
+        # that they are surfaced. Each: {root, reason}.
+        "rootsUnscannable": cov.get("rootsUnscannable", []),
     }
 
 
@@ -537,6 +545,14 @@ _CLIENT_JS = r"""
   (function(){
     var cov=document.getElementById("coverage"); if(!cov) return;
     var h="";
+    var uns=DATA.rootsUnscannable||[];
+    if(uns.length){
+      h+='<div class="note"><b>⚠ Couldn’t scan '+esc(uns.length)+' source(s) you asked '
+        +'for</b> — this is NOT a clean result for them (check the path exists and the token '
+        +'has access):</div><ul>';
+      uns.forEach(function(u){ h+='<li>'+esc(u.root)+' — '+esc(u.reason)+'</li>'; });
+      h+='</ul>';
+    }
     (DATA.coverageNotes||[]).forEach(function(n){ h+='<div class="note">'+esc(n)+'</div>'; });
     var unknown=(DATA.shapes||[]).filter(function(s){return s.verdict==="UNKNOWN";});
     if(unknown.length){

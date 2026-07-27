@@ -233,3 +233,28 @@ def test_same_finding_in_two_repos_renders_distinct_rows_by_repo():
 def test_findings_tables_lead_with_repo():
     out = md.render_markdown(_payload(), "2026-07-21")
     assert "| Repo | API | Status | Retires | Call-sites | First call-site |" in out
+
+
+def test_unscannable_roots_are_surfaced_high_in_the_report():
+    """A source requested but unreadable must appear in the report — 'cannot see' is not
+    'clean'. The bug: inventory recorded it, drift.md dropped it, the report looked green."""
+    p = _payload(rootsUnscannable=[{"root": "https://git.x/team/ghost",
+                                    "reason": "GitLab group '…/ghost' has no active projects"}],
+                 counts={**_payload()["counts"], "unscannable": 1})
+    out = md.render_markdown(p, "2026-07-21")
+    assert "Couldn't scan" in out
+    assert "https://git.x/team/ghost" in out
+    # it sits BEFORE the findings queues, not buried at the end
+    assert out.index("Couldn't scan") < out.index("## Summary")
+
+
+def test_no_couldnt_scan_section_when_everything_was_read():
+    out = md.render_markdown(_payload(), "2026-07-21")
+    assert "Couldn't scan" not in out
+
+
+def test_a_pipe_in_an_unscannable_reason_is_escaped():
+    p = _payload(rootsUnscannable=[{"root": "https://git.x/a", "reason": "bad | reason"}],
+                 counts={**_payload()["counts"], "unscannable": 1})
+    out = md.render_markdown(p, "2026-07-21")
+    assert "bad \\| reason" in out

@@ -565,3 +565,26 @@ def test_inventory_drift_is_xss_escaped():
     html = render_dashboard({"repos": [], "coverage": {}}, {"actions": [], "coverage": {}},
                             "2026-07-17", diff=diff)
     assert "<b>pwn" not in html.split('id="drift-data"')[0]
+
+
+def _inv_cov(coverage):
+    inv = _inv()
+    inv["coverage"] = coverage
+    return inv
+
+
+def test_unscannable_roots_reach_the_payload_and_count():
+    """inventory.coverage.rootsUnscannable must be projected into drift.json (the contract),
+    with a matching count — the bug was that it stopped at inventory.json."""
+    roots = [{"root": "https://git.x/team/ghost", "reason": "404 no access"}]
+    html = render_dashboard(_inv_cov({"rootsUnscannable": roots}), _audit([]), "2026-07-15")
+    blob = _blob(html)
+    assert blob["rootsUnscannable"] == roots
+    assert blob["counts"]["unscannable"] == 1
+
+
+def test_no_unscannable_key_pollution_when_all_scanned():
+    html = render_dashboard(_inv(), _audit([]), "2026-07-15")
+    blob = _blob(html)
+    assert blob["rootsUnscannable"] == []
+    assert blob["counts"]["unscannable"] == 0

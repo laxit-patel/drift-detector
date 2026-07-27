@@ -8,6 +8,8 @@ import json
 
 import pytest
 
+import pytest
+
 from agent.lib import verify
 from agent.lib.verify import Violation
 
@@ -309,3 +311,22 @@ def test_number_format_holds_on_the_real_payload():
     from tests.test_verify import _real_payload
     payload, _ = _real_payload()
     check_number_formats(payload)                     # the live payload must already comply
+
+
+def test_verify_fails_when_an_unscannable_root_is_dropped_from_the_report():
+    """Reproduces the shipped bug: the payload knows a root it couldn't read, but the
+    Markdown never names it. verify must catch that, not pass it green."""
+    from agent.lib import verify
+    payload = {"counts": {"unscannable": 1},
+               "rootsUnscannable": [{"root": "https://git.x/team/ghost", "reason": "404"}]}
+    md_that_drops_it = "# Drift report\n\nAll clean.\n"
+    with pytest.raises(verify.Violation):
+        verify.check_unscannable_surfaced(md_that_drops_it, payload)
+
+
+def test_verify_passes_when_the_unscannable_root_is_named():
+    from agent.lib import verify
+    payload = {"counts": {"unscannable": 1},
+               "rootsUnscannable": [{"root": "https://git.x/team/ghost", "reason": "404"}]}
+    md_that_names_it = "# Drift report\n\n## Couldn't scan\n\nhttps://git.x/team/ghost — 404\n"
+    verify.check_unscannable_surfaced(md_that_names_it, payload)   # no raise

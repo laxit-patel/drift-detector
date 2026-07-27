@@ -296,6 +296,28 @@ def check_md_matches_payload(md_text: str, payload: dict) -> None:
                 seen.add(key)
 
 
+def check_unscannable_surfaced(md_text: str, payload: dict) -> None:
+    """Every root the scanner COULD NOT read is named in the report.
+
+    The tool's first principle is "cannot see ≠ clean": a source requested but unreadable
+    (a 404/no-access URL, a typo, a folder with no code) must appear in the report, not just
+    an internal log. This shipped broken — inventory.json recorded the unscannable root but
+    drift.json/drift.md dropped it, so the report rendered green over a repo it never opened.
+    This guard fails if the payload knows an unscannable root the Markdown does not name.
+    """
+    unscannable = payload.get("rootsUnscannable", [])
+    if unscannable and str(payload.get("counts", {}).get("unscannable", 0)) != str(len(unscannable)):
+        raise Violation("unscannable-count",
+                        f"counts.unscannable = {payload['counts'].get('unscannable')} but "
+                        f"rootsUnscannable has {len(unscannable)} entries")
+    for u in unscannable:
+        root = str(u.get("root", ""))
+        if root and root not in md_text:
+            raise Violation("unscannable-dropped",
+                            f"the scan could not read {root!r} but the report never names it "
+                            f"— 'cannot see' must not render as 'clean'")
+
+
 def check_mermaid_wellformed(md_text: str) -> None:
     """Every Mermaid block is structurally sound: each edge endpoint is a declared node,
     and no label carries a raw grammar-breaking char.

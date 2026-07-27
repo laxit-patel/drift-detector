@@ -151,10 +151,25 @@ def render_markdown(payload: dict, now: str) -> str:
                  f"`{_esc(_repo(pick))}` — {verb} {_esc(pick['date'])}.")
         L.append("")
 
+    # --- couldn't-scan: sources requested but unreadable. Sits HIGH, before findings,
+    # because "cannot see" is not "clean" — a report must never look green over a repo it
+    # silently failed to open (a 404/no-access URL, a typo, a folder with no code). Rendered
+    # as a table so verify re-parses it and confirms every requested root is actually named.
+    unscannable = payload.get("rootsUnscannable", [])
+    if unscannable:
+        L.append(f"## ⚠ Couldn't scan ({len(unscannable)})")
+        L.append("")
+        L.append("_Sources you asked for that could **not** be read — this is not a clean "
+                 "result for them. Check the path exists and the token has access._")
+        L.append("")
+        L += _table(["Source", "Why"],
+                    [[u.get("root", ""), u.get("reason", "")] for u in unscannable])
+        L.append("")
+
     # --- summary (the tiles, as a table) ---
     L.append("## Summary")
     L.append("")
-    L += _table(["Metric", "Count"], [
+    summary_rows = [
         ["Fixes needed (action-required)", counts.get("fixes", 0)],
         ["Vendor API sunsets", counts.get("sunsets", 0)],
         ["— of which already retired (past-due)", counts.get("pastDue", 0)],
@@ -162,7 +177,10 @@ def render_markdown(payload: dict, now: str) -> str:
         ["Critical CVEs", counts.get("critical", 0)],
         ["Unaudited vendors", counts.get("unaudited", 0)],
         ["Repos affected / scanned", f"{affected} / {scanned}"],
-    ])
+    ]
+    if unscannable:                       # only show the row when there's something to admit
+        summary_rows.append(["Sources unscannable (not read)", counts.get("unscannable", 0)])
+    L += _table(["Metric", "Count"], summary_rows)
     L.append("")
 
     # --- findings, split into the two delivery queues (DevOps vs Developer) ---

@@ -27,6 +27,7 @@
         "apis": {"type": "integer", "minimum": 0},
         "unknown": {"type": "integer", "minimum": 0},
         "private": {"type": "integer", "minimum": 0},
+        "unscannable": {"type": "integer", "minimum": 0, "description": "Sources requested but unreadable (404/no-access URL, typo, folder with no code). Equals rootsUnscannable length; 'cannot see' is not 'clean'."},
         "reposScanned": {"type": "integer", "minimum": 0},
         "reposAffected": {"type": "integer", "minimum": 0}
       }
@@ -93,6 +94,18 @@
       }
     },
     "coverageNotes": {"type": "array", "items": {"type": "string"}},
+    "rootsUnscannable": {
+      "type": "array",
+      "description": "Sources requested but unreadable, carried from inventory coverage so every projection surfaces them and verify enforces it. 'Cannot see' is never 'clean'.",
+      "items": {
+        "type": "object",
+        "required": ["root", "reason"],
+        "properties": {
+          "root": {"type": "string", "description": "The requested source (URL or path) that could not be read."},
+          "reason": {"type": "string", "description": "Why it could not be read, in the operator's terms."}
+        }
+      }
+    },
     "endpoints": {"type": "array"},
     "shapes": {"type": "array"},
     "private": {"type": "array"},
