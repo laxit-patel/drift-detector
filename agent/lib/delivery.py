@@ -83,7 +83,19 @@ def issue_title(a: dict) -> str:
     return f"[drift] {_label_of(a)}{tail}"
 
 
-def issue_body(a: dict, display: str | None = None) -> str:
+def _footer(links: dict | None = None, *, draft: bool = False) -> str:
+    """The provenance line — 'what stemmed this': a link back to the scan run that filed it
+    and to the full report, so a reader can trace any issue/MR to its source."""
+    parts = ["Draft, filed by Drift Detector" if draft else "Filed by Drift Detector"]
+    if links:
+        if links.get("run"):
+            parts.append(f"[scan run]({links['run']})")
+        if links.get("report"):
+            parts.append(f"[full report]({links['report']})")
+    return "_" + " · ".join(parts) + " — updates in place on the next scan._"
+
+
+def issue_body(a: dict, display: str | None = None, links: dict | None = None) -> str:
     fp = action_fingerprint(a)
     lines = [marker(fp), "",
              f"**{_label_of(a)}** in `{display or a.get('repo')}` — {a.get('status')}", ""]
@@ -96,12 +108,12 @@ def issue_body(a: dict, display: str | None = None) -> str:
         lines += ["Call-sites:", *sites, ""]
     if a.get("sources"):
         lines += ["Source(s): " + ", ".join(a["sources"]), ""]
-    lines += ["_Filed by Drift Detector — updates in place on the next scan._"]
+    lines += [_footer(links)]
     return "\n".join(lines)
 
 
 # --------------------------------------------------------------- MR content (Developer)
-def migrations_md(repo: str, actions: list) -> str:
+def migrations_md(repo: str, actions: list, links: dict | None = None) -> str:
     fp = repo_fingerprint(repo)
     out = ["# API migrations — Drift Detector", "",
            "Retiring vendor APIs / end-of-life frameworks this repo calls. Do the migration "
@@ -117,6 +129,7 @@ def migrations_md(repo: str, actions: list) -> str:
         if a.get("sources"):
             out.append("Source(s): " + ", ".join(a["sources"]))
         out.append("")
+    out.append(_footer(links))
     return "\n".join(out)
 
 
@@ -124,7 +137,7 @@ def mr_title(repo: str) -> str:
     return f"Draft: [drift] API migrations for {repo}"
 
 
-def mr_description(repo: str, actions: list) -> str:
+def mr_description(repo: str, actions: list, links: dict | None = None) -> str:
     fp = repo_fingerprint(repo)
     n = len(actions)
     lines = [marker(fp), "",
@@ -134,7 +147,7 @@ def mr_description(repo: str, actions: list) -> str:
     for a in actions:
         when = f" (retires {a['date']})" if a.get("date") else ""
         lines.append(f"- **{_label_of(a)}**{when} — {a.get('recommendation') or a.get('status')}")
-    lines += ["", "_Draft, filed by Drift Detector — updates in place on the next scan._"]
+    lines += ["", _footer(links, draft=True)]
     return "\n".join(lines)
 
 
@@ -160,7 +173,7 @@ def _issue_op(fp: str, title: str, body: str, by_fp: dict, project: str) -> dict
 
 # ----------------------------------------------------------------------- the planner (pure)
 def build_plan(payload: dict, repo_meta: dict, existing: dict, devops_project: str,
-               *, dev_as_issues: bool = False) -> dict:
+               *, dev_as_issues: bool = False, links: dict | None = None) -> dict:
     """Compute the create/update/close plan. PURE: no I/O.
 
     `repo_meta`   : {repo -> {"project": "group/repo"}} for the scanned repos.
@@ -188,7 +201,7 @@ def build_plan(payload: dict, repo_meta: dict, existing: dict, devops_project: s
         fp = action_fingerprint(a)
         live_fps.add(fp)
         display = (repo_meta.get(a.get("repo")) or {}).get("project") or a.get("repo")
-        issue_plan.append(_issue_op(fp, issue_title(a), issue_body(a, display),
+        issue_plan.append(_issue_op(fp, issue_title(a), issue_body(a, display, links),
                                     by_fp, devops_project))
 
     # ---- Developer stream: one per scanned repo, as a draft MR OR (fallback) an issue ----
@@ -203,7 +216,7 @@ def build_plan(payload: dict, repo_meta: dict, existing: dict, devops_project: s
             fp = repo_fingerprint(project)          # same key the body marker uses
             live_fps.add(fp)
             title = f"[drift] API migrations for {project}"
-            issue_plan.append(_issue_op(fp, title, migrations_md(project, acts),
+            issue_plan.append(_issue_op(fp, title, migrations_md(project, acts, links),
                                         by_fp, devops_project))
         return _finish(issue_plan, mr_plan, by_fp, live_fps, devops_project)
 
@@ -218,8 +231,8 @@ def build_plan(payload: dict, repo_meta: dict, existing: dict, devops_project: s
         # display by the clean project path, not the internal clone slug (chetan/amazonspapi,
         # not chetan-amazonspapi-f5043548)
         item = {"repo": repo, "project": project, "branch": MR_BRANCH,
-                "title": mr_title(project), "description": mr_description(project, acts),
-                "file_path": MIGRATIONS_PATH, "file_content": migrations_md(project, acts),
+                "title": mr_title(project), "description": mr_description(project, acts, links),
+                "file_path": MIGRATIONS_PATH, "file_content": migrations_md(project, acts, links),
                 "count": len(acts)}
         if mine is None:
             item["op"] = "create"

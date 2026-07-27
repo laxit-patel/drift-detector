@@ -117,6 +117,15 @@ def test_dev_as_issues_files_the_developer_stream_as_issues_not_mrs():
     assert delivery.repo_fingerprint("g/ebayapi") in dev_issue["body"]   # keyed on project path
 
 
+def test_issue_and_mr_bodies_link_back_to_the_run_and_report():
+    """Provenance ('what stemmed it'): every issue/MR footer links the scan run + report."""
+    links = {"run": "https://gh/run/1", "report": "https://git.x/root/ops"}
+    ib = delivery.issue_body(_cve(), "root/web", links)
+    assert "[scan run](https://gh/run/1)" in ib and "[full report](https://git.x/root/ops)" in ib
+    mr = delivery.mr_description("g/ebayapi", [_sunset()], links)
+    assert "[scan run](https://gh/run/1)" in mr and "Draft, filed by Drift Detector" in mr
+
+
 def test_developer_finding_with_no_known_project_is_unroutable_not_silent():
     plan = delivery.build_plan(_payload([_sunset(repo="mystery")]), {},  # no repo_meta
                                {"issues": [], "mrs": {}}, "root/drift-detector")

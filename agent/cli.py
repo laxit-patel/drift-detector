@@ -486,8 +486,9 @@ def _cmd_deliver(args) -> int:
     gl = gitlab_api.GitLab(host, token)
     dev_projects = sorted({m["project"] for m in repo_meta.values()})
     existing = delivery.fetch_existing(gl, devops_project, dev_projects)
+    links = {"run": getattr(args, "run_url", None), "report": getattr(args, "report_url", None)}
     plan = delivery.build_plan(payload, repo_meta, existing, devops_project,
-                               dev_as_issues=dev_as_issues)
+                               dev_as_issues=dev_as_issues, links=links)
 
     print(f"delivery mode: {mode}")
     print(delivery.plan_summary(plan))
@@ -528,6 +529,8 @@ def main(argv: list[str]) -> int:
                      help="GitLab project path where DevOps issues are filed (or from --config)")
     pdl.add_argument("--dry-run", action="store_true",
                      help="print the create/update/close plan without writing anything")
+    pdl.add_argument("--run-url", help="link back to the scan run (provenance in each issue/MR)")
+    pdl.add_argument("--report-url", help="link to the full report (provenance in each issue/MR)")
     pdl.add_argument("--dev-as-issues", action="store_true",
                      help="file the Developer stream as issues (in --devops-project) instead "
                           "of draft MRs — the Reporter-friendly fallback")

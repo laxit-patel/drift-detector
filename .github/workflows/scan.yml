@@ -91,7 +91,9 @@ jobs:
           GITLAB_TOKEN: ${{ secrets.GITLAB_TOKEN }}
         run: |
           python3 -m agent.cli deliver --config drift-ops/config/drift.yml \
-            --state drift-ops/state
+            --state drift-ops/state \
+            --run-url "${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}" \
+            --report-url "https://${GITLAB_HOST}/${DRIFT_OPS_PATH}"
 
       - name: Publish the report to the drift-ops landing page (README)
         # So visiting the drift-ops repo on GitLab shows the latest scan (GitLab renders the
