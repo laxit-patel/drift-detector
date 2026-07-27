@@ -93,6 +93,22 @@ jobs:
           python3 -m agent.cli deliver --config drift-ops/config/drift.yml \
             --state drift-ops/state
 
+      - name: Publish the report to the drift-ops landing page (README)
+        # So visiting the drift-ops repo on GitLab shows the latest scan (GitLab renders the
+        # markdown + the exposure graph) — the GitLab-native central view for the two teams.
+        if: always()
+        run: |
+          REPORT=drift-ops/state/drift.md
+          [ -f "$REPORT" ] || exit 0
+          RUN_URL="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+          {
+            echo "# Drift Detector — latest scan"
+            echo
+            echo "_Scanned $(date +%F) · [scan run]($RUN_URL) · [raw data](state/drift.json) · [dashboard](state/dashboard.html)_"
+            echo
+            python3 -c "import re;t=open('${REPORT}').read();print(re.sub(r'^---\n.*?\n---\n','',t,count=1,flags=re.S))"
+          } > drift-ops/README.md
+
       - name: Persist state + overlay back to drift-ops
         env:
           GITLAB_TOKEN: ${{ secrets.GITLAB_TOKEN }}
@@ -101,7 +117,7 @@ jobs:
           BRANCH=$(git rev-parse --abbrev-ref HEAD)      # drift-ops' own default branch
           git config user.name "Drift Detector"
           git config user.email "drift@${GITLAB_HOST}"
-          git add state catalog
+          git add state catalog README.md                # README = the latest report
           if git diff --cached --quiet; then
             echo "no changes to persist"; exit 0
           fi
