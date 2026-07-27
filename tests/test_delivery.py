@@ -196,3 +196,40 @@ def test_cli_dry_run_produces_a_plan_and_writes_nothing(tmp_path, monkeypatch, c
     assert rc == 0
     assert "create" in out and "root/drift-detector" in out and "Draft" in out
     assert "dry run" in out
+
+
+def test_cli_reads_host_project_and_mode_from_config(tmp_path, monkeypatch, capsys):
+    import json
+    from agent import cli
+    from agent.lib import gitlab_api
+    (tmp_path / "drift.json").write_text(json.dumps(_payload([_sunset(repo="ebayapi")])))
+    (tmp_path / "inventory.json").write_text(json.dumps({"repos": [
+        {"path": "ebayapi", "remote_url": "https://git.x/g/ebayapi"}]}))
+    (tmp_path / "drift.yml").write_text(
+        "fleet: [https://git.x/g/ebayapi]\n"
+        "delivery:\n  mode: dry-run\n  devops_project: root/ops\n  dev_as_issues: true\n")
+
+    class FakeGL:
+        def __init__(self, host, *a, **k): FakeGL.host = host
+        def list_issues(self, *a, **k): return []
+        def list_mrs(self, *a, **k): return []
+    monkeypatch.setattr(gitlab_api, "GitLab", FakeGL)
+    rc = cli.main(["deliver", "--config", str(tmp_path / "drift.yml"),
+                   "--state", str(tmp_path)])
+    out = capsys.readouterr().out
+    assert rc == 0
+    assert FakeGL.host == "git.x"                    # host derived from the fleet in config
+    assert "delivery mode: dry-run" in out and "dry run" in out
+    assert "root/ops" in out                         # devops_project from config
+    assert "draft MRs: nothing" in out               # dev_as_issues from config -> issue, no MR
+
+
+def test_cli_config_mode_off_skips_delivery(tmp_path, capsys):
+    import json
+    from agent import cli
+    (tmp_path / "drift.json").write_text(json.dumps(_payload([])))
+    (tmp_path / "inventory.json").write_text(json.dumps({"repos": []}))
+    (tmp_path / "drift.yml").write_text(
+        "fleet: [https://git.x/g/a]\ndelivery:\n  mode: off\n  devops_project: root/ops\n")
+    rc = cli.main(["deliver", "--config", str(tmp_path / "drift.yml"), "--state", str(tmp_path)])
+    assert rc == 0 and "off — skipping" in capsys.readouterr().out

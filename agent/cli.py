@@ -73,6 +73,17 @@ def _cmd_audit(args) -> int:
 
 def _cmd_run(args) -> int:
     from agent.run import run_pipeline
+    roots = args.root
+    if getattr(args, "config", None):
+        from agent.lib import ops_config
+        try:
+            roots = args.root or ops_config.load(args.config)["fleet"]   # flag overrides config
+        except (OSError, ops_config.ConfigError) as exc:
+            print(f"run: bad --config — {exc}", file=sys.stderr)
+            return 2
+    if not roots:
+        print("run: no repos to scan — pass --root or a --config with a fleet", file=sys.stderr)
+        return 2
     progress = None
     if getattr(args, "progress", False):
         print("drift-detector · scan → audit → deliver (deterministic · 0 LLM tokens)",
@@ -81,7 +92,7 @@ def _cmd_run(args) -> int:
         def progress(msg):
             print(f"⚙ {msg}", file=sys.stderr, flush=True)
     try:
-        out = run_pipeline(args.root, args.state, args.now,
+        out = run_pipeline(roots, args.state, args.now,
                            pull=getattr(args, "pull", False), progress=progress)
     except RuntimeError as exc:
         print(f"run failed: {exc}", file=sys.stderr)
@@ -433,6 +444,29 @@ def _cmd_deliver(args) -> int:
     import os as _os
     from agent.lib import delivery, gitlab_api
 
+    # settings come from --config (drift.yml) unless an explicit flag overrides
+    host, devops_project = args.gitlab_host, args.devops_project
+    mode = "dry-run" if args.dry_run else "live"
+    dev_as_issues = args.dev_as_issues
+    if getattr(args, "config", None):
+        from agent.lib import ops_config
+        try:
+            cfg = ops_config.load(args.config)
+        except (OSError, ops_config.ConfigError) as exc:
+            print(f"deliver: bad --config — {exc}", file=sys.stderr)
+            return 2
+        host = host or cfg["host"]
+        devops_project = devops_project or cfg["delivery"]["devops_project"]
+        dev_as_issues = dev_as_issues or cfg["delivery"]["dev_as_issues"]
+        if not args.dry_run:                        # an explicit --dry-run always wins
+            mode = cfg["delivery"]["mode"]
+    if mode == "off":
+        print("delivery mode: off — skipping")
+        return 0
+    if not host or not devops_project:
+        print("deliver: need --gitlab-host and --devops-project (or a --config)", file=sys.stderr)
+        return 2
+
     try:
         with open(_os.path.join(args.state, "drift.json"), encoding="utf-8") as fh:
             payload = _json.load(fh)
@@ -449,18 +483,19 @@ def _cmd_deliver(args) -> int:
             repo_meta[r.get("path")] = {"project": pp}
 
     token = _os.environ.get("GITLAB_TOKEN") or _os.environ.get("DRIFT_GIT_TOKEN")
-    gl = gitlab_api.GitLab(args.gitlab_host, token)
+    gl = gitlab_api.GitLab(host, token)
     dev_projects = sorted({m["project"] for m in repo_meta.values()})
-    existing = delivery.fetch_existing(gl, args.devops_project, dev_projects)
-    plan = delivery.build_plan(payload, repo_meta, existing, args.devops_project,
-                               dev_as_issues=args.dev_as_issues)
+    existing = delivery.fetch_existing(gl, devops_project, dev_projects)
+    plan = delivery.build_plan(payload, repo_meta, existing, devops_project,
+                               dev_as_issues=dev_as_issues)
 
+    print(f"delivery mode: {mode}")
     print(delivery.plan_summary(plan))
     print()
     print(delivery.plan_detail(plan))
     unroutable = [m for m in plan["mrs"] if m["op"] == "unroutable"]
 
-    if args.dry_run:
+    if mode == "dry-run":
         print("\n(dry run — nothing written)")
         return 3 if unroutable else 0
 
@@ -475,7 +510,8 @@ def main(argv: list[str]) -> int:
     sub = p.add_subparsers(dest="cmd", required=True)
 
     pr = sub.add_parser("run")           # scan -> audit -> deliver, deterministic (cron entrypoint)
-    pr.add_argument("--root", action="append", required=True)
+    pr.add_argument("--root", action="append")   # or supply the fleet via --config
+    pr.add_argument("--config", help="drift.yml — the fleet comes from its `fleet:` list")
     pr.add_argument("--state", required=True)
     pr.add_argument("--now", required=True)
     pr.add_argument("--pull", action="store_true")
@@ -486,9 +522,10 @@ def main(argv: list[str]) -> int:
 
     pdl = sub.add_parser("deliver")       # findings -> GitLab issues (DevOps) + draft MRs (Dev)
     pdl.add_argument("--state", required=True)
-    pdl.add_argument("--gitlab-host", required=True)
-    pdl.add_argument("--devops-project", required=True,
-                     help="GitLab project path where DevOps issues are filed (e.g. root/drift-detector)")
+    pdl.add_argument("--config", help="drift.yml — supplies host + delivery settings")
+    pdl.add_argument("--gitlab-host")     # or from --config (derived from the fleet host)
+    pdl.add_argument("--devops-project",
+                     help="GitLab project path where DevOps issues are filed (or from --config)")
     pdl.add_argument("--dry-run", action="store_true",
                      help="print the create/update/close plan without writing anything")
     pdl.add_argument("--dev-as-issues", action="store_true",

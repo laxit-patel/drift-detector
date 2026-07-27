@@ -1,0 +1,14 @@
+# Drift Detector — operational config (the ONE settings file). Edit for YOUR fleet.
+# Lives in the PRIVATE drift-ops repo, so client repo names never touch the public plugin.
+version: 1
+
+# Repos/groups to scan — https URLs, all under one host (a group URL scans every repo under it).
+fleet:
+  - https://git.example.com/team/service-a
+  - https://git.example.com/team/service-b
+
+delivery:
+  mode: dry-run            # dry-run (print the plan, write nothing) | live | off
+  dev_as_issues: false     # true → developer findings as issues (works with Reporter access);
+                           # false → draft MRs on the scanned repos (needs Developer access)
+  devops_project: team/ops # GitLab project path where DevOps (package/runtime) issues are filed

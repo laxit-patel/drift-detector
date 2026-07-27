@@ -44,13 +44,17 @@ def test_scans_then_verifies_then_persists():
 
 def test_overlay_is_wired_from_drift_ops():
     assert "DRIFT_CATALOG_DIR:" in WF_TEXT and "drift-ops/catalog" in WF_TEXT
-    assert "drift-ops/config/fleet.yaml" in WF_TEXT
+    assert "drift-ops/config/drift.yml" in WF_TEXT
 
 
-def test_delivery_is_wired_and_defaults_to_dry_run():
-    assert "agent.cli deliver" in WF_TEXT
-    assert "DRIFT_DELIVER" in WF_TEXT and "dry-run" in WF_TEXT   # safe default: no writes
+def test_delivery_is_wired_after_verify_and_config_driven():
+    assert "agent.cli deliver --config" in WF_TEXT              # mode/host/project from drift.yml
+    assert "DRIFT_DELIVER" not in WF_TEXT                       # no GitHub-variable dance anymore
     assert WF_TEXT.index("agent.cli verify") < WF_TEXT.index("agent.cli deliver")  # deliver after verify
+
+
+def test_scan_reads_the_fleet_from_config():
+    assert "agent.cli run --config" in WF_TEXT and "drift.yml" in WF_TEXT
 
 
 def test_token_comes_from_a_secret_never_a_literal():

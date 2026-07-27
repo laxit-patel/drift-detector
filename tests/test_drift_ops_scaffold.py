@@ -8,10 +8,11 @@ import yaml
 ROOT = Path(__file__).resolve().parent.parent / "deploy" / "drift-ops"
 
 
-def test_fleet_config_is_a_nonempty_root_list():
-    fleet = yaml.safe_load((ROOT / "config" / "fleet.yaml").read_text())
-    assert isinstance(fleet.get("roots"), list) and fleet["roots"]
-    assert all(r.startswith("https://") for r in fleet["roots"])
+def test_drift_yml_template_is_a_valid_config():
+    from agent.lib import ops_config
+    cfg = ops_config.load(str(ROOT / "config" / "drift.yml"))     # must parse + validate
+    assert cfg["fleet"] and cfg["host"] == "git.example.com"      # placeholder, not a client host
+    assert cfg["delivery"]["mode"] == "dry-run"                   # safe default in the template
 
 
 def test_clones_and_cache_are_gitignored_but_reports_are_not():

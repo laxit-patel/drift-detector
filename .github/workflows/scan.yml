@@ -11,7 +11,7 @@
 #       GITLAB_TOKEN = a GitLab PAT with Reporter on every scanned repo (`api` scope) and
 #       write access to the drift-ops repo. (The same token the GitLab-CI path would use.)
 #   • Adjust GITLAB_HOST / DRIFT_OPS_PATH below to your instance + persistence repo.
-#   • The fleet to scan lives in the drift-ops repo at config/fleet.yaml.
+#   • Fleet + delivery settings live in the drift-ops repo at config/drift.yml.
 
 name: drift-scan
 
@@ -77,28 +77,21 @@ jobs:
           GITLAB_TOKEN: ${{ secrets.GITLAB_TOKEN }}
           DRIFT_CATALOG_DIR: ${{ github.workspace }}/drift-ops/catalog
         run: |
-          ROOTS=$(python3 -c "import yaml;print(' '.join('--root '+r for r in (yaml.safe_load(open('drift-ops/config/fleet.yaml')) or {}).get('roots',[])))")
-          test -n "$ROOTS" || { echo "::error::drift-ops/config/fleet.yaml lists no roots"; exit 4; }
-          python3 -m agent.cli run $ROOTS --state drift-ops/state --now "$(date +%F)" --pull
+          # fleet + delivery settings all come from drift-ops/config/drift.yml (private repo)
+          python3 -m agent.cli run --config drift-ops/config/drift.yml \
+            --state drift-ops/state --now "$(date +%F)" --pull
           # exit 4 (nothing scanned / source unreachable) fails the job; exit 3 (findings) does not
           python3 -m agent.cli verify --state drift-ops/state
 
-      - name: Deliver — issues (DevOps) + draft MRs (Developer)
-        # DRY-RUN by default: prints the create/update/close plan, writes nothing. Flip to
-        # live by setting a repo variable DRIFT_DELIVER=live (or =off to skip). Runs only
-        # after a green verify — delivery is a projection of the verified payload.
-        if: ${{ (vars.DRIFT_DELIVER || 'dry-run') != 'off' }}
+      - name: Deliver — issues (DevOps) + draft MRs / issues (Developer)
+        # Mode (dry-run | live | off), dev_as_issues, host and devops project ALL come from
+        # drift.yml's `delivery:` block — set them there (a reviewed commit in the private
+        # drift-ops repo), not in GitHub variables. Runs after a green verify.
         env:
           GITLAB_TOKEN: ${{ secrets.GITLAB_TOKEN }}
         run: |
-          MODE="${{ vars.DRIFT_DELIVER || 'dry-run' }}"
-          FLAG=""; [ "$MODE" = "dry-run" ] && FLAG="--dry-run"
-          # DRIFT_DEV_AS_ISSUES=1 files the Developer stream as issues (Reporter-friendly)
-          # instead of draft MRs (which need Developer access on the scanned repos)
-          [ "${{ vars.DRIFT_DEV_AS_ISSUES }}" = "1" ] && FLAG="$FLAG --dev-as-issues"
-          echo "delivery mode: $MODE  (flags:$FLAG)"
-          python3 -m agent.cli deliver --state drift-ops/state \
-            --gitlab-host "${GITLAB_HOST}" --devops-project "${DRIFT_OPS_PATH}" $FLAG
+          python3 -m agent.cli deliver --config drift-ops/config/drift.yml \
+            --state drift-ops/state
 
       - name: Persist state + overlay back to drift-ops
         env:
