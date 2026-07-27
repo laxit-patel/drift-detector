@@ -95,6 +95,10 @@ def test_deepen_command_exists_and_states_its_guardrails():
     assert "source" in cmd.lower() and "staged" in cmd.lower()
     # never a direct write to the catalogs
     assert "Never edit" in cmd and "vendor_sunsets.yaml" in cmd
+    # the overlay hand-off must be wired (defect: absorb wrote to the installed plugin's own
+    # catalogs — wiped on update, never read by CI — and there was no MR step to the fleet)
+    assert "DRIFT_CATALOG_DIR" in cmd and "DRIFT_OPS_DIR" in cmd   # promote to the overlay, not the plugin
+    assert "mr create" in cmd or "merge request" in cmd.lower()    # learning is handed back to drift-ops
 
 
 def test_main_command_surfaces_unknown_verdicts():

@@ -53,10 +53,33 @@ Write to `<folder>/.drift-detector/absorb-staged/`, then run the gate. Nothing e
 - **`sunsets.yaml`** — vendor retirements, each with `retires:` (YYYY-MM-DD) and a `source:` URL you **fetched this session**. If the vendor blocks fetches, try a Wayback snapshot and cite the snapshot. If you could not reach a source, do not write the entry — report the gap instead.
 
 ```bash
-"$SCAN" absorb --staged "$D/absorb-staged" --repo "<repo path>" --state "$D" --now "$(date +%F)"
+# WHERE learning is promoted matters. Point DRIFT_CATALOG_DIR at the drift-ops OVERLAY — a
+# local checkout of the persistence repo the scheduled scan reads. WITHOUT it, absorb writes
+# into the INSTALLED PLUGIN's own catalogs, which a plugin update wipes and no CI scan ever
+# reads: the learning evaporates. --state stays LOCAL: the attestation is a machine-local
+# resolution record; the idioms/sunsets in the overlay are what actually travel to the fleet.
+: "${DRIFT_OPS_DIR:?clone the drift-ops persistence repo and export DRIFT_OPS_DIR=<its path>}"
+DRIFT_CATALOG_DIR="$DRIFT_OPS_DIR/catalog" \
+  "$SCAN" absorb --staged "$D/absorb-staged" --repo "<repo path>" --state "$D" --now "$(date +%F)"
 ```
 
 Exit 3 means rejected, and the message says which check failed. **Do not weaken the claim to make it pass** — a narrower, true proposal is the correct response; a broader, false one is the failure this gate exists to catch.
+
+## Hand it back to the fleet
+
+A clean gate has promoted your idiom/sunset into the drift-ops overlay (`$DRIFT_OPS_DIR/catalog/*.local.yaml`) — but that is still just a local checkout. The scheduled scan reads the drift-ops **repo**, so the learning only reaches the fleet once it is merged there. Open a merge request:
+
+```bash
+cd "$DRIFT_OPS_DIR"
+BR="deepen/$(basename '<repo path>')-$(date +%Y%m%d)"
+git checkout -b "$BR"
+git add catalog
+git commit -m "learn(<repo>): <what you taught it, in one line> — verified by drift-scan absorb"
+git push -u origin "$BR"
+glab mr create --fill --yes 2>/dev/null || echo "push done — open the MR for $BR in drift-ops"
+```
+
+The MR description carries the evidence the gate already checked: the exact `file:line`s you opened and the `source:` URLs you fetched **this session**. A reviewer approves a YAML diff with provenance, never a bare assertion — that is the whole trust model. A brand-new idiom *family* (not an instance of an existing one) is a pull request against the plugin itself, not an overlay entry; say so and stop rather than forcing a bad fit.
 
 ## Guardrails
 

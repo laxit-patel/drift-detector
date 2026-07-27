@@ -414,8 +414,11 @@ def _cmd_absorb(args) -> int:
     if args.state:
         after = scan(staged_idioms)
         fp = shapes.residue_fingerprint(after["residue"])
+        # repo_abs MUST be passed: inventory_scan._shape_of looks the attestation up with the
+        # repo's abspath (shapes.repo_key(name, abs_)), so writing a bare-name key here means
+        # the next scan never sees it and absorb never 'sticks'. Same qualifier, both sides.
         shapes.attest(args.state, args.repo_name or os.path.basename(args.repo.rstrip("/")),
-                      fp, resolved_by="absorb", date=args.now or "",
+                      fp, resolved_by="absorb", date=args.now or "", repo_abs=args.repo,
                       note=f"{added['idioms']} idiom(s) absorbed")
         print(f"  attestation written for residue {fp}")
     return 0

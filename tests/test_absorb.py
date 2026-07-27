@@ -1,3 +1,5 @@
+from types import SimpleNamespace
+
 import pytest
 import yaml
 
@@ -81,6 +83,44 @@ def test_malformed_idiom_instances_are_rejected_before_any_scan():
     assert absorb.check_idioms([{"id": "x", "family": "url-assembly"}])      # no evidence/base
     assert absorb.check_idioms([{"id": "ok", "family": "url-assembly",
                                  "base": "$A->x()", "evidence": "r f.php:1"}]) == []
+
+
+def test_absorb_attestation_is_honored_by_a_later_scan(tmp_path, monkeypatch):
+    """The Learn loop's core promise: after absorb resolves a repo's blindness, the NEXT scan
+    of that same repo sees the attestation and stops calling it UNKNOWN. This was broken —
+    _cmd_absorb wrote the attestation under a bare-name key ("svc@fp") while
+    inventory_scan._shape_of looks it up with the repo's abspath ("svc:<hash>@fp"), so the two
+    never matched and absorb never 'stuck'. This test fails on that bug and passes once
+    _cmd_absorb keys the attestation the same way the scanner reads it."""
+    from agent import cli
+    from agent.lib import shapes
+    import agent.lib.engine as engine_mod
+    import agent.lib.endpoints as endpoints_mod
+
+    repo = tmp_path / "svc"; repo.mkdir()
+    state = tmp_path / "state"; state.mkdir()
+    staged = tmp_path / "absorb-staged"; staged.mkdir()
+    (staged / "idioms.yaml").write_text(yaml.safe_dump(
+        [{"id": "svc-base", "family": "url-assembly", "base": "$A->baseUrl",
+          "evidence": "svc f.php:1"}]))
+    overlay = tmp_path / "overlay"; overlay.mkdir()          # promote here, not the real catalogs
+    monkeypatch.setenv("DRIFT_CATALOG_DIR", str(overlay))
+
+    # a repo the gate accepts unchanged (no claims): one attributed endpoint + one opaque sink
+    fake = {"endpoints": [{"vendor": "eBay", "files": ["f.php:1"]}],
+            "residue": {"pathLiterals": [], "sinks": [{"kind": "curl_exec", "loc": "g.php:4"}]}}
+    monkeypatch.setattr(cli.scan_util, "resolve_engine", lambda: "fake")
+    monkeypatch.setattr(engine_mod, "run_scan", lambda *a, **k: {"matches": []})
+    monkeypatch.setattr(endpoints_mod, "scan_endpoints", lambda *a, **k: fake)
+
+    args = SimpleNamespace(staged=str(staged), repo=str(repo), state=str(state),
+                           repo_name=None, now="2026-07-27")
+    assert cli._cmd_absorb(args) == 0                        # gate passed, attestation written
+
+    fp = shapes.residue_fingerprint(fake["residue"])
+    at = shapes.load_attestations(str(state))
+    # the scanner will look it up with the repo's abspath — the attestation must match THAT key
+    assert shapes.is_attested(at, "svc", fp, repo_abs=str(repo))
 
 
 def test_promote_appends_staged_specs(tmp_path):
