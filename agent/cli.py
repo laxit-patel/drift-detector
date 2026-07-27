@@ -435,6 +435,43 @@ def _cmd_mute(args) -> int:
     return 0
 
 
+def _cmd_config_preflight(args) -> int:
+    """A 5-second gate BEFORE the scan: are the token env vars the config names actually set,
+    is a configured webhook present, and does the delivery token reach GitLab? Fails here
+    (exit 2) instead of 10 minutes into a scan that can't deliver. --no-network skips the
+    reachability probe (the static checks still run)."""
+    import os as _os
+    from agent.lib import ops_config, preflight, gitlab_api
+
+    try:
+        cfg = ops_config.load(args.config)
+    except (OSError, ops_config.ConfigError) as exc:
+        print(f"preflight: bad --config — {exc}", file=sys.stderr)
+        return 2
+
+    probe = None
+    if not args.no_network:
+        def probe(host, token):
+            try:
+                v = gitlab_api.GitLab(host, token).version()
+                return (bool(v), f"reachable (v{v.get('version')})" if v
+                        else "unreachable, or the delivery token was rejected")
+            except Exception as exc:                     # network/DNS/TLS — a real block, reported
+                return (False, str(exc))
+
+    problems, advisories = preflight.check(cfg, dict(_os.environ), probe=probe)
+    for a in advisories:
+        print(f"  ⚠ {a}")
+    if problems:
+        print("✗ preflight — the deployment is not ready to run:", file=sys.stderr)
+        for p in problems:
+            print(f"    {p}", file=sys.stderr)
+        return 2
+    net = "config valid" if args.no_network else f"{cfg['host']} reachable"
+    print(f"✓ preflight — {net}, tokens present")
+    return 0
+
+
 def _cmd_deliver(args) -> int:
     """Project the verified findings into GitLab: DevOps issues + Developer draft MRs.
 
@@ -451,6 +488,7 @@ def _cmd_deliver(args) -> int:
     host, devops_project = args.gitlab_host, args.devops_project
     mode = "dry-run" if args.dry_run else "live"
     dev_as_issues = args.dev_as_issues
+    deliver_var = None                              # env-var NAME the delivery token is read from
     if getattr(args, "config", None):
         from agent.lib import ops_config
         try:
@@ -461,6 +499,7 @@ def _cmd_deliver(args) -> int:
         host = host or cfg["host"]
         devops_project = devops_project or cfg["delivery"]["devops_project"]
         dev_as_issues = dev_as_issues or cfg["delivery"]["dev_as_issues"]
+        deliver_var = cfg["auth"]["deliver"]
         if not args.dry_run:                        # an explicit --dry-run always wins
             mode = cfg["delivery"]["mode"]
     if mode == "off":
@@ -485,7 +524,10 @@ def _cmd_deliver(args) -> int:
         if pp:
             repo_meta[r.get("path")] = {"project": pp}
 
-    token = _os.environ.get("GITLAB_TOKEN") or _os.environ.get("DRIFT_GIT_TOKEN")
+    # the delivery token: the config-named var first (split-token deployments), then the
+    # single-token fallback that has always worked
+    token = (_os.environ.get(deliver_var) if deliver_var else None) \
+        or _os.environ.get("GITLAB_TOKEN") or _os.environ.get("DRIFT_GIT_TOKEN")
     gl = gitlab_api.GitLab(host, token)
     dev_projects = sorted({m["project"] for m in repo_meta.values()})
     existing = delivery.fetch_existing(gl, devops_project, dev_projects)
@@ -517,6 +559,16 @@ def _cmd_notify(args) -> int:
     from agent.lib import notify
 
     webhook = args.webhook or _os.environ.get("DRIFT_CHAT_WEBHOOK")
+    if not webhook and getattr(args, "config", None):
+        # honor the env-var NAME the config gives (notify.gchat). A bad config here must not
+        # crash the pipeline's tail — notify is best-effort by design.
+        from agent.lib import ops_config
+        try:
+            gchat = ops_config.load(args.config)["notify"]["gchat"]
+            if gchat:
+                webhook = _os.environ.get(gchat)
+        except (OSError, ops_config.ConfigError):
+            pass
     if not webhook:
         print("notify: no webhook configured — skipping")
         return 0
@@ -571,9 +623,16 @@ def main(argv: list[str]) -> int:
     pn = sub.add_parser("notify")         # push a one-line summary to a Google Chat webhook
     pn.add_argument("--state", required=True)
     pn.add_argument("--webhook", help="Google Chat webhook URL (or $DRIFT_CHAT_WEBHOOK)")
+    pn.add_argument("--config", help="drift.yml — resolves the webhook from notify.gchat's env var")
     pn.add_argument("--report-url")
     pn.add_argument("--run-url")
     pn.set_defaults(func=_cmd_notify)
+
+    pcp = sub.add_parser("config-preflight")   # 5s gate: tokens + reachability + config, PRE-scan
+    pcp.add_argument("--config", required=True)
+    pcp.add_argument("--no-network", action="store_true",
+                     help="skip the GitLab reachability probe (static checks still run)")
+    pcp.set_defaults(func=_cmd_config_preflight)
 
     psc = sub.add_parser("schedule")
     psc.add_argument("--root", required=True)

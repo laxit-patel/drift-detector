@@ -36,6 +36,14 @@ def test_checks_reachability_before_scanning():
     assert WF_TEXT.index("/api/v4/version") < WF_TEXT.index("agent.cli run")
 
 
+def test_config_preflight_gates_before_the_scan():
+    """A misconfigured deployment (unset token, named-but-missing webhook) must fail in
+    seconds, before the 10-minute scan — the preflight runs after drift.yml is on disk and
+    before `agent.cli run`."""
+    assert "config-preflight --config" in WF_TEXT
+    assert WF_TEXT.index("config-preflight") < WF_TEXT.index("agent.cli run")
+
+
 def test_scans_then_verifies_then_persists():
     assert "agent.cli run" in WF_TEXT and "agent.cli verify" in WF_TEXT
     assert WF_TEXT.index("agent.cli run") < WF_TEXT.index("agent.cli verify")

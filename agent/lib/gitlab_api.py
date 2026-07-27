@@ -69,6 +69,13 @@ class GitLab:
             page = int(nxt) if str(nxt).isdigit() and nxt else 0
         return out
 
+    # --- reachability ---
+    def version(self) -> dict | None:
+        """GET /version — the instance version dict, or None if unreachable / token rejected.
+        Doubles as the preflight probe: it needs a valid token, so a 401 returns None."""
+        status, data, _ = self._call("GET", "/version")
+        return data if status == 200 and isinstance(data, dict) else None
+
     # --- projects ---
     def project(self, path_or_id) -> dict | None:
         """The project dict (id, default_branch, web_url) or None if 404."""

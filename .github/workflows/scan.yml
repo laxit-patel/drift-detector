@@ -84,6 +84,15 @@ jobs:
         env:
           GITLAB_TOKEN: ${{ secrets.GITLAB_TOKEN }}
 
+      - name: Preflight — config + tokens valid before the scan runs
+        # A 5-second gate now that drift.yml is on disk: are the token env vars the config
+        # names actually set, is a configured webhook present, does the delivery token reach
+        # GitLab? Fails here instead of 10 minutes into a scan that can't deliver.
+        env:
+          GITLAB_TOKEN: ${{ secrets.GITLAB_TOKEN }}
+          GCHAT_WEBHOOK: ${{ secrets.GCHAT_WEBHOOK }}
+        run: python3 -m agent.cli config-preflight --config drift-ops/config/drift.yml
+
       - name: Scan the fleet + verify
         env:
           GITLAB_TOKEN: ${{ secrets.GITLAB_TOKEN }}
