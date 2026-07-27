@@ -495,7 +495,9 @@ def _cmd_sarif(args) -> int:
         print(f"sarif: nothing to build from — run a scan first ({exc})", file=sys.stderr)
         return 4
     doc = _sarif.build_sarif(audit)
-    out = _write_json(args.out or os.path.join(args.state, "sarif.json"), doc)
+    # the .sarif.json extension is what GitHub code scanning + the SARIF web viewer/validator
+    # require (a plain .json is rejected).
+    out = _write_json(args.out or os.path.join(args.state, "drift.sarif.json"), doc)
     n = len(doc["runs"][0]["results"])
     print(f"✓ SARIF {doc['version']}: {n} result(s) → {out}")
     return 0

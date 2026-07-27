@@ -101,9 +101,10 @@ jobs:
           # fleet + delivery settings all come from drift-ops/config/drift.yml (private repo)
           python3 -m agent.cli run --config drift-ops/config/drift.yml \
             --state drift-ops/state --now "$(date +%F)" --pull
-          # CycloneDX SBOM (+ CVE vulnerabilities) — SBOM+SCA output for the DevSecOps audience,
-          # generated before verify so verify certifies it as a projection of the inventory
-          python3 -m agent.cli sbom --state drift-ops/state
+          # SBOM (CycloneDX + SPDX) + SARIF — SBOM+SCA+VEX outputs for the DevSecOps audience,
+          # generated before verify so verify certifies them as projections of the inventory
+          python3 -m agent.cli sbom  --state drift-ops/state --format all
+          python3 -m agent.cli sarif --state drift-ops/state
           # exit 4 (nothing scanned / source unreachable) fails the job; exit 3 (findings) does not
           python3 -m agent.cli verify --state drift-ops/state
 
@@ -194,4 +195,6 @@ jobs:
             drift-ops/state/dashboard.html
             drift-ops/state/chart.html
             drift-ops/state/sbom.json
+            drift-ops/state/sbom.spdx.json
+            drift-ops/state/drift.sarif.json
           if-no-files-found: ignore

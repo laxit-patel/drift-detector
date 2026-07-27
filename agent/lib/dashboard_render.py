@@ -296,7 +296,8 @@ def render_payload(projection: dict, now: str, *, bundle: dict | None = None) ->
              '<table id="panel"><tbody></tbody></table>'
              '<p id="empty" class="empty" hidden>Nothing found.</p>'
              '<section id="drift" class="coverage"></section>'
-             '<section id="coverage" class="coverage"></section></div>')
+             '<section id="coverage" class="coverage"></section>'
+             '<section id="methodology" class="coverage"></section></div>')
     p.append('<div id="s-sum-json" class="panel"><p class="jsonhint">View / copy — the '
              'canonical <code>drift.json</code> every surface projects from (read-only; the '
              'verified source of truth).</p><pre id="json-drift"></pre></div>')
@@ -312,10 +313,16 @@ def render_payload(projection: dict, now: str, *, bundle: dict | None = None) ->
     p.append('<div id="s-sbom-prev" class="panel active"><h3 id="sbom-h"></h3>'
              '<table id="sbom-table"><thead><tr><th>Type</th><th>Component</th><th>Version</th>'
              '<th>Used in</th><th>Vulns</th></tr></thead><tbody></tbody></table></div>')
-    p.append('<div id="s-sbom-cdx" class="panel"><p class="jsonhint">CycloneDX 1.5 '
-             '(<code>sbom.json</code>) → Dependency-Track, GitHub.</p><pre id="json-cdx"></pre></div>')
-    p.append('<div id="s-sbom-spdx" class="panel"><p class="jsonhint">SPDX 2.3 '
-             '(<code>sbom.spdx.json</code>).</p><pre id="json-spdx"></pre></div>')
+    p.append('<div id="s-sbom-cdx" class="panel">'
+             '<p class="jsonhint">CycloneDX 1.5 (<code>sbom.json</code>) → Dependency-Track, '
+             'GitHub · <a class="viewbtn" href="https://apps.rancher.io/sbom-viewer" '
+             'target="_blank" rel="noopener">Open in Rancher SBOM viewer ↗</a></p>'
+             '<pre id="json-cdx"></pre></div>')
+    p.append('<div id="s-sbom-spdx" class="panel">'
+             '<p class="jsonhint">SPDX 2.3 (<code>sbom.spdx.json</code>) '
+             '· <a class="viewbtn" href="https://apps.rancher.io/sbom-viewer" '
+             'target="_blank" rel="noopener">Open in Rancher SBOM viewer ↗</a></p>'
+             '<pre id="json-spdx"></pre></div>')
     p.append("</div></section>")
 
     # ---- SARIF ----
@@ -326,9 +333,12 @@ def render_payload(projection: dict, now: str, *, bundle: dict | None = None) ->
              '<div class="panels" id="sub-sarif">')
     p.append('<div id="s-sarif-prev" class="panel active"><h3 id="sarif-h"></h3>'
              '<div id="sarif-groups"></div></div>')
-    p.append('<div id="s-sarif-json" class="panel"><p class="jsonhint">SARIF 2.1.0 '
-             '(<code>sarif.json</code>) — file:line results → GitHub code scanning, VS Code.'
-             '</p><pre id="json-sarif"></pre></div>')
+    p.append('<div id="s-sarif-json" class="panel">'
+             '<p class="jsonhint">SARIF 2.1.0 (<code>drift.sarif.json</code>) — file:line '
+             'results → GitHub code scanning, VS Code · <a class="viewbtn" '
+             'href="https://microsoft.github.io/sarif-web-component/" target="_blank" '
+             'rel="noopener">Open in SARIF web viewer ↗</a></p>'
+             '<pre id="json-sarif"></pre></div>')
     p.append("</div></section>")
 
     p.append("</div>")   # /main
@@ -449,6 +459,8 @@ details.grp>summary::before{content:"▸";color:var(--muted);transition:transfor
 details.grp[open]>summary::before{transform:rotate(90deg)}
 .count{margin-left:auto;color:var(--muted);font-size:12px;background:var(--bg);border:1px solid var(--line);border-radius:20px;padding:1px 9px}
 .jsonhint{color:var(--muted);font-size:12px;margin-bottom:8px}
+.viewbtn{display:inline-block;border:1px solid color-mix(in oklab,var(--accent-2) 45%,var(--line));color:var(--accent-2);border-radius:20px;padding:2px 10px;font-size:11.5px;text-decoration:none}
+.viewbtn:hover{background:color-mix(in oklab,var(--accent-2) 12%,transparent);text-decoration:none}
 .jsonwrap{position:relative}
 pre{background:light-dark(#f7f7f4,#0c0e12);border:1px solid var(--line);border-radius:10px;padding:14px;overflow:auto;font-family:var(--mono);font-size:12px;line-height:1.6;color:light-dark(#333,#c8d0dc);max-height:460px}
 .copybtn{position:absolute;top:8px;right:8px;background:var(--panel-2);border:1px solid var(--line);color:var(--muted);font:inherit;font-size:11.5px;padding:4px 11px;border-radius:7px;cursor:pointer}
@@ -786,7 +798,13 @@ _CLIENT_JS = r"""
       uns.forEach(function(u){ h+='<li>'+esc(u.root)+' — '+esc(u.reason)+'</li>'; });
       h+='</ul>';
     }
-    (DATA.coverageNotes||[]).forEach(function(n){ h+='<div class="note">'+esc(n)+'</div>'; });
+    // generic methodology (Sources / Versions / Parked tiers / catalog note) is boilerplate,
+    // identical every scan — it goes to its own "methodology" footer below, NOT mixed into
+    // the data-specific coverage warnings (unaudited vendors, unreachable sources, …).
+    var GENERIC=[/^Sources:/,/^Versions are/,/^Parked:/,/^Vendor API sunsets:/];
+    function isGeneric(n){ return GENERIC.some(function(r){return r.test(n);}); }
+    (DATA.coverageNotes||[]).filter(function(n){return !isGeneric(n);})
+      .forEach(function(n){ h+='<div class="note">'+esc(n)+'</div>'; });
     var unknown=(DATA.shapes||[]).filter(function(s){return s.verdict==="UNKNOWN";});
     if(unknown.length){
       h+='<div class="note"><b>'+esc(unknown.length)+' repo(s) the scan could not fully read.</b> '
@@ -815,6 +833,15 @@ _CLIENT_JS = r"""
       h+='</ul>';
     }
     cov.innerHTML = h ? ("<h2>Coverage</h2>"+h) : "";
+    // the generic methodology, in its own collapsed footer container (separate from data)
+    var meth=document.getElementById("methodology");
+    if(meth){ var gen=(DATA.coverageNotes||[]).filter(isGeneric);
+      meth.innerHTML = gen.length
+        ? '<details class="grp"><summary>Scan methodology &amp; sources<span class="count">'
+          +gen.length+'</span></summary><div style="padding:10px 14px">'
+          +gen.map(function(n){ return '<div class="note">'+esc(n)+'</div>'; }).join("")
+          +'</div></details>'
+        : ""; }
   })();
 
   render();
