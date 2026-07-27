@@ -246,15 +246,19 @@ def render_payload(projection: dict, now: str, *, bundle: dict | None = None) ->
     p.append('<html lang="en">')
     p.append('<head><meta charset="utf-8">')
     p.append('<meta name="viewport" content="width=device-width, initial-scale=1">')
-    p.append(f"<title>Drift Detector — {_e(now)}</title>")
+    p.append(f"<title>Drift Detector — DevSecOps Cockpit · {_e(now)}</title>")
     p.append("<style>" + _CSS + "</style></head><body>")
 
     # ---- pinned top: brand · headline · tiles · top tabs ----
     p.append('<div class="sticky">')
     p.append('<div class="brand"><span class="mark" aria-hidden="true"></span>'
-             '<h1>Drift Detector</h1>'
+             '<h1>Drift Detector</h1><span class="sub">DevSecOps Cockpit</span>'
              f'<span class="meta">{c["reposScanned"]} repos · {_e(now)}</span>'
              '<span class="spacer"></span>'
+             '<span class="caps" title="Supply-chain coverage in one pass">'
+             '<span class="cap hot">SBOM</span><span class="cap hot">SCA</span>'
+             '<span class="cap hot">VEX</span><span class="cap hot">SARIF</span>'
+             '<span class="cap">CVE · EOL · sunsets</span></span>'
              '<button class="themebtn" id="theme">◐ Theme: auto</button></div>')
     p.append(f'<p class="headline"><span class="dot">●</span> '
              f'<span class="big">{c["fixes"]} fixes needed</span> · '
@@ -394,7 +398,13 @@ a{color:var(--accent-2);text-decoration:none} a:hover{text-decoration:underline}
   background:radial-gradient(120% 120% at 30% 20%,color-mix(in oklab,var(--accent) 70%,#fff),var(--accent) 55%,color-mix(in oklab,var(--accent) 60%,#000));
   box-shadow:0 0 0 1px color-mix(in oklab,var(--accent) 40%,transparent),0 4px 14px color-mix(in oklab,var(--accent) 35%,transparent)}
 .brand h1{font-size:16px;font-weight:650;letter-spacing:-.01em}
+.brand .sub{font-size:10.5px;font-weight:650;letter-spacing:.04em;text-transform:uppercase;color:var(--accent);
+  border:1px solid color-mix(in oklab,var(--accent) 45%,var(--line));border-radius:20px;padding:2px 9px}
 .brand .meta{color:var(--muted);font-size:12.5px} .spacer{flex:1}
+.caps{display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-right:8px}
+.cap{font-size:10px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:2px 7px;background:var(--panel)}
+.cap.hot{color:var(--accent);border-color:color-mix(in oklab,var(--accent) 40%,var(--line))}
+@container (max-width:720px){.caps{display:none}}
 .themebtn{appearance:none;background:var(--panel);border:1px solid var(--line);color:var(--muted);
   border-radius:20px;padding:5px 12px;font:inherit;font-size:12px;cursor:pointer}
 .themebtn:hover{color:var(--ink);border-color:var(--accent-2)}
