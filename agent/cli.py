@@ -523,9 +523,9 @@ def _cmd_notify(args) -> int:
     except OSError as exc:
         print(f"notify: nothing to send — {exc}", file=sys.stderr)
         return 4
-    text = notify.chat_message(payload, report_url=args.report_url, run_url=args.run_url)
+    card = notify.chat_card(payload, report_url=args.report_url, run_url=args.run_url)
     try:
-        notify.post(webhook, text)
+        notify.post(webhook, card)
     except Exception as exc:                    # a chat outage must not fail the pipeline
         print(f"notify: post failed (non-fatal) — {exc}", file=sys.stderr)
         return 0
