@@ -110,6 +110,26 @@ jobs:
           git commit -m "scan $(date +%F): ${SUMMARY} [skip ci]"
           git push origin "HEAD:${BRANCH}"               # origin carries the token from the clone URL
 
+      - name: Run summary (the shareable "this scan" page)
+        # Renders the report on the Actions run page (markdown + the exposure graph), with a
+        # link to the versioned GitLab report. This run URL is the central thing to cite —
+        # it's what stemmed the issues/MRs the two streams see.
+        if: always()
+        run: |
+          REPORT=drift-ops/state/drift.md
+          if [ ! -f "$REPORT" ]; then
+            echo "_No report produced — the scan did not complete._" >> "$GITHUB_STEP_SUMMARY"; exit 0
+          fi
+          BRANCH=$(git -C drift-ops rev-parse --abbrev-ref HEAD 2>/dev/null || echo main)
+          URL="https://${GITLAB_HOST}/${DRIFT_OPS_PATH}/-/blob/${BRANCH}/state/drift.md"
+          {
+            echo "> 📄 **Full report (GitLab, versioned):** [${DRIFT_OPS_PATH}/state/drift.md](${URL})"
+            echo "> 🔴 DevOps findings → issues · 🔵 Developer findings → MRs/issues (see the Deliver step)"
+            echo
+            # drop the YAML front matter for cleaner rendering; keep the tables + mermaid graph
+            python3 -c "import re;t=open('${REPORT}').read();print(re.sub(r'^---\n.*?\n---\n','',t,count=1,flags=re.S))"
+          } >> "$GITHUB_STEP_SUMMARY"
+
       - name: Upload the report as a run artifact
         if: always()
         uses: actions/upload-artifact@v4

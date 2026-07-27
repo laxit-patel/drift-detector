@@ -57,6 +57,11 @@ def test_scan_reads_the_fleet_from_config():
     assert "agent.cli run --config" in WF_TEXT and "drift.yml" in WF_TEXT
 
 
+def test_writes_a_run_summary_page():
+    assert "GITHUB_STEP_SUMMARY" in WF_TEXT           # the shareable rendered report on the run
+    assert "state/drift.md" in WF_TEXT
+
+
 def test_token_comes_from_a_secret_never_a_literal():
     assert "secrets.GITLAB_TOKEN" in WF_TEXT
     assert not re.search(r"glpat-[A-Za-z0-9_-]{15,}", WF_TEXT)
