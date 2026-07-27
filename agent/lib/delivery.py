@@ -138,12 +138,21 @@ def mr_description(repo: str, actions: list) -> str:
     return "\n".join(lines)
 
 
+def _norm(s: str) -> str:
+    """Normalise for the change-check: GitLab returns descriptions with CRLF and can trim
+    trailing whitespace, so a raw compare against our LF body always looks 'changed' and the
+    issue gets rewritten every run (noise, notifications). Compare on normalised text so an
+    unchanged issue truly SKIPS."""
+    return "\n".join(line.rstrip() for line in
+                     str(s or "").replace("\r\n", "\n").split("\n")).strip()
+
+
 def _issue_op(fp: str, title: str, body: str, by_fp: dict, project: str) -> dict:
     """create / update / skip / reopen an issue by its marker fingerprint."""
     iss = by_fp.get(fp)
     if iss is None:
         return {"op": "create", "fp": fp, "project": project, "title": title, "body": body}
-    changed = (iss.get("description") != body) or (iss.get("state") == "closed")
+    changed = (_norm(iss.get("description")) != _norm(body)) or (iss.get("state") == "closed")
     return {"op": "update" if changed else "skip", "fp": fp, "project": project,
             "iid": iss.get("iid"), "title": title, "body": body,
             "reopen": iss.get("state") == "closed"}

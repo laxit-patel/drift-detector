@@ -62,6 +62,19 @@ def test_existing_issue_with_same_body_is_skipped_not_duplicated():
     assert plan["issues"][0]["op"] == "skip" and plan["issues"][0]["iid"] == 7
 
 
+def test_crlf_only_difference_skips_not_updates():
+    """SHIPPED BUG: a live re-run reported '2 updated' for unchanged issues — GitLab returns
+    the description with CRLF, so the raw compare always looked changed and rewrote the issue
+    (noise) every run. Normalised compare must treat CRLF/trailing-space as identical → skip."""
+    a = _cve()
+    body = delivery.issue_body(a, "root/web")
+    gitlab_returned = body.replace("\n", "\r\n") + "   \r\n"   # CRLF + trailing whitespace
+    existing = {"issues": [{"iid": 7, "state": "opened", "description": gitlab_returned,
+                            "title": delivery.issue_title(a)}], "mrs": {}}
+    plan = delivery.build_plan(_payload([a]), _META, existing, "root/drift-detector")
+    assert plan["issues"][0]["op"] == "skip"
+
+
 def test_changed_finding_updates_the_same_issue():
     a = _cve()
     stale = {"issues": [{"iid": 7, "state": "opened", "description": delivery.marker(
