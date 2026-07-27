@@ -17,6 +17,8 @@ Deterministic: pure function of the payload, `json.dumps`-stable upstream.
 """
 from __future__ import annotations
 
+from datetime import date as _date
+
 from agent.lib import owners
 
 SCHEMA_VERSION = "drift/v1"
@@ -119,6 +121,110 @@ def _mermaid_exposure(actions: list, now: str) -> list:
     return L
 
 
+def _overdue(a: dict, now: str) -> bool:
+    d = a.get("date")
+    return bool(d and str(d) <= now)
+
+
+def _gantt_txt(s) -> str:
+    """Strip chars that break a gantt/quadrant label (':' is gantt's name/spec separator; the
+    rest break mermaid generally). '/' '.' '-' are kept so API paths stay readable."""
+    s = str(s if s is not None else "")
+    for ch in ':#"<>[]{}\\|':
+        s = s.replace(ch, " ")
+    return " ".join(s.split()) or "?"
+
+
+def _gantt(sunsets: list, now: str) -> list:
+    """A retirement timeline: each dated surface a milestone, sectioned by vendor, crit = past."""
+    dated = [a for a in sunsets if a.get("date")]
+    if not dated:
+        return []
+    by_vendor: dict = {}
+    for a in dated:
+        by_vendor.setdefault(a.get("ref") or "?", []).append(a)
+    L = ["```mermaid", "gantt", "  title Retirement timeline",
+         "  dateFormat YYYY-MM-DD", "  axisFormat %b %Y"]
+    for vendor in sorted(by_vendor):
+        L.append(f"  section {_gantt_txt(vendor)}")
+        for a in sorted(by_vendor[vendor], key=lambda x: str(x["date"])):
+            tag = "crit" if _overdue(a, now) else "active"
+            L.append(f"    {_gantt_txt(a.get('unit') or a.get('ref'))} :{tag}, milestone, {a['date']}, 0d")
+    L.append("```")
+    return L
+
+
+def _pie(sunsets: list, now: str) -> list:
+    overdue = sum(1 for a in sunsets if _overdue(a, now))
+    upcoming = sum(1 for a in sunsets if a.get("date") and not _overdue(a, now))
+    nodate = sum(1 for a in sunsets if not a.get("date"))
+    if not (overdue or upcoming or nodate):
+        return []
+    L = ["```mermaid", "pie showData", "  title Retiring API surfaces"]
+    if overdue:
+        L.append(f'  "Already removed" : {overdue}')
+    if upcoming:
+        L.append(f'  "Retiring soon" : {upcoming}')
+    if nodate:
+        L.append(f'  "No date announced" : {nodate}')
+    L.append("```")
+    return L
+
+
+def _quadrant(sunsets: list, now: str) -> list:
+    """Priority: x = how overdue (4-yr window), y = blast radius (# repos calling it)."""
+    dated = [a for a in sunsets if a.get("date")]
+    try:
+        nowd = _date.fromisoformat(now)
+    except ValueError:
+        return []
+    surfaces: dict = {}
+    for a in dated:
+        key = (a.get("ref"), a.get("unit"))
+        s = surfaces.setdefault(key, {"date": str(a["date"]), "repos": set(),
+                                      "label": _action_label(a)})
+        s["repos"].add(_repo(a))
+    if not surfaces:
+        return []
+    maxr = max(len(s["repos"]) for s in surfaces.values())
+    L = ["```mermaid", "quadrantChart", "  title Fix priority",
+         "  x-axis Runway --> Overdue", "  y-axis One repo --> Many repos",
+         "  quadrant-1 Fix first", "  quadrant-2 Plan soon",
+         "  quadrant-3 Watch", "  quadrant-4 Fix (isolated)"]
+    for s in surfaces.values():
+        try:
+            days = (nowd - _date.fromisoformat(s["date"])).days
+        except ValueError:
+            continue
+        x = min(0.95, max(0.05, 0.5 + days / 1460.0))
+        nr = len(s["repos"])
+        y = 0.30 if maxr <= 1 else min(0.9, max(0.1, 0.15 + 0.75 * (nr - 1) / (maxr - 1)))
+        L.append(f'  "{_gantt_txt(s["label"])}": [{x:.2f}, {y:.2f}]')
+    L.append("```")
+    return L
+
+
+def _diagrams(actions: list, now: str) -> list:
+    """A segmented gallery of the retiring-surface data, AFTER the report so it never pushes
+    the tables down. Each chart answers one question; a viewer that can't render one just
+    shows its fenced source (we can drop it then)."""
+    sunsets = [a for a in actions if a.get("kind") == "sunset"]
+    if not sunsets:
+        return []
+    L = ["## Diagrams", "",
+         "_Views of the retiring API surfaces above — red/crit = already removed, "
+         "amber/blue = still ahead._", ""]
+    for title, block in (
+        ("Timeline — when each surface retires", _gantt(sunsets, now)),
+        ("Blast radius — which repo calls what", _mermaid_exposure(sunsets, now)),
+        ("Status — removed vs. upcoming", _pie(sunsets, now)),
+        ("Priority — overdue × blast radius", _quadrant(sunsets, now)),
+    ):
+        if block:
+            L += [f"### {title}", "", *block, ""]
+    return L
+
+
 def render_markdown(payload: dict, now: str) -> str:
     """The report as Markdown. `now` dates the header and splits past-due from upcoming."""
     counts = payload.get("counts", {})
@@ -195,15 +301,7 @@ def render_markdown(payload: dict, now: str) -> str:
                          when, sites, _first_loc(a)])
         L.extend(_table(cols, rows))
         L.append("")
-        # the exposure graph rides UNDER the sunsets table, never replacing it
-        if is_sunset:
-            graph = _mermaid_exposure(group, now)
-            if graph:
-                L.append("**Exposure** — retiring surfaces this code calls "
-                         "(red = already removed, amber = deadline ahead):")
-                L.append("")
-                L.extend(graph)          # not L += graph: += would rebind L as a local
-                L.append("")
+        # (the visual charts live in a dedicated "Diagrams" section at the end, not inline)
 
     _C_SUN = ["Repo", "API", "Status", "Retires", "Call-sites", "First call-site"]
     _C_EOL = ["Repo", "Component", "Status", "EOL", "Call-sites", "First call-site"]
@@ -268,6 +366,9 @@ def render_markdown(payload: dict, now: str) -> str:
         for nte in notes:
             L.append(f"- {_esc(nte)}")
         L.append("")
+
+    # --- diagrams: a segmented visual gallery, AFTER the report ---
+    L.extend(_diagrams(actions, now))
 
     L.append("---")
     L.append("_Rendered from `drift.json` — deterministic, 0 LLM tokens, every date sourced._")
