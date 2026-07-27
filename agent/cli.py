@@ -444,13 +444,21 @@ def _cmd_mute(args) -> int:
     return 0
 
 
-def _cmd_sbom(args) -> int:
-    """Emit a CycloneDX SBOM — components (packages, runtimes, frameworks) plus the CVE
-    findings as vulnerabilities (SBOM + VEX) — from the scan state. A verified projection of
-    inventory.json + audit.json; `verify` re-derives it and fails if it drifts. Writes
-    <state>/sbom.json (or --out)."""
+def _write_json(path, doc) -> str:
     import json as _json
-    from agent.lib import sbom as _sbom
+    with open(path, "w", encoding="utf-8") as fh:
+        _json.dump(doc, fh, ensure_ascii=False, indent=2, sort_keys=True)
+        fh.write("\n")
+    return path
+
+
+def _cmd_sbom(args) -> int:
+    """Emit an SBOM in CycloneDX and/or SPDX — components (packages, runtimes, frameworks) plus
+    (CycloneDX) the CVE findings as vulnerabilities (SBOM + VEX). A verified projection of
+    inventory.json + audit.json; `verify` re-derives it and fails if it drifts. `--format`
+    cyclonedx (default, → sbom.json) | spdx (→ sbom.spdx.json) | all."""
+    import json as _json
+    from agent.lib import sbom as _sbom, spdx as _spdx
     try:
         with open(os.path.join(args.state, "inventory.json"), encoding="utf-8") as fh:
             inventory = _json.load(fh)
@@ -460,14 +468,36 @@ def _cmd_sbom(args) -> int:
         print(f"sbom: nothing to build from — run a scan first ({exc})", file=sys.stderr)
         return 4
     now = args.now or inventory.get("generated") or ""
-    doc = _sbom.build_sbom(inventory, audit, now)
-    out = args.out or os.path.join(args.state, "sbom.json")
-    with open(out, "w", encoding="utf-8") as fh:
-        _json.dump(doc, fh, ensure_ascii=False, indent=2, sort_keys=True)
-        fh.write("\n")
-    nc, nv = len(doc.get("components", [])), len(doc.get("vulnerabilities", []))
-    print(f"✓ SBOM: {nc} component(s), {nv} vulnerabilit{'y' if nv == 1 else 'ies'} — "
-          f"CycloneDX {doc['specVersion']} → {out}")
+    fmt = getattr(args, "format", "cyclonedx") or "cyclonedx"
+    single = args.out if fmt != "all" else None
+    if fmt in ("cyclonedx", "all"):
+        doc = _sbom.build_sbom(inventory, audit, now)
+        out = _write_json(single or os.path.join(args.state, "sbom.json"), doc)
+        nc, nv = len(doc.get("components", [])), len(doc.get("vulnerabilities", []))
+        print(f"✓ CycloneDX: {nc} component(s), {nv} vuln(s) → {out}")
+    if fmt in ("spdx", "all"):
+        doc = _spdx.build_spdx(inventory, now)
+        out = _write_json(single or os.path.join(args.state, "sbom.spdx.json"), doc)
+        print(f"✓ SPDX {doc['spdxVersion']}: {len(doc['packages'])} package(s) → {out}")
+    return 0
+
+
+def _cmd_sarif(args) -> int:
+    """Emit a SARIF 2.1.0 report of the findings (CVEs, vendor sunsets, EOL) with real file:line
+    locations — the format GitHub code scanning and IDEs render inline. A verified projection of
+    the audit findings. Writes <state>/sarif.json (or --out)."""
+    import json as _json
+    from agent.lib import sarif as _sarif
+    try:
+        with open(os.path.join(args.state, "audit.json"), encoding="utf-8") as fh:
+            audit = _json.load(fh)
+    except OSError as exc:
+        print(f"sarif: nothing to build from — run a scan first ({exc})", file=sys.stderr)
+        return 4
+    doc = _sarif.build_sarif(audit)
+    out = _write_json(args.out or os.path.join(args.state, "sarif.json"), doc)
+    n = len(doc["runs"][0]["results"])
+    print(f"✓ SARIF {doc['version']}: {n} result(s) → {out}")
     return 0
 
 
@@ -664,11 +694,17 @@ def main(argv: list[str]) -> int:
     pn.add_argument("--run-url")
     pn.set_defaults(func=_cmd_notify)
 
-    psb = sub.add_parser("sbom")          # CycloneDX SBOM (+ CVE vulnerabilities) from the state
+    psb = sub.add_parser("sbom")          # SBOM: CycloneDX (+ CVE vulns) and/or SPDX
     psb.add_argument("--state", required=True)
-    psb.add_argument("--out", help="output path (default <state>/sbom.json)")
+    psb.add_argument("--format", choices=("cyclonedx", "spdx", "all"), default="cyclonedx")
+    psb.add_argument("--out", help="output path (single format only; default <state>/sbom[.spdx].json)")
     psb.add_argument("--now", help="timestamp date (default: inventory.generated)")
     psb.set_defaults(func=_cmd_sbom)
+
+    psa = sub.add_parser("sarif")         # SARIF 2.1.0 findings (file:line) for code scanning
+    psa.add_argument("--state", required=True)
+    psa.add_argument("--out", help="output path (default <state>/sarif.json)")
+    psa.set_defaults(func=_cmd_sarif)
 
     pcp = sub.add_parser("config-preflight")   # 5s gate: tokens + reachability + config, PRE-scan
     pcp.add_argument("--config", required=True)
