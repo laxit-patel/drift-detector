@@ -6,11 +6,14 @@
 # GitLab credential is a PAT stored as the `GITLAB_TOKEN` GitHub secret; it clones the fleet,
 # clones the drift-ops persistence repo, and pushes state back. Deterministic, zero AI.
 #
-# Setup:
-#   • Repo → Settings → Secrets and variables → Actions → New secret:
-#       GITLAB_TOKEN = a GitLab PAT with Reporter on every scanned repo (`api` scope) and
-#       write access to the drift-ops repo. (The same token the GitLab-CI path would use.)
-#   • Adjust GITLAB_HOST / DRIFT_OPS_PATH below to your instance + persistence repo.
+# Setup (Repo → Settings → Secrets and variables → Actions):
+#   • Secret   GITLAB_TOKEN   = a GitLab PAT with Reporter on every scanned repo (`api` scope)
+#                               and write access to the drift-ops repo.
+#   • Variable GITLAB_HOST    = your GitLab host, e.g. gitlab.example.com
+#   • Variable DRIFT_OPS_PATH = the persistence repo's path, e.g. group/drift-ops
+#     Host + path are repo VARIABLES, deliberately NOT committed here: this workflow file is
+#     public (it's a Claude plugin), and an internal hostname baked into a public repo is an
+#     infrastructure disclosure. An unset variable fails the run in the first step, loudly.
 #   • Fleet + delivery settings live in the drift-ops repo at config/drift.yml.
 
 name: drift-scan
@@ -28,8 +31,8 @@ concurrency:
   cancel-in-progress: false
 
 env:
-  GITLAB_HOST: git.topsdemo.in
-  DRIFT_OPS_PATH: root/drift-detector          # the GitLab persistence repo
+  GITLAB_HOST: ${{ vars.GITLAB_HOST }}         # repo variable — never hardcode an internal host here
+  DRIFT_OPS_PATH: ${{ vars.DRIFT_OPS_PATH }}   # repo variable — the GitLab persistence repo, e.g. group/drift-ops
   AST_GREP_VERSION: "0.44.1"
   AST_GREP_SHA256: "d2716ddc04f67af933ebaaab39404a184d4fae84e43402fe9b3232b1cdc83728"
 
@@ -37,8 +40,17 @@ jobs:
   scan:
     runs-on: ubuntu-latest
     steps:
+      - name: Config — required repo variables are set
+        # Fail in one second (before checkout) if the deployment wasn't configured, instead of
+        # a cryptic malformed-URL failure deep in the reachability/clone steps. An empty var
+        # here means someone forgot Settings → Variables, not a code bug.
+        run: |
+          : "${GITLAB_HOST:?set repo variable GITLAB_HOST (Settings → Secrets and variables → Actions → Variables), e.g. gitlab.example.com}"
+          : "${DRIFT_OPS_PATH:?set repo variable DRIFT_OPS_PATH, e.g. group/drift-ops}"
+          echo "config ✓  host=${GITLAB_HOST} · ops=${DRIFT_OPS_PATH}"
+
       - name: Checkout the scanner (this repo)
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262   # v4
 
       - name: Reachability — can GitHub reach the private GitLab?
         run: |
@@ -52,7 +64,7 @@ jobs:
         env:
           GITLAB_TOKEN: ${{ secrets.GITLAB_TOKEN }}
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065   # v5
         with:
           python-version: "3.12"
 
@@ -161,7 +173,7 @@ jobs:
 
       - name: Upload the report as a run artifact
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02   # v4
         with:
           name: drift-report
           path: |

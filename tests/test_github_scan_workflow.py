@@ -70,3 +70,27 @@ def test_token_comes_from_a_secret_never_a_literal():
 def test_only_reads_this_repo_writes_go_to_gitlab():
     wf = yaml.safe_load(WF_TEXT)
     assert wf["permissions"]["contents"] == "read"      # no write-back to the GitHub repo
+
+
+def test_no_internal_host_is_hardcoded_in_the_public_workflow():
+    """This file is public (a Claude plugin). The GitLab host + persistence path must come from
+    repo VARIABLES, not be baked in — a hardcoded internal hostname is an infra disclosure. The
+    bug this guards: `GITLAB_HOST: git.topsdemo.in` literally in the committed file."""
+    assert "${{ vars.GITLAB_HOST }}" in WF_TEXT
+    assert "${{ vars.DRIFT_OPS_PATH }}" in WF_TEXT
+    assert "topsdemo" not in WF_TEXT                     # the leaked internal host is gone
+    assert "root/drift-detector" not in WF_TEXT          # the leaked persistence path is gone
+    # an unset variable must fail loudly in the first step, not clone a malformed URL
+    assert "${GITLAB_HOST:?" in WF_TEXT and "${DRIFT_OPS_PATH:?" in WF_TEXT
+
+
+def test_third_party_actions_are_sha_pinned():
+    """A mutable `@v4` tag can be moved to point at malicious code (supply-chain). Every
+    third-party action must be pinned to a full 40-hex commit SHA. Guards against a bare
+    `uses: actions/checkout@v4` slipping back in."""
+    uses = re.findall(r"uses:\s*([^\s#]+)", WF_TEXT)
+    third_party = [u for u in uses if "/" in u and not u.startswith("./")]
+    assert third_party                                    # there ARE external actions to pin
+    for u in third_party:
+        ref = u.split("@", 1)[1] if "@" in u else ""
+        assert re.fullmatch(r"[0-9a-f]{40}", ref), f"{u} is not pinned to a 40-hex SHA"
