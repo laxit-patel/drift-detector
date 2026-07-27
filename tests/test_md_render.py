@@ -85,16 +85,13 @@ def test_pipe_in_a_cell_is_escaped_not_column_breaking():
     assert "~5.6.0|7.0.2" not in out.replace("\\|", "")   # no unescaped pipe survived
 
 
-def test_diagrams_section_has_all_four_charts_after_the_report():
+def test_timeline_section_comes_after_the_report():
     out = md.render_markdown(_payload(), "2026-07-21")
-    di = out.index("## Diagrams")
-    assert di > out.index("## Summary")                        # AFTER the report, not before
-    tail = out[di:]
-    assert "gantt" in tail and "pie showData" in tail
-    assert "quadrantChart" in tail and "flowchart" in tail     # all four
-    # and the whole thing stays mermaid-wellformed
+    ti = out.index("## Retirement timeline")
+    assert ti > out.index("## Summary")                        # AFTER the report, not before
+    assert "gantt" in out[ti:]
     from agent.lib.verify import check_mermaid_wellformed
-    check_mermaid_wellformed(out)
+    check_mermaid_wellformed(out)                              # stays mermaid-wellformed
 
 
 def test_coverage_verdicts_render():
@@ -172,13 +169,12 @@ def test_parity_catches_two_identical_findings_rows():
 
 
 # ------------------------------------------------- the mermaid exposure graph
-def test_exposure_graph_is_emitted_and_colours_by_removal_date():
+def test_retirement_timeline_gantt_is_emitted_and_marks_overdue():
     out = md.render_markdown(_payload(), "2026-07-21")
-    assert "```mermaid" in out and "flowchart LR" in out
-    # the past-due family is classed dead, the future one due
-    assert "class n0 dead" in out or "dead;" in out
-    assert "due;" in out
-    assert "/fba/inbound/v0" in out and "/orders/v0" in out
+    assert "```mermaid" in out and "gantt" in out
+    # a past-due surface is a crit milestone, a future one is active
+    assert "/fba/inbound/v0 :crit, milestone, 2025-01-21" in out
+    assert "/orders/v0 :active, milestone, 2027-03-27" in out
 
 
 def test_graph_labels_are_sanitized_against_grammar_breakers():
@@ -189,13 +185,11 @@ def test_graph_labels_are_sanitized_against_grammar_breakers():
                            "files": [{"loc": "a.php:1"}]}],
                  counts={"fixes": 1, "sunsets": 1, "eol": 0, "critical": 0, "unaudited": 0,
                          "reposAffected": 1, "reposScanned": 1})
-    import re
     out = md.render_markdown(p, "2026-07-21")
-    blocks = re.findall(r"```mermaid\n(.*?)\n```", out, re.S)
-    flow = next(b for b in blocks if b.lstrip().startswith("flowchart"))
-    assert "#123;" in flow and "#quot;" in flow                    # flowchart encodes { and "
-    for b in blocks:                                               # NO chart emits a raw quote
-        assert '"x"' not in b.replace('["', '').replace('"]', '')
+    # the gantt label strips grammar-breakers (':' would split the milestone spec; a raw
+    # '"'/'{' would draw an error box that looks fine in source)
+    line = next(ln for ln in out.splitlines() if "milestone, 2024-01-01" in ln)
+    assert '"' not in line and "{" not in line and "}" not in line
 
 
 def test_mermaid_wellformed_passes_on_the_real_render():
