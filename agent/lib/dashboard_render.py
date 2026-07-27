@@ -298,10 +298,7 @@ def render_payload(projection: dict, now: str, *, bundle: dict | None = None) ->
              '<div class="toolbar"><input class="search" id="search" type="search" '
              'placeholder="Filter by repo, package or vendor…"></div>'
              '<table id="panel"><tbody></tbody></table>'
-             '<p id="empty" class="empty" hidden>Nothing found.</p>'
-             '<section id="drift" class="coverage"></section>'
-             '<section id="coverage" class="coverage"></section>'
-             '<section id="methodology" class="coverage"></section></div>')
+             '<p id="empty" class="empty" hidden>Nothing found.</p></div>')
     p.append('<div id="s-sum-json" class="panel"><p class="jsonhint">View / copy — the '
              'canonical <code>drift.json</code> every surface projects from (read-only; the '
              'verified source of truth).</p><pre id="json-drift"></pre></div>')
@@ -346,6 +343,13 @@ def render_payload(projection: dict, now: str, *, bundle: dict | None = None) ->
     p.append("</div></section>")
 
     p.append("</div>")   # /main
+
+    # ---- page footer: scan META, out of the data plane (coverage caveats, what changed,
+    # methodology) — the honest "how complete was this scan" context, not the findings ----
+    p.append('<footer class="pagefoot">'
+             '<section id="coverage" class="coverage"></section>'
+             '<section id="drift" class="coverage"></section>'
+             '<section id="methodology" class="coverage"></section></footer>')
 
     # native <dialog> detail (opened from a Summary row)
     p.append('<dialog id="detail"><div class="dh"><span id="dlg-sev"></span>'
@@ -451,7 +455,9 @@ td{padding:9px 12px;border-bottom:1px solid color-mix(in oklab,var(--line) 60%,t
 .copy:hover,.copy-loc:hover{color:var(--ink)}
 .callsite{padding:2px 0;font-family:var(--mono);font-size:12px}
 .empty{padding:24px 6px;color:var(--muted)}
-.coverage{margin-top:18px;color:var(--muted);font-size:12.5px} .coverage h2{font-size:13px;margin-bottom:6px;color:var(--ink)}
+.pagefoot{margin-top:26px;padding-top:8px;border-top:1px solid var(--line)}
+.pagefoot .coverage:first-child{margin-top:10px}
+.coverage{margin-top:18px;color:var(--muted);font-size:12.5px} .coverage h2{font-size:11.5px;text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px;color:var(--muted)}
 .coverage .note{padding:3px 0} .coverage ul{margin:4px 0 10px 18px} .intro{color:var(--muted);font-style:italic;padding:6px 0}
 
 .pill{display:inline-flex;align-items:center;gap:5px;padding:2px 9px;border-radius:20px;font-size:11px;font-weight:600;white-space:nowrap}
@@ -794,7 +800,8 @@ _CLIENT_JS = r"""
         bits.push(esc(r.product)+" "+esc(r.from)+" → "+esc(r.to)); });
       if(bits.length) h+='<div class="note"><b>'+esc(c.repo)+'</b>: '+bits.join(" · ")+'</div>';
     });
-    el.innerHTML = h ? ("<h2>Changed since last scan</h2>"+h) : "";
+    el.innerHTML = h ? ('<details class="grp"><summary>Changed since last scan</summary>'
+                        + '<div style="padding:10px 14px">'+h+'</div></details>') : "";
   })();
 
   (function(){
