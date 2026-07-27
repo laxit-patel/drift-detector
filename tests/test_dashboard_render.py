@@ -204,8 +204,9 @@ def test_client_js_wires_every_interaction():
     js = html.split('<script>')[-1]
     # hooks that genuinely live in the JS (data-filter is an HTML attribute, read as dataset.filter)
     for hook in ("addEventListener", "dataset.filter", "localStorage",
-                 "aria-pressed", "theme-toggle", "search"):
+                 "aria-pressed", "colorScheme", "search"):
         assert hook in js, hook
+    assert 'id="theme"' in html                          # the theme toggle is present
     # the accordion + copy affordances exist
     assert "navigator.clipboard" in js or "copy" in js.lower()
 
@@ -476,8 +477,8 @@ def test_dashboard_has_private_tile_mode_and_coverage_section():
              "coverage": {"notes": ["Sources: OSV.dev + endoflife.date."]}}
     html = render_dashboard(inv, audit, "2026-07-17")
     js = html.split("<script>")[-1]
-    # tile present in the Integrations group
-    assert 'data-filter="private"' in html and "Private / unreachable" in html
+    # tile present in the Integrations group (label shortened to "Private" in the new layout)
+    assert 'data-filter="private"' in html and ">Private<" in html
     # a private panel mode exists in the JS
     assert '"private"' in js and "renderPrivate" in js and "privateFor" in js
     # the private source strings are embedded (rendered on click)

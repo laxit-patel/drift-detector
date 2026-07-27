@@ -12,7 +12,7 @@ import subprocess
 from agent.inventory_scan import scan_folder
 from agent.audit import audit_inventory
 from agent.lib.chart_render import render_chart
-from agent.lib.dashboard_render import build_payload, render_payload
+from agent.lib.dashboard_render import build_payload, build_bundle, render_payload
 from agent.lib.md_render import render_markdown
 from agent.lib.findings_state import apply_lifecycle
 from agent.lib.repo_discovery import discover_repos
@@ -66,7 +66,8 @@ def run_pipeline(roots, state_dir, now, *, pull=False,
     payload = build_payload(doc, audit, diff=scan["diff"])
     _write_json(os.path.join(state_dir, "drift.json"), payload)
     _write(os.path.join(state_dir, "drift.md"), render_markdown(payload, now))
-    _write(os.path.join(state_dir, "dashboard.html"), render_payload(payload, now))
+    _write(os.path.join(state_dir, "dashboard.html"),
+           render_payload(payload, now, bundle=build_bundle(doc, audit, now)))
     _write(os.path.join(state_dir, "chart.html"), render_chart(payload, now))
 
     return {"scope": doc.get("scope", {}), "auditCounts": audit["counts"],

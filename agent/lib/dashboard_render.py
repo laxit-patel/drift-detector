@@ -199,11 +199,38 @@ def build_payload(inventory: dict, audit: dict, *, diff: dict | None = None) -> 
     return projection
 
 
+def _empty_bundle() -> dict:
+    return {"sbom": {"bomFormat": "CycloneDX", "components": [], "vulnerabilities": []},
+            "spdx": {"spdxVersion": "SPDX-2.3", "packages": []},
+            "sarif": {"version": "2.1.0",
+                      "runs": [{"tool": {"driver": {"rules": []}}, "results": []}]}}
+
+
+def build_bundle(inventory: dict, audit: dict, now: str) -> dict:
+    """The standard-format side-payloads the dashboard embeds, built from the SAME
+    inventory/audit so the embedded copies are byte-for-byte what `drift-scan sbom`/`sarif`
+    would write. run.py and render_dashboard both go through here."""
+    from agent.lib import sbom as _sbom, spdx as _spdx, sarif as _sarif
+    return {"sbom": _sbom.build_sbom(inventory, audit, now),
+            "spdx": _spdx.build_spdx(inventory, now),
+            "sarif": _sarif.build_sarif(audit)}
+
+
 def render_dashboard(inventory: dict, audit: dict, now: str, *, diff: dict | None = None) -> str:
-    return render_payload(build_payload(inventory, audit, diff=diff), now)
+    """The cockpit: the drift report + the SBOM (CycloneDX/SPDX) + SARIF, one self-contained file."""
+    payload = build_payload(inventory, audit, diff=diff)
+    return render_payload(payload, now, bundle=build_bundle(inventory, audit, now))
 
 
-def render_payload(projection: dict, now: str) -> str:
+def _blob_script(el_id: str, obj) -> str:
+    """An embedded JSON blob, `<`-escaped so a scan string containing </script> can't close
+    the element (the same hardening as _blob)."""
+    raw = json.dumps(obj, ensure_ascii=False, sort_keys=True).replace("<", "\\u003c")
+    return f'<script id="{el_id}" type="application/json">{raw}</script>'
+
+
+def render_payload(projection: dict, now: str, *, bundle: dict | None = None) -> str:
+    bundle = bundle or _empty_bundle()
     c = projection["counts"]
     d = projection.get("delta") or {}
     new_n = len(build_actions(d["new"])) if d.get("new") else 0
@@ -211,105 +238,227 @@ def render_payload(projection: dict, now: str) -> str:
     delta_txt = (f" · ↓{resolved_n} resolved ↑{new_n} new this week"
                  if projection.get("delta") is not None else "")
 
-    parts = []
-    parts.append("<!doctype html>")
-    parts.append('<html lang="en" data-theme="dark">')
-    parts.append("<head>")
-    parts.append('<meta charset="utf-8">')
-    parts.append('<meta name="viewport" content="width=device-width, initial-scale=1">')
-    parts.append(f"<title>Drift Detector — {_e(now)}</title>")
-    parts.append("<style>" + _CSS + "</style>")
-    parts.append("</head><body>")
-    # exposure header
-    parts.append('<header class="exposure">')
-    parts.append(f'<span class="headline">🔴 {c["fixes"]} fixes needed · '
-                 f'{c["reposAffected"]} of {c["reposScanned"]} repos affected'
-                 f'{_e(delta_txt)}</span>')
-    parts.append('<button id="theme-toggle" title="Toggle light/dark">◐</button>')
-    parts.append("</header>")
-    # tile groups
     bo = c.get("byOwner") or {}
     _own = lambda o: (bo.get(o) or {}).get("fixes", 0) + (bo.get(o) or {}).get("review", 0)
-    parts.append('<section class="tiles">')
-    # the two delivery streams: clicking filters the queue to that team's jobs. Totals are
-    # byOwner sums, which verify (check_owner_split) ties back to the actions per owner.
-    parts.append(_tile_group("Ownership", [
-        ("devops", "DevOps", _own("devops")),
-        ("developer", "Developer", _own("developer"))]))
-    parts.append(_tile_group("Security", [
-        ("critical", "Critical", c["critical"]),
-        ("fixes", "Fixes", c["fixes"]),
-        ("eol", "EOL", c["eol"])]))
-    parts.append(_tile_group("Integrations", [
-        ("apis", "APIs used", c["apis"]),
-        ("sunsets", "Sunsets", c["sunsets"]),
-        ("pastdue", "Past-due", c["pastDue"]),
-        ("unknown", "Unknown hosts", c["unknown"]),
-        ("private", "Private / unreachable", c["private"]),
-        ("unaudited", "Vendors unaudited", c["unaudited"])]))
-    parts.append("</section>")
-    # search + panel
-    parts.append('<input class="search" id="search" type="search" '
-                 'placeholder="Filter by repo, package or vendor…">')
-    parts.append('<table id="panel"><tbody></tbody></table>')
-    parts.append('<p id="empty" class="empty" hidden>Nothing found.</p>')
-    parts.append('<section id="drift" class="coverage"></section>')
-    parts.append('<section id="coverage" class="coverage"></section>')
-    # data + behaviour
-    parts.append('<script id="drift-data" type="application/json">'
-                 + _blob(projection) + "</script>")
-    parts.append("<script>" + _CLIENT_JS + "</script>")
-    parts.append("</body></html>")
-    return "\n".join(parts)
+
+    p = []
+    p.append("<!doctype html>")
+    p.append('<html lang="en">')
+    p.append('<head><meta charset="utf-8">')
+    p.append('<meta name="viewport" content="width=device-width, initial-scale=1">')
+    p.append(f"<title>Drift Detector — {_e(now)}</title>")
+    p.append("<style>" + _CSS + "</style></head><body>")
+
+    # ---- pinned top: brand · headline · tiles · top tabs ----
+    p.append('<div class="sticky">')
+    p.append('<div class="brand"><span class="mark" aria-hidden="true"></span>'
+             '<h1>Drift Detector</h1>'
+             f'<span class="meta">{c["reposScanned"]} repos · {_e(now)}</span>'
+             '<span class="spacer"></span>'
+             '<button class="themebtn" id="theme">◐ Theme: auto</button></div>')
+    p.append(f'<p class="headline"><span class="dot">●</span> '
+             f'<span class="big">{c["fixes"]} fixes needed</span> · '
+             f'{c["reposAffected"]} of {c["reposScanned"]} repos affected{_e(delta_txt)}</p>')
+    p.append('<div class="tilegroups">')
+    p.append(_tile_group("Ownership", [
+        ("devops", "DevOps", _own("devops"), ""),
+        ("developer", "Developer", _own("developer"), "")]))
+    p.append(_tile_group("Security", [
+        ("critical", "Critical", c["critical"], "crit"),
+        ("fixes", "Fixes", c["fixes"], ""),
+        ("eol", "EOL", c["eol"], "")]))
+    p.append(_tile_group("Integrations", [
+        ("apis", "APIs", c["apis"], ""),
+        ("sunsets", "Sunsets", c["sunsets"], ""),
+        ("pastdue", "Past-due", c["pastDue"], "warn"),
+        ("unknown", "Unknown", c["unknown"], ""),
+        ("private", "Private", c["private"], ""),
+        ("unaudited", "Unaudited", c["unaudited"], "")]))
+    p.append("</div>")
+    # top tabs
+    p.append('<div class="tabbar tabgroup" data-panels="main" role="tablist">'
+             '<button class="tab active" data-tab="p-summary" role="tab">Summary</button>'
+             '<button class="tab" data-tab="p-sbom" role="tab">SBOM</button>'
+             '<button class="tab" data-tab="p-sarif" role="tab">SARIF</button></div>')
+    p.append("</div>")   # /sticky
+
+    p.append('<div id="main">')
+
+    # ---- Summary (the existing data engine renders here) ----
+    p.append('<section id="p-summary" class="panel active">'
+             '<div class="subbar tabgroup" data-panels="sub-summary">'
+             '<button class="tab active" data-tab="s-sum-prev">Preview</button>'
+             '<button class="tab" data-tab="s-sum-json">JSON · drift.json</button></div>'
+             '<div class="panels" id="sub-summary">')
+    p.append('<div id="s-sum-prev" class="panel active">'
+             '<div class="toolbar"><input class="search" id="search" type="search" '
+             'placeholder="Filter by repo, package or vendor…"></div>'
+             '<table id="panel"><tbody></tbody></table>'
+             '<p id="empty" class="empty" hidden>Nothing found.</p>'
+             '<section id="drift" class="coverage"></section>'
+             '<section id="coverage" class="coverage"></section></div>')
+    p.append('<div id="s-sum-json" class="panel"><p class="jsonhint">View / copy — the '
+             'canonical <code>drift.json</code> every surface projects from (read-only; the '
+             'verified source of truth).</p><pre id="json-drift"></pre></div>')
+    p.append("</div></section>")
+
+    # ---- SBOM ----
+    p.append('<section id="p-sbom" class="panel">'
+             '<div class="subbar tabgroup" data-panels="sub-sbom">'
+             '<button class="tab active" data-tab="s-sbom-prev">Preview</button>'
+             '<button class="tab" data-tab="s-sbom-cdx">CycloneDX</button>'
+             '<button class="tab" data-tab="s-sbom-spdx">SPDX</button></div>'
+             '<div class="panels" id="sub-sbom">')
+    p.append('<div id="s-sbom-prev" class="panel active"><h3 id="sbom-h"></h3>'
+             '<table id="sbom-table"><thead><tr><th>Type</th><th>Component</th><th>Version</th>'
+             '<th>Used in</th><th>Vulns</th></tr></thead><tbody></tbody></table></div>')
+    p.append('<div id="s-sbom-cdx" class="panel"><p class="jsonhint">CycloneDX 1.5 '
+             '(<code>sbom.json</code>) → Dependency-Track, GitHub.</p><pre id="json-cdx"></pre></div>')
+    p.append('<div id="s-sbom-spdx" class="panel"><p class="jsonhint">SPDX 2.3 '
+             '(<code>sbom.spdx.json</code>).</p><pre id="json-spdx"></pre></div>')
+    p.append("</div></section>")
+
+    # ---- SARIF ----
+    p.append('<section id="p-sarif" class="panel">'
+             '<div class="subbar tabgroup" data-panels="sub-sarif">'
+             '<button class="tab active" data-tab="s-sarif-prev">Preview</button>'
+             '<button class="tab" data-tab="s-sarif-json">JSON · sarif.json</button></div>'
+             '<div class="panels" id="sub-sarif">')
+    p.append('<div id="s-sarif-prev" class="panel active"><h3 id="sarif-h"></h3>'
+             '<div id="sarif-groups"></div></div>')
+    p.append('<div id="s-sarif-json" class="panel"><p class="jsonhint">SARIF 2.1.0 '
+             '(<code>sarif.json</code>) — file:line results → GitHub code scanning, VS Code.'
+             '</p><pre id="json-sarif"></pre></div>')
+    p.append("</div></section>")
+
+    p.append("</div>")   # /main
+
+    # native <dialog> detail (opened from a Summary row)
+    p.append('<dialog id="detail"><div class="dh"><span id="dlg-sev"></span>'
+             '<b id="dlg-title"></b><button class="x" data-close>×</button></div>'
+             '<div class="db" id="dlg-body"></div></dialog>')
+
+    # data blobs + behaviour
+    p.append('<script id="drift-data" type="application/json">' + _blob(projection) + "</script>")
+    p.append(_blob_script("sbom-data", bundle["sbom"]))
+    p.append(_blob_script("spdx-data", bundle["spdx"]))
+    p.append(_blob_script("sarif-data", bundle["sarif"]))
+    p.append("<script>" + _CLIENT_JS + "</script>")
+    p.append("</body></html>")
+    return "\n".join(p)
 
 
 def _tile_group(title: str, tiles) -> str:
     cells = "".join(
-        f'<button class="tile" data-filter="{key}">'
-        f'<span class="tile-n">{n}</span><span class="tile-label">{_e(label)}</span></button>'
-        for key, label, n in tiles)
-    return f'<div class="tile-group"><h2>{_e(title)}</h2><div class="tile-row">{cells}</div></div>'
+        f'<button class="tile" data-filter="{key}"'
+        + (f' data-sev="{sev}"' if sev else "") + '>'
+        + (f'<span class="n" data-hot>{n}</span>' if sev == "crit"
+           else f'<span class="n">{n}</span>')
+        + f'<span class="t">{_e(label)}</span></button>'
+        for key, label, n, sev in tiles)
+    return (f'<div class="tg"><span class="lbl">{_e(title)}</span>'
+            f'<div class="tiles">{cells}</div></div>')
 
 
 _CSS = """
-:root{--bg:#0d1117;--panel:#161b22;--line:#30363d;--text:#c9d1d9;--accent:#58a6ff;
---crit:#c0392b;--dep:#e67e22;--rev:#d4a017;--moat:#8e44ad}
-:root[data-theme="light"]{--bg:#fff;--panel:#f4f4f8;--line:#ddd;--text:#1a1a2e;--accent:#4a4ae0}
-*{box-sizing:border-box}
-body{margin:0;font:14px/1.5 system-ui,sans-serif;background:var(--bg);color:var(--text)}
-.exposure{display:flex;justify-content:space-between;align-items:center;padding:14px 18px;
-background:var(--panel);border-bottom:1px solid var(--line)}
-.headline{font-weight:600}
-#theme-toggle{background:none;border:1px solid var(--line);color:var(--text);border-radius:6px;
-cursor:pointer;font-size:16px;padding:2px 8px}
-.tiles{display:flex;gap:18px;flex-wrap:wrap;padding:16px 18px}
-.tile-group h2{font-size:11px;text-transform:uppercase;letter-spacing:.08em;opacity:.7;margin:0 0 6px}
-.tile-row{display:flex;gap:8px}
-.tile{background:var(--panel);border:1px solid var(--line);border-radius:8px;color:var(--text);
-cursor:pointer;padding:10px 14px;min-width:78px;text-align:center;display:flex;flex-direction:column}
-.tile[aria-pressed="true"]{outline:2px solid var(--accent)}
-.tile-n{font-size:22px;font-weight:700}
-.tile-label{font-size:11px;opacity:.8}
-.search{width:calc(100% - 36px);margin:6px 18px;padding:8px 10px;border-radius:6px;
-border:1px solid var(--line);background:var(--panel);color:var(--text)}
-#panel{width:calc(100% - 36px);margin:0 18px 24px;border-collapse:collapse}
-#panel tr.row{border-bottom:1px solid var(--line);cursor:pointer}
-#panel td{padding:8px 6px;vertical-align:top}
-.sev-CRITICAL{color:var(--crit);font-weight:700}.sev-HIGH{color:var(--dep)}
-.sev-EOL,.sev-SUNSET{color:var(--moat)}
-.detail{background:var(--panel);border-left:3px solid var(--accent)}
-.cmd{font-family:ui-monospace,monospace;background:var(--bg);padding:6px 8px;border-radius:5px;
-color:var(--accent);display:inline-block}
-.copy{cursor:pointer;border:1px solid var(--line);background:none;color:var(--text);border-radius:4px;
-margin-left:6px;padding:1px 6px}
-.callsite{padding:2px 0;font-family:ui-monospace,monospace;font-size:12px}
-.copy-loc{cursor:pointer;border:1px solid var(--line);background:none;color:var(--text);border-radius:4px;margin-left:6px;font-size:11px}
-.empty{padding:24px 18px;opacity:.7}
-.coverage{margin:16px 18px;color:var(--muted,#8a8f98);font-size:12px}
-.coverage h2{font-size:13px;margin:0 0 6px}
-.coverage .note{padding:2px 0}
-.intro{color:var(--muted,#8a8f98);font-style:italic;padding:6px 0}
-@media print{:root{--bg:#fff;--panel:#fff;--text:#000}.tile,#theme-toggle{border-color:#999}}
+:root{
+  color-scheme:light dark;
+  --accent:#e0533d; --accent-2:#3d7de0;
+  --bg:light-dark(#f5f5f2,#0f1114); --panel:light-dark(#fff,#16191e);
+  --panel-2:light-dark(#efefEA,#1b1f26); --line:light-dark(#e4e4de,#2a2f38);
+  --ink:light-dark(#191b1f,#e8ebf1); --muted:light-dark(#6a7180,#98a1b1);
+  --crit:#e0533d; --high:#e08a3d; --med:#cdb63a; --low:#5f9e6a; --info:#3d7de0; --sun:#b06ee0;
+  --mono:ui-monospace,"SF Mono",Menlo,Consolas,monospace; --sans:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif; --r:12px;
+}
+*{box-sizing:border-box;margin:0}
+body{background:var(--bg);color:var(--ink);font-family:var(--sans);font-size:14px;line-height:1.5;
+  -webkit-font-smoothing:antialiased;font-variant-numeric:tabular-nums;padding:0 20px 60px;
+  max-width:1240px;margin:0 auto;container-type:inline-size}
+code,.mono{font-family:var(--mono);font-size:.86em}
+a{color:var(--accent-2);text-decoration:none} a:hover{text-decoration:underline}
+
+.sticky{position:sticky;top:0;z-index:20;background:color-mix(in oklab,var(--bg) 88%,transparent);
+  backdrop-filter:blur(8px);padding-top:12px}
+.brand{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.brand .mark{width:26px;height:26px;border-radius:8px;
+  background:radial-gradient(120% 120% at 30% 20%,color-mix(in oklab,var(--accent) 70%,#fff),var(--accent) 55%,color-mix(in oklab,var(--accent) 60%,#000));
+  box-shadow:0 0 0 1px color-mix(in oklab,var(--accent) 40%,transparent),0 4px 14px color-mix(in oklab,var(--accent) 35%,transparent)}
+.brand h1{font-size:16px;font-weight:650;letter-spacing:-.01em}
+.brand .meta{color:var(--muted);font-size:12.5px} .spacer{flex:1}
+.themebtn{appearance:none;background:var(--panel);border:1px solid var(--line);color:var(--muted);
+  border-radius:20px;padding:5px 12px;font:inherit;font-size:12px;cursor:pointer}
+.themebtn:hover{color:var(--ink);border-color:var(--accent-2)}
+.headline{font-size:15px;text-wrap:balance;margin:12px 0} .headline .big{font-weight:680} .dot{color:var(--crit)}
+.tilegroups{display:flex;gap:10px 26px;flex-wrap:wrap;padding-bottom:14px;border-bottom:1px solid var(--line)}
+.tg{display:flex;flex-direction:column;gap:7px}
+.tg .lbl{font-size:10.5px;letter-spacing:.09em;text-transform:uppercase;color:var(--muted)}
+.tiles{display:flex;gap:8px;flex-wrap:wrap}
+.tile{background:var(--panel);border:1px solid var(--line);border-radius:var(--r);padding:8px 13px;min-width:76px;
+  display:flex;flex-direction:column;gap:1px;cursor:pointer;color:var(--ink);transition:border-color .15s,transform .1s}
+.tile:hover{border-color:color-mix(in oklab,var(--accent-2) 60%,var(--line));transform:translateY(-1px)}
+.tile .n{font-size:21px;font-weight:670;line-height:1.1} .tile .t{font-size:11px;color:var(--muted)}
+.tile[data-sev=crit] .n{color:var(--crit)} .tile[data-sev=warn] .n{color:var(--high)}
+.tile[aria-pressed=true]{outline:2px solid var(--accent-2);outline-offset:-1px}
+.tile:has(.n[data-hot]){background:color-mix(in oklab,var(--crit) 8%,var(--panel));border-color:color-mix(in oklab,var(--crit) 30%,var(--line))}
+@container (max-width:640px){.tilegroups{gap:12px}.tile{min-width:64px;padding:7px 10px}}
+
+.tabbar{display:flex;gap:2px;margin-top:14px;border-bottom:1px solid var(--line)}
+.tab{appearance:none;background:none;border:0;color:var(--muted);font:inherit;font-weight:550;padding:10px 16px;cursor:pointer;position:relative}
+.tab:hover{color:var(--ink)} .tab.active{color:var(--ink)}
+.tab.active::after{content:"";position:absolute;left:10px;right:10px;bottom:-1px;height:2px;border-radius:2px;background:var(--accent)}
+.subbar{display:flex;gap:2px;background:var(--panel);border:1px solid var(--line);border-bottom:0;border-radius:var(--r) var(--r) 0 0;padding:8px 8px 0}
+.subbar .tab{padding:6px 13px;font-size:12.5px} .subbar .tab.active::after{background:var(--accent-2)}
+.panels{background:var(--panel);border:1px solid var(--line);border-top:0;border-radius:0 0 var(--r) var(--r);padding:18px}
+.panel{display:none;animation:fade .18s ease} .panel.active{display:block}
+@keyframes fade{from{opacity:0;transform:translateY(2px)}to{opacity:1}}
+
+h3{font-size:13.5px;font-weight:620;margin-bottom:12px}
+.toolbar{display:flex;gap:10px;align-items:center;margin-bottom:12px;flex-wrap:wrap}
+.search{flex:1;min-width:200px;background:var(--panel-2);border:1px solid var(--line);color:var(--ink);border-radius:9px;padding:7px 12px;font:inherit;accent-color:var(--accent)}
+.search::placeholder{color:var(--muted)}
+table{width:100%;border-collapse:collapse;font-size:13px}
+thead th{position:sticky;top:0;background:var(--panel);text-align:left;color:var(--muted);font-weight:550;font-size:11px;text-transform:uppercase;letter-spacing:.04em;padding:8px 12px;border-bottom:1px solid var(--line)}
+td{padding:9px 12px;border-bottom:1px solid color-mix(in oklab,var(--line) 60%,transparent);vertical-align:top}
+#panel tr.row{cursor:pointer;transition:background .12s} #panel tr.row:hover{background:color-mix(in oklab,var(--accent-2) 6%,transparent)}
+#sbom-table tbody tr:has(.pill.crit){box-shadow:inset 3px 0 0 var(--crit)}
+#sbom-table tbody tr:has(.pill.high){box-shadow:inset 3px 0 0 var(--high)}
+.big tbody tr{content-visibility:auto;contain-intrinsic-size:0 42px}
+.sev-CRITICAL{color:var(--crit);font-weight:700} .sev-HIGH{color:var(--high)}
+.sev-EOL,.sev-SUNSET{color:var(--sun)}
+.detail{background:var(--panel-2);border-left:3px solid var(--accent-2)} .detail td{padding:10px 14px}
+.cmd{font-family:var(--mono);background:var(--bg);padding:6px 8px;border-radius:5px;color:var(--accent-2);display:inline-block}
+.copy,.copy-loc{cursor:pointer;border:1px solid var(--line);background:none;color:var(--muted);border-radius:5px;margin-left:6px;padding:1px 7px;font-size:11px}
+.copy:hover,.copy-loc:hover{color:var(--ink)}
+.callsite{padding:2px 0;font-family:var(--mono);font-size:12px}
+.empty{padding:24px 6px;color:var(--muted)}
+.coverage{margin-top:18px;color:var(--muted);font-size:12.5px} .coverage h2{font-size:13px;margin-bottom:6px;color:var(--ink)}
+.coverage .note{padding:3px 0} .coverage ul{margin:4px 0 10px 18px} .intro{color:var(--muted);font-style:italic;padding:6px 0}
+
+.pill{display:inline-flex;align-items:center;gap:5px;padding:2px 9px;border-radius:20px;font-size:11px;font-weight:600;white-space:nowrap}
+.pill::before{content:"";width:6px;height:6px;border-radius:50%;background:currentColor}
+.pill.crit{color:var(--crit);background:color-mix(in oklab,var(--crit) 15%,transparent)}
+.pill.high{color:var(--high);background:color-mix(in oklab,var(--high) 15%,transparent)}
+.pill.med{color:var(--med);background:color-mix(in oklab,var(--med) 15%,transparent)}
+.pill.low{color:var(--low);background:color-mix(in oklab,var(--low) 15%,transparent)}
+.pill.sun{color:var(--sun);background:color-mix(in oklab,var(--sun) 15%,transparent)}
+.pill.eol{color:var(--info);background:color-mix(in oklab,var(--info) 15%,transparent)}
+details.grp{border:1px solid var(--line);border-radius:10px;margin-bottom:8px;overflow:clip}
+details.grp>summary{cursor:pointer;padding:10px 14px;font-weight:600;list-style:none;display:flex;align-items:center;gap:10px;background:var(--panel-2)}
+details.grp>summary::-webkit-details-marker{display:none}
+details.grp>summary::before{content:"▸";color:var(--muted);transition:transform .15s}
+details.grp[open]>summary::before{transform:rotate(90deg)}
+.count{margin-left:auto;color:var(--muted);font-size:12px;background:var(--bg);border:1px solid var(--line);border-radius:20px;padding:1px 9px}
+.jsonhint{color:var(--muted);font-size:12px;margin-bottom:8px}
+.jsonwrap{position:relative}
+pre{background:light-dark(#f7f7f4,#0c0e12);border:1px solid var(--line);border-radius:10px;padding:14px;overflow:auto;font-family:var(--mono);font-size:12px;line-height:1.6;color:light-dark(#333,#c8d0dc);max-height:460px}
+.copybtn{position:absolute;top:8px;right:8px;background:var(--panel-2);border:1px solid var(--line);color:var(--muted);font:inherit;font-size:11.5px;padding:4px 11px;border-radius:7px;cursor:pointer}
+.copybtn:hover{color:var(--ink);border-color:var(--accent-2)}
+dialog{border:1px solid var(--line);background:var(--panel);color:var(--ink);border-radius:14px;padding:0;max-width:520px;width:92vw}
+dialog::backdrop{background:color-mix(in oklab,#000 55%,transparent);backdrop-filter:blur(2px)}
+dialog .dh{padding:16px 18px;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:10px}
+dialog .db{padding:16px 18px} dialog .x{margin-left:auto;background:none;border:0;color:var(--muted);font-size:18px;cursor:pointer}
+.kv{display:grid;grid-template-columns:96px 1fr;gap:5px 12px;font-size:13px} .kv b{color:var(--muted);font-weight:500}
+@media print{.themebtn,.tab{display:none}}
 """
 
 # Full interactive behaviour: clickable tile filters, search, inline-accordion row
@@ -318,6 +467,8 @@ margin-left:6px;padding:1px 6px}
 _CLIENT_JS = r"""
 (function(){
   var DATA = JSON.parse(document.getElementById("drift-data").textContent);
+  function blob(id){ var el=document.getElementById(id); try{ return el?JSON.parse(el.textContent):{}; }catch(e){ return {}; } }
+  var SBOM = blob("sbom-data"), SPDX = blob("spdx-data"), SARIF = blob("sarif-data");
   var body = document.querySelector("#panel tbody");
   var empty = document.getElementById("empty");
   var search = document.getElementById("search");
@@ -503,6 +654,7 @@ _CLIENT_JS = r"""
                         : (f==="unaudited") ? "catalog"
                         : "actions";
              t.setAttribute("aria-pressed","true"); }
+      activate("p-summary"); activate("s-sum-prev");   // a tile always drills into Summary
       render();
     });
   });
@@ -510,15 +662,96 @@ _CLIENT_JS = r"""
   // ---- search ----
   search.addEventListener("input", function(){ state.q=search.value.toLowerCase(); render(); });
 
-  // ---- theme ----
-  var root=document.documentElement;
-  var saved=null; try{ saved=localStorage.getItem("drift-theme"); }catch(e){}
-  if(saved){ root.setAttribute("data-theme", saved); }
-  document.getElementById("theme-toggle").addEventListener("click", function(){
-    var next = root.getAttribute("data-theme")==="dark" ? "light" : "dark";
-    root.setAttribute("data-theme", next);
-    try{ localStorage.setItem("drift-theme", next); }catch(e){}
+  // ---- theme: cycle auto → light → dark, driving light-dark() via color-scheme ----
+  var root=document.documentElement, tbtn=document.getElementById("theme");
+  var modes=["auto","light","dark"], ti=0;
+  try{ var s=localStorage.getItem("drift-theme"); if(s){ ti=Math.max(0,modes.indexOf(s)); } }catch(e){}
+  function applyTheme(){ var m=modes[ti]; if(root.style) root.style.colorScheme = m==="auto" ? "light dark" : m;
+    if(tbtn) tbtn.textContent=(m==="dark"?"●":m==="light"?"○":"◐")+" Theme: "+m;
+    try{ localStorage.setItem("drift-theme", m); }catch(e){} }
+  if(tbtn){ tbtn.addEventListener("click", function(){ ti=(ti+1)%3; applyTheme(); }); applyTheme(); }
+
+  // ---- two-level tab controller (+ activate(id) for tile → Summary jumps) ----
+  function activate(panelId){
+    var panel=document.getElementById(panelId); if(!panel) return;
+    var group=panel.parentElement.previousElementSibling;
+    var btn=group && group.querySelector('[data-tab="'+panelId+'"]'); if(!btn) return;
+    group.querySelectorAll('[data-tab]').forEach(function(b){ b.classList.toggle("active", b===btn); });
+    Array.prototype.forEach.call(panel.parentElement.children, function(pn){
+      if(pn.classList.contains("panel")) pn.classList.toggle("active", pn===panel);
+    });
+  }
+  document.querySelectorAll(".tabgroup").forEach(function(g){
+    var panels=document.getElementById(g.dataset.panels);
+    g.addEventListener("click", function(e){ var b=e.target.closest("[data-tab]"); if(!b) return;
+      g.querySelectorAll("[data-tab]").forEach(function(x){ x.classList.toggle("active", x===b); });
+      Array.prototype.forEach.call(panels.children, function(pn){
+        if(pn.classList.contains("panel")) pn.classList.toggle("active", pn.id===b.dataset.tab); });
+    });
   });
+
+  // ---- JSON views (view/copy only — the embedded blobs are the verified source) ----
+  function jsonInto(id, obj){ var el=document.getElementById(id); if(el) el.textContent=JSON.stringify(obj,null,2); }
+  jsonInto("json-drift", DATA);
+  jsonInto("json-cdx", SBOM); jsonInto("json-spdx", SPDX); jsonInto("json-sarif", SARIF);
+  document.querySelectorAll("pre").forEach(function(pre){
+    var wrap=document.createElement("div"); wrap.className="jsonwrap";
+    pre.parentNode.insertBefore(wrap,pre); wrap.appendChild(pre);
+    var b=document.createElement("button"); b.className="copybtn"; b.textContent="Copy";
+    b.addEventListener("click",function(){ var done=function(){b.textContent="Copied";setTimeout(function(){b.textContent="Copy";},1200);};
+      navigator.clipboard ? navigator.clipboard.writeText(pre.textContent).then(done,done) : done(); });
+    wrap.insertBefore(b,pre);
+  });
+
+  // ---- SBOM preview: components + per-component vuln severity ----
+  (function(){
+    var tb=document.querySelector("#sbom-table tbody"); if(!tb) return;
+    var comps=(SBOM.components)||[], vulns=(SBOM.vulnerabilities)||[];
+    var worst={};   // bom-ref -> worst severity
+    var rank={critical:4,high:3,medium:2,low:1,unknown:0};
+    vulns.forEach(function(v){ (v.affects||[]).forEach(function(a){
+      var s=((v.ratings||[{}])[0].severity)||"unknown";
+      if(!(a.ref in worst) || rank[s]>rank[worst[a.ref]]) worst[a.ref]=s; }); });
+    var counts={}; vulns.forEach(function(v){ (v.affects||[]).forEach(function(a){ counts[a.ref]=(counts[a.ref]||0)+1; }); });
+    var h=document.getElementById("sbom-h");
+    if(h) h.textContent="Components — "+comps.length+"  ·  "+vulns.length+" vulnerabilities";
+    comps.forEach(function(c){
+      var ref=c["bom-ref"], n=counts[ref]||0, s=worst[ref];
+      var vc = n ? '<span class="pill '+escA(s==="critical"?"crit":s==="high"?"high":s==="medium"?"med":"low")+'">'+esc(n)+' '+esc(s)+'</span>' : "—";
+      var repos=(c.properties||[]).filter(function(p){return p.name==="drift:repo";}).length;
+      var tr=document.createElement("tr");
+      tr.innerHTML='<td>'+esc(c.type)+'</td><td class="mono">'+esc(c.purl||c["bom-ref"])+'</td><td>'+esc(c.version||"")+
+        '</td><td>'+esc(repos)+' repo'+(repos===1?"":"s")+'</td><td>'+vc+'</td>';
+      tb.appendChild(tr);
+    });
+  })();
+
+  // ---- SARIF preview: results grouped by rule ----
+  (function(){
+    var host=document.getElementById("sarif-groups"); if(!host) return;
+    var run=(SARIF.runs||[{}])[0]||{}, results=run.results||[];
+    var byRule={}; results.forEach(function(r){ (byRule[r.ruleId]=byRule[r.ruleId]||[]).push(r); });
+    var h=document.getElementById("sarif-h"); if(h) h.textContent="Findings — "+results.length+" results, grouped by rule";
+    Object.keys(byRule).sort().forEach(function(rid){
+      var list=byRule[rid], d=document.createElement("details"); d.className="grp";
+      var rows=list.slice(0,200).map(function(r){
+        var loc=(r.locations||[])[0]; var pl=loc&&loc.physicalLocation||{};
+        var uri=(pl.artifactLocation||{}).uri||""; var line=(pl.region||{}).startLine;
+        var where=esc(uri)+(line?(":"+esc(line)):"");
+        var lvl=r.level==="error"?"crit":r.level==="warning"?"high":"low";
+        return '<tr><td class="mono">'+where+'</td><td>'+esc((r.message||{}).text||"")+
+          '</td><td><span class="pill '+lvl+'">'+esc(r.level||"note")+'</span></td></tr>';
+      }).join("");
+      d.innerHTML='<summary>'+esc(rid)+'<span class="count">'+esc(list.length)+'</span></summary>'+
+        '<table class="big"><thead><tr><th>Location</th><th>Message</th><th>Level</th></tr></thead><tbody>'+rows+'</tbody></table>';
+      host.appendChild(d);
+    });
+  })();
+
+  // ---- native <dialog> (guarded; the Summary rows use the inline accordion) ----
+  var dlg=document.getElementById("detail");
+  if(dlg){ var xb=dlg.querySelector("[data-close]"); if(xb) xb.addEventListener("click",function(){dlg.close();});
+    dlg.addEventListener("click",function(e){ if(e.target===dlg) dlg.close(); }); }
 
   (function(){
     // Integration drift since the previous scan — what DRIFT.md used to carry.
