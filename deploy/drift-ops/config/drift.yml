@@ -8,7 +8,20 @@ fleet:
   - https://git.example.com/team/service-b
 
 delivery:
-  mode: dry-run            # dry-run (print the plan, write nothing) | live | off
-  dev_as_issues: false     # true → developer findings as issues (works with Reporter access);
-                           # false → draft MRs on the scanned repos (needs Developer access)
-  devops_project: team/ops # GitLab project path where DevOps (package/runtime) issues are filed
+  mode: dry-run              # dry-run (print the plan, write nothing) | live | off
+  devops:
+    project: team/ops        # GitLab project path where DevOps (package/runtime) issues are filed
+  developer:
+    target: issues           # issues → works with Reporter access (the safe default)
+                             # mrs    → draft MRs on the scanned repos (needs Developer access)
+
+# auth + notify hold env-var NAMES, never secrets (this file is git-tracked and reviewed).
+# Omit `auth` entirely to run on a single GITLAB_TOKEN, as below by default:
+#
+# auth:
+#   clone:   GITLAB_TOKEN     # read the fleet + drift-ops
+#   persist: GITLAB_TOKEN     # push state/overlay back to drift-ops
+#   deliver: GITLAB_TOKEN     # file issues / open MRs   (split to a Developer token for `mrs`)
+#
+# notify:
+#   gchat: GCHAT_WEBHOOK      # env var holding the Google Chat webhook; omit for no push
