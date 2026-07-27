@@ -80,6 +80,16 @@ def test_only_reads_this_repo_writes_go_to_gitlab():
     assert wf["permissions"]["contents"] == "read"      # no write-back to the GitHub repo
 
 
+def test_pages_publish_is_gated_demo_only():
+    """Publishing the dashboard to PUBLIC GitHub Pages exposes the vuln posture (repo names,
+    CVEs, versions). It MUST stay gated on the PUBLISH_PAGES variable so it never runs for real
+    client data by default — this guard fails if someone drops the gate."""
+    wf = yaml.safe_load(WF_TEXT)
+    job = wf["jobs"]["publish-pages"]
+    assert job["if"] == "vars.PUBLISH_PAGES == 'true'"
+    assert job["needs"] == "scan"                        # publishes what the scan persisted
+
+
 def test_no_internal_host_is_hardcoded_in_the_public_workflow():
     """This file is public (a Claude plugin). The GitLab host + persistence path must come from
     repo VARIABLES, not be baked in — a hardcoded internal hostname is an infra disclosure. The
