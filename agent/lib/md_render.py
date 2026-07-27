@@ -249,7 +249,7 @@ def render_markdown(payload: dict, now: str) -> str:
         L.append("**Per-repo (can we see the calls?)**")
         L.append("")
         L += _table(["Repo", "Grade", "Attributed", "Unattributed paths", "Unresolved sinks"],
-                    [[g.get("repo"), g.get("grade"), g.get("attributed"),
+                    [[g.get("repoLabel") or g.get("repo"), g.get("grade"), g.get("attributed"),
                       g.get("unattributedPaths"), g.get("unresolvedSinks")] for g in grades])
         L.append("")
     if catalog:

@@ -155,7 +155,9 @@ def _build_projection(inventory: dict, audit: dict) -> dict:
         "sdkMediated": cov.get("sdkMediated", []),
         "catalog": (audit.get("coverage") or {}).get("catalog", []),
         "coverageNotes": (audit.get("coverage") or {}).get("notes", []),
-        "coverageGrades": residue.get("byRepo", []),
+        "coverageGrades": [dict(g, repoLabel=_repo_label(
+            repo_meta.get(g.get("repo"), {}).get("remote_url"), g.get("repo")))
+            for g in residue.get("byRepo", [])],
         "shapes": cov.get("shapes", []),
         "residueSamples": residue.get("pathLiterals", []),
     }
@@ -550,7 +552,7 @@ _CLIENT_JS = r"""
     var grades=(DATA.coverageGrades||[]).filter(function(g){return g.grade!=="HIGH";});
     if(grades.length){
       h+='<div class="note">Coverage — repos where calls may be unattributed:</div><ul>';
-      grades.forEach(function(g){ h+='<li>'+esc(g.repo)+': <b>'+esc(g.grade)+'</b> ('
+      grades.forEach(function(g){ h+='<li>'+esc(g.repoLabel||g.repo)+': <b>'+esc(g.grade)+'</b> ('
         +esc(g.unattributedPaths)+' path-literals, '+esc(g.unresolvedSinks)+' sinks)</li>'; });
       h+='</ul>';
     }
