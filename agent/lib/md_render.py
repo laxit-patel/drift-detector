@@ -40,6 +40,12 @@ def _table(headers: list, rows: list) -> list:
     return out
 
 
+def _repo(a: dict) -> str:
+    """Display name for a repo: the clean project path (repoLabel, e.g. chetan/amazonspapi)
+    the projection stamps, else the raw repo path."""
+    return a.get("repoLabel") or a.get("repo") or ""
+
+
 def _action_label(a: dict) -> str:
     """'eBay GetCategoryFeatures' for a sunset, 'composer/aws/aws-sdk-php' for a CVE."""
     ref = a.get("ref") or ""
@@ -86,7 +92,7 @@ def _mermaid_exposure(actions: list, now: str) -> list:
 
     repos, nodes, edges, dead_ids, due_ids = {}, [], [], [], []
     for a in sunsets:
-        repo = a.get("repo") or "?"
+        repo = _repo(a) or "?"
         if repo not in repos:
             rid = f"r{len(repos)}"
             repos[repo] = rid
@@ -155,7 +161,7 @@ def render_markdown(payload: dict, now: str) -> str:
     if pick:
         verb = "already retired" if str(pick["date"]) <= now else "retires"
         L.append(f"**Most urgent:** {_esc(_action_label(pick))} in "
-                 f"`{_esc(pick.get('repo', ''))}` — {verb} {_esc(pick['date'])}.")
+                 f"`{_esc(_repo(pick))}` — {verb} {_esc(pick['date'])}.")
         L.append("")
 
     # --- summary (the tiles, as a table) ---
@@ -185,7 +191,7 @@ def render_markdown(payload: dict, now: str) -> str:
             # call-sites the reader can act on (the located files), not finding_count —
             # which for a family-scoped sunset is ~always 1 and tells the reader nothing
             sites = len(a.get("files") or []) or a.get("finding_count", 0)
-            rows.append([a.get("repo", ""), _action_label(a), a.get("status", ""),
+            rows.append([_repo(a), _action_label(a), a.get("status", ""),
                          when, sites, _first_loc(a)])
         L.extend(_table(cols, rows))
         L.append("")

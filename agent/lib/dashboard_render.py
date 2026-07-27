@@ -57,6 +57,13 @@ def _gitlab_hosts() -> set:
     return {h.strip() for h in os.environ.get("DRIFT_GITLAB_HOSTS", "").split(",") if h.strip()}
 
 
+def _repo_label(remote_url, fallback: str) -> str:
+    """`https://host/group/repo(.git)` -> `group/repo`, else the fallback (the repo path).
+    A display label only — never an identity (that stays the repo path / fingerprint)."""
+    m = re.match(r"^https?://[^/]+/(.+?)(?:\.git)?/?$", str(remote_url or ""))
+    return m.group(1) if m else fallback
+
+
 def _permalink(remote_url, head_sha, loc) -> str | None:
     """Build a GitHub/GitLab blob permalink pinned to head_sha, or None (plain text).
     A self-hosted GitLab host isn't guessable from the URL — it's allow-listed via
@@ -84,6 +91,9 @@ def _build_projection(inventory: dict, audit: dict) -> dict:
     actions = [_project_action(a) for a in _actions_of(audit)]
     for a in actions:
         rm = repo_meta.get(a["repo"], {})
+        # display by the clean project path (chetan/amazonspapi), not the internal clone slug
+        # (chetan-amazonspapi-f5043548). `repo` stays the stable identity for fingerprints.
+        a["repoLabel"] = _repo_label(rm.get("remote_url"), a["repo"])
         a["files"] = [{"loc": loc, "href": _permalink(rm.get("remote_url"), rm.get("head_sha"), loc)}
                       for loc in a["files"]]
     endpoints = _endpoints_of(inventory)
@@ -350,11 +360,11 @@ _CLIENT_JS = r"""
       // the retiring operation is part of the identity, so it must be searchable too —
       // a PM filtering for "GetCategoryFeatures" has to land on its row
       var label = a.ref + (a.unit ? " " + a.unit : "");
-      if(!matchesQ((a.repo||"")+" "+label)) return;
+      if(!matchesQ((a.repoLabel||a.repo||"")+" "+label)) return;
       var tr=document.createElement("tr"); tr.className="row";
       var tgt = a.fix_version ? esc(a.current_version)+" → "+esc(a.fix_version)
                               : esc(a.recommendation||"review");
-      tr.innerHTML='<td>'+esc(a.repo)+'</td><td>'+esc(label)+'</td><td>'+tgt+
+      tr.innerHTML='<td>'+esc(a.repoLabel||a.repo)+'</td><td>'+esc(label)+'</td><td>'+tgt+
         '</td><td>'+esc(a.finding_count)+'</td><td class="sev-'+escA(a.worst)+'">'+esc(a.worst)+'</td>';
       var open=false, det=null;
       tr.addEventListener("click", function(){
