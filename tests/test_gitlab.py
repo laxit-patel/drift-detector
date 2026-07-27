@@ -2,11 +2,15 @@
 from agent.lib import gitlab
 
 
-def _api(project_check, membership_pages):
+def _api(project_check, membership_pages, group_check=404):
     """Fake GitLab API. `project_check` = status for the `/projects/<path>` probe;
-    `membership_pages` = page-number -> (status, data, next_page) for the membership list."""
+    `membership_pages` = page-number -> (status, data, next_page) for the membership list;
+    `group_check` = status for the `/groups/<path>` probe (the tiebreaker when membership is
+    empty: 200 = a real, empty group; else not a group -> expand returns None)."""
     def fetch(api_url, token):
         import re
+        if "/groups/" in api_url:
+            return (group_check, None, "")
         if "/projects/" in api_url and "membership" not in api_url:
             return (project_check, None, "")
         page = int(re.search(r"[?&]page=(\d+)", api_url).group(1))
@@ -71,9 +75,22 @@ def test_unreachable_api_returns_none():
 
 
 def test_a_real_namespace_the_token_sees_no_projects_in_is_empty_not_none():
+    # a POSITIVE group confirmation (groups/<path> -> 200) is what justifies "empty group"
     out = gitlab.expand_group("https://git.x/empty",
-                              fetch=_api(project_check=404, membership_pages={1: (200, [], "")}))
+                              fetch=_api(project_check=404, membership_pages={1: (200, [], "")},
+                                         group_check=200))
     assert out == []
+
+
+def test_a_404_project_with_no_children_returns_none_not_empty_group():
+    """The demo bug: rushikesh/ebayapinew 404s as a project and is NOT a group, but empty
+    membership made expand_group return [] — so the resolver reported 'group has no active
+    projects' instead of the honest 'could not access this repo'. It must return None so the
+    caller clones the URL directly and surfaces git's real not-found/no-access error."""
+    out = gitlab.expand_group("https://git.x/rushikesh/ebayapinew",
+                              fetch=_api(project_check=404, membership_pages={1: (200, [], "")},
+                                         group_check=404))
+    assert out is None
 
 
 def test_bare_host_and_dot_git_handling():

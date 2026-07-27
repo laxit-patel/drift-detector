@@ -109,4 +109,17 @@ def expand_group(url: str, *, token: str | None = None, fetch=None) -> list | No
             if clone_url and pn.startswith(prefix):
                 out.append({"url": clone_url, "path": pn, "archived": bool(p.get("archived"))})
         page = int(nxt) if str(nxt).isdigit() and nxt else 0
+
+    # 3. Empty enumeration is AMBIGUOUS: a genuinely empty namespace, OR a path that 404'd as
+    #    a project in step 1 and has no children — e.g. a repo the token can't see, or a typo.
+    #    Only a POSITIVE group confirmation justifies reporting "empty group"; otherwise return
+    #    None so the caller clones the url directly and surfaces git's real not-found/no-access
+    #    error, instead of the misleading "group has no active projects to scan".
+    if not out:
+        try:
+            gstatus, _g, _n = fetch(f"{host}/api/v4/groups/{quote(path, safe='')}", token)
+        except Exception:
+            return None
+        if gstatus != 200:
+            return None
     return out
