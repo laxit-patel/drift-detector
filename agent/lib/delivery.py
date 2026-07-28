@@ -22,6 +22,7 @@ import re
 LABEL = "drift-detector"
 DEVOPS_LABEL = "drift:devops"
 DEV_LABEL = "drift:developer"
+SHAPE_LABEL = "drift:shape"
 MR_BRANCH = "drift/migrations"
 MIGRATIONS_PATH = ".drift/MIGRATIONS.md"
 _MARKER = re.compile(r"<!--\s*drift-detector:([0-9a-f]{16})\s*-->")
@@ -40,6 +41,13 @@ def action_fingerprint(a: dict) -> str:
 
 def repo_fingerprint(repo: str) -> str:
     return hashlib.sha256(f"repo|{repo}".encode()).hexdigest()[:16]
+
+
+def shape_fingerprint(repo: str) -> str:
+    """Repo-keyed identity for an absorption flag: ONE issue per repo that UPDATES in place as
+    the residue drifts (a new residueFingerprint rewrites the body, the marker stays), rather
+    than a sibling per code change. Distinct namespace from repo_fingerprint / action_fingerprint."""
+    return hashlib.sha256(f"shape|{repo}".encode()).hexdigest()[:16]
 
 
 def marker(fp: str) -> str:
@@ -112,6 +120,56 @@ def issue_body(a: dict, display: str | None = None, links: dict | None = None) -
     return "\n".join(lines)
 
 
+# ----------------------------------------------------- absorption flags (shape stream, maintainer)
+def shape_issue_title(shape: dict, display: str | None = None) -> str:
+    n = shape.get("unattributedPaths", 0)
+    reasons = ", ".join(shape.get("reasons", [])) or "unreadable shape"
+    return (f"[drift] absorption needed: {display or shape.get('repo')} "
+            f"— {n} unattributed path(s) ({reasons})")
+
+
+def shape_issue_body(shape: dict, display: str | None = None,
+                     samples: list | None = None, links: dict | None = None) -> str:
+    """A maintainer-facing flag: this repo has a shape the scanner can't fully read. Carries
+    the WHY (verdict + reasons), the exact blind-spot file:lines, the residueFingerprint (the
+    token the resolving MR cites), and the bootstrap to absorb it. This is NOT a finding — it's
+    a request to teach the scanner. Closes itself once the repo goes KNOWN (see _finish)."""
+    fp = shape_fingerprint(shape.get("repo"))
+    langs = ", ".join((shape.get("languages") or {}).keys())
+    lines = [marker(fp), "",
+             f"**Absorption needed** — `{display or shape.get('repo')}` came back "
+             f"**{shape.get('verdict')}**: the deterministic scanner could not fully read its "
+             f"integration calls, so its findings are incomplete (“cannot see” is not "
+             f"“clean”).", "",
+             f"- **Why:** {', '.join(shape.get('reasons', [])) or 'unreadable shape'}",
+             f"- **Languages:** {langs or '?'}",
+             f"- **Attributed / unattributed:** {shape.get('attributed', 0)} attributed · "
+             f"{shape.get('unattributedPaths', 0)} path(s) + {shape.get('unresolvedSinks', 0)} "
+             f"sink(s) unread",
+             f"- **Residue fingerprint:** `{shape.get('residueFingerprint', '')}` "
+             f"_(the absorption MR that resolves this should cite it)_", ""]
+    caps = (samples or [])[:12]
+    if caps:
+        lines.append("**Blind spots** — versioned paths seen but not attributed:")
+        for s in caps:
+            loc, samp = s.get("loc"), s.get("sample")
+            lines.append(f"  - `{loc}` — `{samp}`" if samp else f"  - `{loc}`")
+        if len(samples) > 12:
+            lines.append(f"  - …and {len(samples) - 12} more (see the report)")
+        lines.append("")
+    lines += ["**To absorb this shape** (a maintainer with access to the flagged repo):",
+              "```",
+              "git clone <the flagged repo> && cd <repo>",
+              "export DRIFT_OPS_DIR=<your drift-ops checkout>   # where the learned overlay lives",
+              "/drift-detector .        # scan it locally",
+              "/drift-deepen .          # investigate the blind spots, teach the scanner",
+              "```",
+              "_The absorbed idioms/sunsets land as a reviewed MR on drift-ops; the next fleet "
+              "scan then sees this repo KNOWN and closes this issue on its own._", "",
+              _footer(links)]
+    return "\n".join(lines)
+
+
 # --------------------------------------------------------------- MR content (Developer)
 def migrations_md(repo: str, actions: list, links: dict | None = None) -> str:
     fp = repo_fingerprint(repo)
@@ -173,7 +231,8 @@ def _issue_op(fp: str, title: str, body: str, by_fp: dict, project: str) -> dict
 
 # ----------------------------------------------------------------------- the planner (pure)
 def build_plan(payload: dict, repo_meta: dict, existing: dict, devops_project: str,
-               *, dev_as_issues: bool = False, links: dict | None = None) -> dict:
+               *, dev_as_issues: bool = False, links: dict | None = None,
+               shape_stream: bool = False) -> dict:
     """Compute the create/update/close plan. PURE: no I/O.
 
     `repo_meta`   : {repo -> {"project": "group/repo"}} for the scanned repos.
@@ -182,6 +241,10 @@ def build_plan(payload: dict, repo_meta: dict, existing: dict, devops_project: s
     `dev_as_issues`: file the Developer stream as ISSUES (one per repo, in devops_project)
                      instead of draft MRs — the Reporter-friendly fallback when we lack
                      Developer access on the scanned repos.
+    `shape_stream`: also file a MAINTAINER-facing "absorption needed" issue (one per repo) for
+                    every UNKNOWN shape in the payload — the repo has integration calls the
+                    scanner could not read. Repo-keyed, updates in place, and closes itself via
+                    `_finish` once the repo goes KNOWN.
     Returns {"issues": [...], "mrs": [...]} where each item has an `op`
     (create|update|close|skip) and the rendered content.
     """
@@ -203,6 +266,26 @@ def build_plan(payload: dict, repo_meta: dict, existing: dict, devops_project: s
         display = (repo_meta.get(a.get("repo")) or {}).get("project") or a.get("repo")
         issue_plan.append(_issue_op(fp, issue_title(a), issue_body(a, display, links),
                                     by_fp, devops_project))
+
+    # ---- absorption flags (maintainer: one per UNKNOWN shape) ----
+    # Placed before the dev branch so it lands in issue_plan + live_fps for BOTH return paths;
+    # a repo that goes KNOWN drops out of live_fps and _finish closes its flag automatically.
+    if shape_stream:
+        samples_by_repo: dict = {}
+        for s in payload.get("residueSamples", []):
+            samples_by_repo.setdefault(s.get("repo"), []).append(s)
+        for sh in payload.get("shapes", []):
+            if sh.get("verdict") != "UNKNOWN":
+                continue
+            repo = sh.get("repo")
+            fp = shape_fingerprint(repo)
+            live_fps.add(fp)
+            display = (repo_meta.get(repo) or {}).get("project") or sh.get("repoLabel") or repo
+            op = _issue_op(fp, shape_issue_title(sh, display),
+                           shape_issue_body(sh, display, samples_by_repo.get(repo), links),
+                           by_fp, devops_project)
+            op["stream"] = "shape"          # so execute_plan labels it drift:shape
+            issue_plan.append(op)
 
     # ---- Developer stream: one per scanned repo, as a draft MR OR (fallback) an issue ----
     by_repo = {}
@@ -295,8 +378,9 @@ def execute_plan(gl, plan: dict) -> dict:
     done = {"created": 0, "updated": 0, "closed": 0, "skipped": 0, "unroutable": 0}
     for it in plan["issues"]:
         if it["op"] == "create":
+            stream_label = SHAPE_LABEL if it.get("stream") == "shape" else DEVOPS_LABEL
             gl.create_issue(it["project"], title=it["title"], description=it["body"],
-                            labels=f"{LABEL},{DEVOPS_LABEL}")
+                            labels=f"{LABEL},{stream_label}")
             done["created"] += 1
         elif it["op"] == "update":
             fields = {"description": it["body"], "title": it["title"]}

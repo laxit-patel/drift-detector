@@ -27,14 +27,25 @@ def test_valid_config_loads_and_derives_the_host(tmp_path):
     assert cfg["fleet"] == ["https://git.x/g/a", "https://git.x/g/b"]
     assert cfg["host"] == "git.x"                              # derived from the fleet URLs
     assert cfg["delivery"] == {"mode": "live", "dev_as_issues": True,
-                               "devops_project": "root/ops"}
+                               "devops_project": "root/ops", "shape_stream": False}
 
 
 def test_delivery_defaults_when_omitted(tmp_path):
     # default developer target is `issues` (Reporter-friendly) — MRs need Developer access the
     # deployment may not have, so the safe default routes developer findings to issues too.
     cfg = ops_config.load(_write(tmp_path, "fleet: [https://git.x/g/a]\n"))
-    assert cfg["delivery"] == {"mode": "dry-run", "dev_as_issues": True, "devops_project": None}
+    assert cfg["delivery"] == {"mode": "dry-run", "dev_as_issues": True,
+                               "devops_project": None, "shape_stream": False}
+
+
+def test_shape_stream_opt_in(tmp_path):
+    cfg = ops_config.load(_write(tmp_path,
+        "fleet: [https://git.x/g/a]\ndelivery:\n  shape_stream: true\n"))
+    assert cfg["delivery"]["shape_stream"] is True
+    # orthogonal to the v1/v2 forms — combining with either is NOT a mix error
+    cfg2 = ops_config.load(_write(tmp_path,
+        "fleet: [https://git.x/g/a]\ndelivery:\n  shape_stream: true\n  developer: {target: mrs}\n"))
+    assert cfg2["delivery"]["shape_stream"] is True and cfg2["delivery"]["dev_as_issues"] is False
 
 
 def test_empty_fleet_is_an_error(tmp_path):

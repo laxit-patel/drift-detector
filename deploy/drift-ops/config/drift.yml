@@ -14,6 +14,9 @@ delivery:
   developer:
     target: issues           # issues → works with Reporter access (the safe default)
                              # mrs    → draft MRs on the scanned repos (needs Developer access)
+  shape_stream: false        # true → file a maintainer "absorption needed" issue per UNKNOWN
+                             # repo (a shape the scanner can't fully read). Opt in once the
+                             # fleet is stable; closes itself when the repo goes KNOWN.
 
 # auth + notify hold env-var NAMES, never secrets (this file is git-tracked and reviewed).
 # Omit `auth` entirely to run on a single GITLAB_TOKEN, as below by default:

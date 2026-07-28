@@ -255,3 +255,66 @@ def test_cli_config_mode_off_skips_delivery(tmp_path, capsys):
         "fleet: [https://git.x/g/a]\ndelivery:\n  mode: off\n  devops_project: root/ops\n")
     rc = cli.main(["deliver", "--config", str(tmp_path / "drift.yml"), "--state", str(tmp_path)])
     assert rc == 0 and "off — skipping" in capsys.readouterr().out
+
+
+# --------------------------------------------------------------- shape stream (absorption flags)
+def _shape(repo, verdict="UNKNOWN", reasons=("config-driven-url",), fp="deadbeef00000000"):
+    return {"repo": repo, "verdict": verdict, "reasons": list(reasons),
+            "attributed": 3, "unattributedPaths": 5, "unresolvedSinks": 2,
+            "languages": {"php": 40}, "residueFingerprint": fp}
+
+
+def _pl_shapes(shapes, samples=None):
+    return {"actions": [], "shapes": shapes, "residueSamples": samples or []}
+
+
+def test_shape_stream_is_off_by_default():
+    plan = delivery.build_plan(_pl_shapes([_shape("svc")]), _META,
+                               {"issues": [], "mrs": {}}, "root/drift-detector")
+    assert plan["issues"] == []                              # no flag unless the stream is on
+
+
+def test_shape_stream_flags_each_unknown_repo_at_the_maintainer():
+    shapes = [_shape("svc-a"), _shape("svc-b"), _shape("svc-c", verdict="KNOWN")]
+    plan = delivery.build_plan(_pl_shapes(shapes), _META, {"issues": [], "mrs": {}},
+                               "root/drift-detector", shape_stream=True)
+    creates = [i for i in plan["issues"] if i["op"] == "create"]
+    assert len(creates) == 2                                 # only the two UNKNOWN
+    assert all(o["project"] == "root/drift-detector" for o in creates)   # aimed at us
+    assert all(o.get("stream") == "shape" for o in creates)
+    assert "absorption needed" in creates[0]["title"]
+
+
+def test_shape_issue_body_carries_blindspots_fingerprint_and_bootstrap():
+    samples = [{"repo": "svc", "loc": "src/A.php:12", "sample": "/v2/orders"}]
+    plan = delivery.build_plan(_pl_shapes([_shape("svc")], samples), _META,
+                               {"issues": [], "mrs": {}}, "root/drift-detector", shape_stream=True)
+    body = plan["issues"][0]["body"]
+    assert "deadbeef00000000" in body and "src/A.php:12" in body and "config-driven-url" in body
+    assert "drift-deepen" in body and "DRIFT_OPS_DIR" in body     # the absorb bootstrap
+
+
+def test_shape_flag_is_idempotent():
+    sh = _shape("svc")
+    first = delivery.build_plan(_pl_shapes([sh]), _META, {"issues": [], "mrs": {}},
+                                "root/drift-detector", shape_stream=True)["issues"][0]
+    existing = {"issues": [{"iid": 9, "state": "opened",
+                            "description": first["body"], "title": first["title"]}], "mrs": {}}
+    again = delivery.build_plan(_pl_shapes([sh]), _META, existing,
+                                "root/drift-detector", shape_stream=True)
+    assert again["issues"][0]["op"] == "skip"               # unchanged shape -> no rewrite
+
+
+def test_shape_flag_closes_itself_when_the_repo_goes_known():
+    fp = delivery.shape_fingerprint("svc")
+    existing = {"issues": [{"iid": 9, "state": "opened", "description": delivery.marker(fp),
+                            "title": "[drift] absorption needed: svc"}], "mrs": {}}
+    plan = delivery.build_plan(_pl_shapes([_shape("svc", verdict="KNOWN")]), _META, existing,
+                               "root/drift-detector", shape_stream=True)
+    closes = [i for i in plan["issues"] if i["op"] == "close"]
+    assert len(closes) == 1 and closes[0]["iid"] == 9       # KNOWN now -> flag closes
+
+
+def test_shape_fingerprint_is_repo_keyed_and_distinct():
+    assert delivery.shape_fingerprint("svc") == delivery.shape_fingerprint("svc")
+    assert delivery.shape_fingerprint("svc") != delivery.repo_fingerprint("svc")

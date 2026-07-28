@@ -40,7 +40,9 @@ _TARGETS = {"issues", "mrs"}
 _TOP = {"version", "fleet", "delivery", "auth", "notify"}
 _DELIVERY_V1 = {"mode", "dev_as_issues", "devops_project"}
 _DELIVERY_V2 = {"mode", "devops", "developer"}
-_DELIVERY = _DELIVERY_V1 | _DELIVERY_V2
+# orthogonal to the v1/v2 split — allowed in either form, never counts toward the mix check
+_DELIVERY_COMMON = {"shape_stream"}
+_DELIVERY = _DELIVERY_V1 | _DELIVERY_V2 | _DELIVERY_COMMON
 _AUTH = {"clone", "persist", "deliver"}
 _NOTIFY = {"gchat"}
 _STREAM = {"target", "project"}
@@ -137,7 +139,10 @@ def _load_delivery(path: str, raw: dict) -> dict:
     else:                                # v1 form (or nothing → defaults)
         dev_as_issues = bool(d.get("dev_as_issues", True))   # default: issues (Reporter-friendly)
         devops_project = d.get("devops_project")
-    return {"mode": mode, "dev_as_issues": dev_as_issues, "devops_project": devops_project}
+    # the absorption-flag stream: file a maintainer issue per UNKNOWN repo. Off by default —
+    # opt in once the fleet is stable, so early scans don't flag every not-yet-modeled repo.
+    return {"mode": mode, "dev_as_issues": dev_as_issues, "devops_project": devops_project,
+            "shape_stream": bool(d.get("shape_stream", False))}
 
 
 def load(path: str) -> dict:

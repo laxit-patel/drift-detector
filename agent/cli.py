@@ -557,6 +557,7 @@ def _cmd_deliver(args) -> int:
     mode = "dry-run" if args.dry_run else "live"
     dev_as_issues = args.dev_as_issues
     deliver_var = None                              # env-var NAME the delivery token is read from
+    shape_stream = False                            # flag UNKNOWN repos for absorption (config opt-in)
     if getattr(args, "config", None):
         from agent.lib import ops_config
         try:
@@ -568,6 +569,7 @@ def _cmd_deliver(args) -> int:
         devops_project = devops_project or cfg["delivery"]["devops_project"]
         dev_as_issues = dev_as_issues or cfg["delivery"]["dev_as_issues"]
         deliver_var = cfg["auth"]["deliver"]
+        shape_stream = cfg["delivery"]["shape_stream"]
         if not args.dry_run:                        # an explicit --dry-run always wins
             mode = cfg["delivery"]["mode"]
     if mode == "off":
@@ -601,7 +603,8 @@ def _cmd_deliver(args) -> int:
     existing = delivery.fetch_existing(gl, devops_project, dev_projects)
     links = {"run": getattr(args, "run_url", None), "report": getattr(args, "report_url", None)}
     plan = delivery.build_plan(payload, repo_meta, existing, devops_project,
-                               dev_as_issues=dev_as_issues, links=links)
+                               dev_as_issues=dev_as_issues, links=links,
+                               shape_stream=shape_stream)
 
     print(f"delivery mode: {mode}")
     print(delivery.plan_summary(plan))
