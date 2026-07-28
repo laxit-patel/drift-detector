@@ -38,6 +38,12 @@ D="$F/.drift-detector"
 "$SCAN" recommend --root "$F" --state "$D"
 ```
 
+For the **full context on one flagged repo** — the shape, every blind-spot `file:line` (uncapped), which idiom family each needs, and the exact gate + overlay commands — render its brief:
+
+```bash
+"$SCAN" brief --state "$D" --repo "<the UNKNOWN repo from coverage.shapes>"   # → $D/ABSORPTION.md
+```
+
 `inventory.json` → `coverage.shapes[]` is your work-list. Only investigate repos whose `verdict` is **UNKNOWN**; a KNOWN repo needs nothing from you. Each shape names its own reasons:
 
 - **`no-egress-signal`** — we have no egress rules for a language present at all. This is first contact: read how that language's code makes outbound calls in *this* repo.

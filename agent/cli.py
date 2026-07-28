@@ -503,6 +503,26 @@ def _cmd_sarif(args) -> int:
     return 0
 
 
+def _cmd_brief(args) -> int:
+    """Render ABSORPTION.md for a flagged repo — the full context (shape, uncapped blind spots,
+    the closed idiom families, the rails) a maintainer/agent needs to absorb it. A deterministic
+    projection of inventory.json; writes <state>/ABSORPTION.md (or --out)."""
+    import json as _json
+    from agent.lib import brief as _brief
+    try:
+        with open(os.path.join(args.state, "inventory.json"), encoding="utf-8") as fh:
+            inventory = _json.load(fh)
+    except OSError as exc:
+        print(f"brief: nothing to render — run a scan first ({exc})", file=sys.stderr)
+        return 4
+    md = _brief.build_brief(inventory, args.repo, flag_url=getattr(args, "flag_url", None))
+    out = args.out or os.path.join(args.state, "ABSORPTION.md")
+    with open(out, "w", encoding="utf-8") as fh:
+        fh.write(md)
+    print(f"✓ absorption brief for {args.repo} → {out}")
+    return 0
+
+
 def _cmd_config_preflight(args) -> int:
     """A 5-second gate BEFORE the scan: are the token env vars the config names actually set,
     is a configured webhook present, and does the delivery token reach GitLab? Fails here
@@ -710,6 +730,13 @@ def main(argv: list[str]) -> int:
     psa.add_argument("--state", required=True)
     psa.add_argument("--out", help="output path (default <state>/sarif.json)")
     psa.set_defaults(func=_cmd_sarif)
+
+    pbr = sub.add_parser("brief")         # ABSORPTION.md for a flagged (UNKNOWN) repo
+    pbr.add_argument("--state", required=True)
+    pbr.add_argument("--repo", required=True, help="the flagged repo path (as in the shape record)")
+    pbr.add_argument("--out", help="output path (default <state>/ABSORPTION.md)")
+    pbr.add_argument("--flag-url", help="link back to the flag issue")
+    pbr.set_defaults(func=_cmd_brief)
 
     pcp = sub.add_parser("config-preflight")   # 5s gate: tokens + reachability + config, PRE-scan
     pcp.add_argument("--config", required=True)
