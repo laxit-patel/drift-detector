@@ -7,7 +7,11 @@ bootstrap; this is the full context (uncapped blind spots, the closed families, 
 """
 from __future__ import annotations
 
+import re
+
 from agent.lib.shapes import recommend_profile, MANUAL, AUTO
+
+_URL = re.compile(r"^https?://[^/]+/(.+?)(?:\.git)?/?$")
 
 # family -> (what it matches, the required field(s), a real example instance). Kept in lockstep
 # with idioms.py::_validate — a new instance of these is DATA; a new family is a code PR.
@@ -38,9 +42,21 @@ def _shape_of(inventory: dict, repo: str) -> dict | None:
     return None
 
 
+def _display_name(inventory: dict, repo: str) -> str:
+    """The clean project path (group/repo) for a repo, from its remote_url — so a fleet clone
+    slug like `channelwiz-channelwiz-ed5f4fd4` reads as `channelwiz/channelwiz`. Falls back to
+    the repo key (already clean for a locally-scanned folder)."""
+    for r in inventory.get("repos", []):
+        if r.get("path") == repo:
+            m = _URL.match(str(r.get("remote_url") or ""))
+            return m.group(1) if m else repo
+    return repo
+
+
 def build_brief(inventory: dict, repo: str, *, flag_url: str | None = None) -> str:
     shape = _shape_of(inventory, repo) or {"repo": repo, "verdict": "UNKNOWN", "reasons": [],
                                            "languages": {}, "signalCoverage": {}}
+    name = _display_name(inventory, repo)
     residue = ((inventory.get("coverage") or {}).get("residue")) or {}
     paths = [p for p in residue.get("pathLiterals", []) if p.get("repo") == repo]
     sinks = [s for s in residue.get("sinks", []) if s.get("repo") == repo]
@@ -49,10 +65,10 @@ def build_brief(inventory: dict, repo: str, *, flag_url: str | None = None) -> s
     sigcov = "; ".join(f"{l}: {', '.join(k)}"
                        for l, k in (shape.get("signalCoverage") or {}).items()) or "none"
 
-    L = [f"# Absorption brief — `{repo}`", ""]
+    L = [f"# Absorption brief — `{name}`", ""]
 
     L += ["## Why you're here",
-          f"The fleet scan flagged `{repo}` as a shape the deterministic scanner could not fully "
+          f"The fleet scan flagged `{name}` as a shape the deterministic scanner could not fully "
           "read, so its findings are incomplete (“cannot see” is not “clean”). "
           "Your job: teach the scanner this repo's shape as reviewed, gated YAML — you decide "
           "nothing, the gate does, and a human merges.", ""]
@@ -114,7 +130,7 @@ def build_brief(inventory: dict, repo: str, *, flag_url: str | None = None) -> s
           "   ```",
           "   export DRIFT_OPS_DIR=<your drift-ops checkout>",
           "   DRIFT_CATALOG_DIR=\"$DRIFT_OPS_DIR/catalog\" \\",
-          f"     drift-scan absorb --staged .drift-detector/absorb-staged --repo {repo} \\",
+          f"     drift-scan absorb --staged .drift-detector/absorb-staged --repo {name} \\",
           "       --state .drift-detector --now $(date +%F)",
           "   ```",
           "   Without `DRIFT_CATALOG_DIR` the absorb writes into the installed plugin's own "
