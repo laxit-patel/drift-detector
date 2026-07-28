@@ -67,3 +67,9 @@ def test_clean_repo_name_from_remote_url():
     md = brief.build_brief(inv, "channelwiz-channelwiz-ed5f4fd4")
     assert "`channelwiz/channelwiz`" in md                  # clean path, not the clone slug
     assert "ed5f4fd4" not in md
+
+
+def test_known_repo_brief_says_nothing_to_absorb():
+    md = brief.build_brief(_inv(verdict="KNOWN", reasons=()), "svc")
+    assert "Nothing to absorb" in md and "KNOWN" in md
+    assert "Blind spots" not in md                          # no scaffold over nothing

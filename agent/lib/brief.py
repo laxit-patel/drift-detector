@@ -57,6 +57,15 @@ def build_brief(inventory: dict, repo: str, *, flag_url: str | None = None) -> s
     shape = _shape_of(inventory, repo) or {"repo": repo, "verdict": "UNKNOWN", "reasons": [],
                                            "languages": {}, "signalCoverage": {}}
     name = _display_name(inventory, repo)
+
+    # a brief is only meaningful for a FLAGGED (UNKNOWN) repo. A KNOWN repo is fully read —
+    # say so plainly rather than render the "here's your blind spots" scaffold over nothing.
+    if shape.get("verdict") != "UNKNOWN":
+        return (f"# Absorption brief — `{name}`\n\n"
+                f"**Nothing to absorb — `{name}` is `{shape.get('verdict')}`.** The scanner "
+                f"fully reads this repo's integration calls ({shape.get('attributed', 0)} "
+                f"attributed, no unresolved residue); there is no shape to teach it. This brief "
+                f"is only meaningful for a flagged (UNKNOWN) repo.\n")
     residue = ((inventory.get("coverage") or {}).get("residue")) or {}
     paths = [p for p in residue.get("pathLiterals", []) if p.get("repo") == repo]
     sinks = [s for s in residue.get("sinks", []) if s.get("repo") == repo]
