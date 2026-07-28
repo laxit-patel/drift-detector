@@ -1,4 +1,4 @@
-from agent.lib.vendors import Vendor
+from agent.lib.vendors import Vendor, DEFAULT_VERSION_REGEX
 from agent.lib.endpoints import build_endpoints, scan_endpoints
 
 
@@ -277,3 +277,33 @@ def test_operations_on_one_host_stay_separate_records(tmp_path):
     out = scan_endpoints(matches, str(tmp_path), [_EBAY])
     ops = {e["operation"] for e in out["endpoints"] if e.get("operation")}
     assert ops == {"GetCategories", "GetItem"}      # same host+version, distinct lifecycles
+
+
+# --- interpolated-host URLs: host is a runtime variable, path signature saves the vendor ---
+_SHOPIFY = Vendor("Shopify", "api:shopify", ("myshopify.com", "shopify.dev"),
+                  DEFAULT_VERSION_REGEX, path_signature=r"/admin/api/([0-9]{4}-[0-9]{2})/")
+
+
+def test_interpolated_host_shopify_version_is_attributed_by_path_signature(tmp_path):
+    """SHIPPED BUG: a Shopify Admin API call written as Laravel string interpolation —
+    `Http::...->get("https://{$shop}/admin/api/2024-01/shop.json")` — was INVISIBLE. The
+    `{$shop}` host truncates URL extraction, so host classification is blind AND the literal
+    never reaches residue: the retired-version call `2024-01` vanished from the report
+    entirely. The `/admin/api/{version}/` path signature is host-independent and must
+    recover vendor=Shopify at version=2024-01 so the lifecycle sunset can fire."""
+    _write(tmp_path, "app/Http/Controllers/ShopifyController.php",
+           'x\n$r = Http::withHeaders([])->get("https://{$shop}/admin/api/2024-01/shop.json");\n')
+    eps = build_endpoints([_url("app/Http/Controllers/ShopifyController.php", 2)],
+                          str(tmp_path), [_SHOPIFY])
+    sh = [e for e in eps if e["techKey"] == "api:shopify"]
+    assert sh, "the interpolated-host Shopify call was not attributed"
+    assert sh[0]["version"] == "2024-01"
+    assert sh[0]["attribution"] == "observed"   # the path literal IS evidence on the line
+
+
+def test_path_signature_does_not_fire_on_unrelated_admin_paths(tmp_path):
+    """The signature must be distinctive: a non-Shopify `/admin/` path with no `api/<date>`
+    segment must NOT be mis-attributed to Shopify (no invented endpoints)."""
+    _write(tmp_path, "a.php", 'x\n$r = get("https://{$h}/admin/users/list");\n')
+    eps = build_endpoints([_url("a.php", 2)], str(tmp_path), [_SHOPIFY])
+    assert not [e for e in eps if e["techKey"] == "api:shopify"]

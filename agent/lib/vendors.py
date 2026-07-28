@@ -23,6 +23,11 @@ class Vendor:
     techKey: str
     domains: tuple
     version_regex: str
+    # An optional DISTINCTIVE path signature (regex, group 1 = version) that identifies this
+    # vendor from the URL PATH alone, regardless of host — for calls whose host is a runtime
+    # variable ("https://{$shop}/admin/api/2024-01/…"), where host classification is blind but
+    # the path is unmistakably this vendor's. Shopify's Admin API is the motivating case.
+    path_signature: str | None = None
 
 
 def vendor_slug(vendor: str) -> str:
@@ -41,5 +46,6 @@ def load_vendors(path: str | None = None) -> list:
             vendor=d["vendor"], techKey=d["techKey"],
             domains=tuple(d.get("domains") or []),
             version_regex=d.get("versionRegex") or DEFAULT_VERSION_REGEX,
+            path_signature=d.get("pathSignature") or None,
         ))
     return out

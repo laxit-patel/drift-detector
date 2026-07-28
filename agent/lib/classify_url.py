@@ -105,6 +105,24 @@ def version_of(url: str, vendor) -> str | None:
     return m.group(1) if m else None
 
 
+def path_signature_match(text: str, vendors: list):
+    """The (vendor, version, sample) for the first vendor whose `path_signature` matches
+    `text`, or None. Host-INDEPENDENT: for calls whose host is a runtime variable —
+    `Http::…->get("https://{$shop}/admin/api/2024-01/shop.json")` — the interpolation
+    truncates URL extraction and host classification is blind, but the `/admin/api/{version}/`
+    path is unmistakably Shopify. Group 1 of the signature is the version (None if absent).
+    Most specific (longest match) wins so overlapping signatures resolve deterministically."""
+    best, best_span = None, -1
+    for v in vendors:
+        if not v.path_signature:
+            continue
+        m = re.search(v.path_signature, text or "")
+        if m and (m.end() - m.start()) > best_span:
+            ver = m.group(1) if m.groups() else None
+            best, best_span = (v, ver, m.group(0)), m.end() - m.start()
+    return best
+
+
 def domain_in_line(line: str, domains) -> str:
     # host-boundary aware so `ups.com` doesn't fire on `startups.com` / `groups.company.com`
     for d in domains:
