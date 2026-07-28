@@ -91,21 +91,27 @@ def check_idioms(instances: list) -> list:
     return problems
 
 
-def verify_against_repo(repo_abs: str, staged_idioms: list, claims: list,
-                        *, scan) -> list:
-    """Re-scan `repo_abs` with the staged idioms and hold the proposal to its claims.
+def measure_against_repo(repo_abs: str, staged_idioms: list, claims: list, *, scan) -> dict:
+    """Re-scan `repo_abs` with the staged idioms and MEASURE the proposal against its claims —
+    the delta an iterating agent climbs (`absorb --check`), plus the gate problems.
 
-    `scan(idiom_instances) -> {"endpoints": [...], "residue": {...}}` is injected so
-    this is testable without an engine. `claims` is the list of file:line the
-    proposal says it will attribute.
+    `scan(idiom_instances) -> {"endpoints": [...], "residue": {...}}` is injected so this is
+    testable without an engine. Returns:
+        {attributedBefore, attributedAfter, residueBefore, residueAfter,
+         claims: {met, missing}, invented, unclaimed, problems}
+    `problems` empty == would pass the gate. Pure: writes nothing.
     """
     before = scan(None)
     after = scan(staged_idioms)
 
+    def _attributed(res):
+        return {loc for e in res["endpoints"]
+                if e.get("vendor") and e["vendor"] != "Unknown" for loc in e.get("files", [])}
+
+    attributed_before = _attributed(before)
+    attributed_after = _attributed(after)
     problems = []
-    attributed_after = {loc for e in after["endpoints"]
-                        if e.get("vendor") and e["vendor"] != "Unknown"
-                        for loc in e.get("files", [])}
+
     missing = [c for c in claims if c not in attributed_after]
     if missing:
         problems.append("claimed call-sites still unattributed after the change: "
@@ -124,9 +130,6 @@ def verify_against_repo(repo_abs: str, staged_idioms: list, claims: list,
     # chance to judge them. This is the check that catches an over-broad pattern: e.g.
     # `$A->getHost()` where $A is a metavariable matching ANY object, which will happily
     # attribute an unrelated library's paths to the repo's one classified vendor.
-    attributed_before = {loc for e in before["endpoints"]
-                         if e.get("vendor") and e["vendor"] != "Unknown"
-                         for loc in e.get("files", [])}
     unclaimed = sorted((attributed_after - attributed_before) - set(claims))
     if unclaimed:
         problems.append("attributes call-sites it did not claim: " + ", ".join(unclaimed[:6])
@@ -136,7 +139,17 @@ def verify_against_repo(repo_abs: str, staged_idioms: list, claims: list,
     n_after = len(after["residue"].get("pathLiterals", []))
     if n_after > n_before:
         problems.append(f"residue grew ({n_before} -> {n_after} unattributed path literals)")
-    return problems
+
+    return {"attributedBefore": len(attributed_before), "attributedAfter": len(attributed_after),
+            "residueBefore": n_before, "residueAfter": n_after,
+            "claims": {"met": [c for c in claims if c in attributed_after], "missing": missing},
+            "invented": invented, "unclaimed": unclaimed, "problems": problems}
+
+
+def verify_against_repo(repo_abs: str, staged_idioms: list, claims: list, *, scan) -> list:
+    """The gate's verdict: the list of problems (empty == passes). Thin wrapper over
+    measure_against_repo — same before/after logic, just the problems."""
+    return measure_against_repo(repo_abs, staged_idioms, claims, scan=scan)["problems"]
 
 
 def promote(staged_dir: str, *, idioms_path: str, sunsets_path: str) -> dict:

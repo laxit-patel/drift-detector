@@ -396,7 +396,34 @@ def _cmd_absorb(args) -> int:
             res = run_scan(args.repo, rules, engine=engine)
         return scan_endpoints(res["matches"], args.repo, vendors)
 
-    problems = absorb.verify_against_repo(args.repo, staged_idioms, claims, scan=scan)
+    m = absorb.measure_against_repo(args.repo, staged_idioms, claims, scan=scan)
+
+    # --check: the iteration instrument. Report the attributed-call delta and the gate verdict,
+    # write NOTHING (no promote, no attestation, no overlay). This is what an absorbing agent
+    # loops on — climb attributedAfter, watch residue shrink — before the one real run.
+    if getattr(args, "check", False):
+        import json as _json
+        d_attr = m["attributedAfter"] - m["attributedBefore"]
+        d_res = m["residueAfter"] - m["residueBefore"]
+        met, miss = len(m["claims"]["met"]), len(m["claims"]["missing"])
+        print("absorb --check (dry run — nothing written)")
+        print(f"  attributed call-sites : {m['attributedBefore']} → {m['attributedAfter']}  "
+              f"({d_attr:+d})")
+        print(f"  unattributed residue  : {m['residueBefore']} → {m['residueAfter']}  ({d_res:+d})")
+        print(f"  claims                : {met}/{met + miss} met"
+              + (f" — {miss} MISSING" if miss else ""))
+        if m["problems"]:
+            print("  ✗ would be REJECTED:")
+            for p in m["problems"]:
+                print(f"      {p}")
+        else:
+            print("  ✓ would pass the gate")
+        print("DELTA " + _json.dumps({k: m[k] for k in
+              ("attributedBefore", "attributedAfter", "residueBefore", "residueAfter",
+               "claims", "invented", "unclaimed", "problems")}, sort_keys=True))
+        return 3 if m["problems"] else 0
+
+    problems = m["problems"]
     if problems:
         print("✗ absorb rejected — the proposal did not hold up against the repo:", file=sys.stderr)
         for p in problems:
@@ -767,6 +794,9 @@ def main(argv: list[str]) -> int:
     pab.add_argument("--repo-name")
     pab.add_argument("--state")
     pab.add_argument("--now")
+    pab.add_argument("--check", action="store_true",
+                     help="dry run: report the attributed-call delta + gate verdict, write "
+                          "nothing (the iteration instrument for an absorbing agent)")
     pab.set_defaults(func=_cmd_absorb)
 
     prc = sub.add_parser("recommend")     # which scan profile should this folder run?

@@ -133,3 +133,53 @@ def test_promote_appends_staged_specs(tmp_path):
     added = absorb.promote(str(staged), idioms_path=str(idioms_f), sunsets_path=str(sunsets_f))
     assert added["idioms"] == 1 and added["sunsets"] == 0
     assert "new-one" in idioms_f.read_text() and "existing" in idioms_f.read_text()
+
+
+def test_measure_reports_the_attributed_delta_and_claims():
+    scan = _scanner(
+        before={"endpoints": [_EP("eBay", ["a.php:3"])],
+                "residue": {"pathLiterals": [{"loc": "b.php:1"}, {"loc": "c.php:2"}]}},
+        after={"endpoints": [_EP("eBay", ["a.php:3", "b.php:1"])],
+               "residue": {"pathLiterals": [{"loc": "c.php:2"}]}})
+    m = absorb.measure_against_repo("/repo", [{"id": "x"}], ["b.php:1"], scan=scan)
+    assert m["attributedBefore"] == 1 and m["attributedAfter"] == 2      # +1 traced call
+    assert m["residueBefore"] == 2 and m["residueAfter"] == 1            # -1 residue
+    assert m["claims"] == {"met": ["b.php:1"], "missing": []}
+    assert m["problems"] == []                                          # would pass
+
+
+def test_absorb_check_measures_but_writes_nothing(tmp_path, monkeypatch):
+    """--check is the iteration instrument: report the delta, write NOTHING. Proven against its
+    bug — a PASSING proposal under --check must leave the overlay AND the attestation untouched
+    (the loop must be free to probe without committing)."""
+    from agent import cli
+    from agent.lib import shapes
+    import agent.lib.engine as engine_mod
+    import agent.lib.endpoints as endpoints_mod
+
+    repo = tmp_path / "svc"; repo.mkdir()
+    state = tmp_path / "state"; state.mkdir()
+    staged = tmp_path / "absorb-staged"; staged.mkdir()
+    (staged / "idioms.yaml").write_text(yaml.safe_dump(
+        [{"id": "svc-base", "family": "url-assembly", "base": "$A->baseUrl()", "evidence": "svc f.php:1"}]))
+    (staged / "claims.yaml").write_text(yaml.safe_dump(["f.php:1"]))
+    overlay = tmp_path / "overlay"; overlay.mkdir()
+    monkeypatch.setenv("DRIFT_CATALOG_DIR", str(overlay))
+
+    before = {"endpoints": [{"vendor": "eBay", "files": ["x.php:9"]}],
+              "residue": {"pathLiterals": [{"loc": "f.php:1"}]}}
+    after = {"endpoints": [{"vendor": "eBay", "files": ["x.php:9", "f.php:1"]}],
+             "residue": {"pathLiterals": []}}
+    calls = {"n": 0}
+    def fake(*a, **k):                          # scan(None)=before (1st), scan(idioms)=after (2nd)
+        calls["n"] += 1
+        return before if calls["n"] % 2 == 1 else after
+    monkeypatch.setattr(cli.scan_util, "resolve_engine", lambda: "fake")
+    monkeypatch.setattr(engine_mod, "run_scan", lambda *a, **k: {"matches": []})
+    monkeypatch.setattr(endpoints_mod, "scan_endpoints", fake)
+
+    args = SimpleNamespace(staged=str(staged), repo=str(repo), state=str(state),
+                           repo_name=None, now="2026-07-28", check=True)
+    assert cli._cmd_absorb(args) == 0                        # a passing proposal
+    assert shapes.load_attestations(str(state)) == {}       # NO attestation written
+    assert not (overlay / "idioms.local.yaml").exists()     # NO overlay promotion
