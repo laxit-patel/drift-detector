@@ -40,3 +40,26 @@ def test_path_literal_does_not_require_a_leading_slash():
     assert path_literal_of("$u = 'https://api.x.com/v1/foo';") == ""      # full URL
     assert path_literal_of("$u = '/local/file/path';") == ""              # no version segment
     assert path_literal_of("$u = 'v2';") == ""                            # not a path
+
+
+def test_denoise_front_end_libs_and_static_asset_hosts():
+    from agent.lib.classify_url import is_ignored
+    # front-end libs / editors / icons / placeholders + vendor STATIC assets (not the API)
+    for h in ("ckeditor.com", "docs.ckeditor.com", "popper.js.org", "feathericons.com",
+              "jqueryui.com", "placehold.jp", "iso.org", "www.iso.org", "www.macromedia.com",
+              "ir.ebaystatic.com"):
+        assert is_ignored(h), h
+
+
+def test_malformed_extraction_artifacts_are_ignored():
+    from agent.lib.classify_url import is_ignored
+    for h in ("...", "sandbox.", "ckeditor.com\\x3c", ".foo.com", "a..b.com"):
+        assert is_ignored(h), h
+
+
+def test_real_api_and_bucket_hosts_survive_the_denoise():
+    from agent.lib.classify_url import is_ignored
+    for h in ("api.ebay.com", "sellingpartnerapi-fe.amazon.com", "graph.microsoft.com",
+              "velocityfrequentflyerau-prod.mirakl.net",
+              "cw-prod-bucket-for-application-1234.s3.ap-southeast-2.amazonaws.com"):
+        assert not is_ignored(h), h

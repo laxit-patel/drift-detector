@@ -33,7 +33,16 @@ _IGNORE = {
     # search / social / video (marketing links, not integrations)
     "google.com", "bing.com", "youtube.com", "youtu.be", "vimeo.com", "facebook.com",
     "twitter.com", "linkedin.com", "instagram.com",
+    # front-end libraries / editors / icon sets / placeholders (not service integrations)
+    "jqueryui.com", "popper.js.org", "ckeditor.com", "cksource.com", "feathericons.com",
+    "placehold.jp", "kwcdn.com",
+    # XML/spec namespaces + vendor STATIC-asset hosts (images/CSS, not the vendor's API)
+    "iso.org", "macromedia.com", "ebaystatic.com",
 }
+
+# A syntactically valid host: >=2 non-empty labels of [a-z0-9_-]. Catches URL-extraction
+# artifacts that reach here as bogus "hosts" — "...", "sandbox.", "ckeditor.com\x3c".
+_LABEL = re.compile(r"^[a-z0-9_-]+$", re.IGNORECASE)
 
 
 def extract_urls(text: str) -> list:
@@ -49,6 +58,9 @@ def host_of(url: str) -> str:
 
 def is_ignored(host: str) -> bool:
     if not host or "." not in host or host.replace(".", "").isdigit():   # empty / bare / raw IP
+        return True
+    labels = host.split(".")
+    if len(labels) < 2 or any(not _LABEL.match(lab) for lab in labels):  # extraction artifact
         return True
     return any(host == s or host.endswith("." + s) for s in _IGNORE)
 
