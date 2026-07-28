@@ -291,7 +291,7 @@ def test_shape_issue_body_carries_blindspots_fingerprint_and_bootstrap():
                                {"issues": [], "mrs": {}}, "root/drift-detector", shape_stream=True)
     body = plan["issues"][0]["body"]
     assert "deadbeef00000000" in body and "src/A.php:12" in body and "config-driven-url" in body
-    assert "drift-deepen" in body and "DRIFT_OPS_DIR" in body     # the absorb bootstrap
+    assert "drift-absorb" in body and "DRIFT_OPS_DIR" in body     # the absorb bootstrap
 
 
 def test_shape_flag_is_idempotent():

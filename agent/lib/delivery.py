@@ -162,7 +162,7 @@ def shape_issue_body(shape: dict, display: str | None = None,
               "git clone <the flagged repo> && cd <repo>",
               "export DRIFT_OPS_DIR=<your drift-ops checkout>   # where the learned overlay lives",
               "/drift-detector .        # scan it locally",
-              "/drift-deepen .          # investigate the blind spots, teach the scanner",
+              "/drift-absorb .          # investigate the blind spots, teach the scanner",
               "```",
               "_The absorbed idioms/sunsets land as a reviewed MR on drift-ops; the next fleet "
               "scan then sees this repo KNOWN and closes this issue on its own._", "",

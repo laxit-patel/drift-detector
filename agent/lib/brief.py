@@ -127,6 +127,6 @@ def build_brief(inventory: dict, repo: str, *, flag_url: str | None = None) -> s
           "an MR citing the residue fingerprint above, and let a human merge. The next fleet scan "
           "then sees this repo KNOWN and closes its flag on its own.", "",
           "## Launch",
-          "Open this folder in Claude Code and run **`/drift-deepen .`** — it drives the loop "
+          "Open this folder in Claude Code and run **`/drift-absorb .`** — it drives the loop "
           "above (staging, the gate, the overlay hand-off).", ""]
     return "\n".join(L)

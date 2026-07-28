@@ -83,27 +83,34 @@ def test_marketplace_manifest_valid_and_matches_plugin():
     assert entry["source"] == "./"                              # plugin IS this repo root
 
 
-def test_deepen_command_exists_and_states_its_guardrails():
-    """The scout's promptfile is the contract that keeps agent output out of the
+def test_absorb_command_exists_and_states_its_guardrails():
+    """The assimilator's promptfile is the contract that keeps agent output out of the
     catalogs unreviewed — its guardrails are load-bearing, not decoration."""
-    cmd = (_ROOT / "commands" / "drift-deepen.md").read_text()
+    cmd = (_ROOT / "commands" / "drift-absorb.md").read_text()
     assert cmd.startswith("---") and "argument-hint:" in cmd
     # it must drive the real CLI, not invent its own flow
     assert "drift-scan" in cmd and "absorb --staged" in cmd and "recommend" in cmd
-    # the two guardrails that exist because they were violated for real
+    # the iteration instrument (Phase 3): measure the delta without committing
+    assert "absorb --check" in cmd
+    # the guardrails that exist because they were violated for real
     assert "did not open" in cmd.lower() or "did not fetch" in cmd.lower()
     assert "source" in cmd.lower() and "staged" in cmd.lower()
     # never a direct write to the catalogs
     assert "Never edit" in cmd and "vendor_sunsets.yaml" in cmd
-    # the overlay hand-off must be wired (defect: absorb wrote to the installed plugin's own
-    # catalogs — wiped on update, never read by CI — and there was no MR step to the fleet)
-    assert "DRIFT_CATALOG_DIR" in cmd and "DRIFT_OPS_DIR" in cmd   # promote to the overlay, not the plugin
-    assert "mr create" in cmd or "merge request" in cmd.lower()    # learning is handed back to drift-ops
+    # the overlay hand-off must be wired (absorb must NOT write the installed plugin's catalogs)
+    assert "DRIFT_CATALOG_DIR" in cmd and "DRIFT_OPS_DIR" in cmd
+    assert "mr create" in cmd or "merge request" in cmd.lower()    # handed back to drift-ops
+
+
+def test_deepen_is_a_deprecation_pointer_to_absorb():
+    cmd = (_ROOT / "commands" / "drift-deepen.md").read_text()
+    assert cmd.startswith("---")
+    assert "drift-absorb" in cmd and ("renamed" in cmd.lower() or "deprecated" in cmd.lower())
 
 
 def test_main_command_surfaces_unknown_verdicts():
     cmd = (_ROOT / "commands" / "drift-detector.md").read_text()
-    assert "UNKNOWN" in cmd and "drift-deepen" in cmd
+    assert "UNKNOWN" in cmd and "drift-absorb" in cmd
 
 
 def test_still_no_skill_dir():
