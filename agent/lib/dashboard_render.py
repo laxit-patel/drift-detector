@@ -279,6 +279,9 @@ def render_payload(projection: dict, now: str, *, bundle: dict | None = None) ->
         ("private", "Private", c["private"], ""),
         ("unaudited", "Unaudited", c["unaudited"], "")]))
     p.append("</div>")
+    # global repo scope — filters Summary + SBOM + SARIF to one repo (populated client-side)
+    p.append('<div class="repobar">Viewing <select id="repo-filter" aria-label="Filter by repo">'
+             '<option value="">all repos</option></select><span id="repo-scope-note"></span></div>')
     # top tabs
     p.append('<div class="tabbar tabgroup" data-panels="main" role="tablist">'
              '<button class="tab active" data-tab="p-summary" role="tab">Summary</button>'
@@ -437,6 +440,10 @@ a{color:var(--accent-2);text-decoration:none} a:hover{text-decoration:underline}
 @keyframes fade{from{opacity:0;transform:translateY(2px)}to{opacity:1}}
 
 h3{font-size:13.5px;font-weight:620;margin-bottom:12px}
+.repobar{margin-top:10px;font-size:12.5px;color:var(--muted);display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.repobar select{background:var(--panel);border:1px solid var(--line);color:var(--ink);border-radius:8px;padding:4px 10px;font:inherit;font-size:12.5px;accent-color:var(--accent)}
+.repobar select:focus{outline:2px solid var(--accent-2);outline-offset:1px}
+#repo-scope-note{color:var(--accent)}
 .toolbar{display:flex;gap:10px;align-items:center;margin-bottom:12px;flex-wrap:wrap}
 .search{flex:1;min-width:200px;background:var(--panel-2);border:1px solid var(--line);color:var(--ink);border-radius:9px;padding:7px 12px;font:inherit;accent-color:var(--accent)}
 .search::placeholder{color:var(--muted)}
@@ -500,7 +507,11 @@ _CLIENT_JS = r"""
   var body = document.querySelector("#panel tbody");
   var empty = document.getElementById("empty");
   var search = document.getElementById("search");
-  var state = { filter: null, mode: "actions", q: "" };
+  var state = { filter: null, mode: "actions", q: "", repo: "" };
+  // the global repo scope (the #repo-filter select). "" = all repos. Applies to Summary,
+  // SBOM and SARIF; the repo KEY is the inventory path (a.repo / drift:repo / the SARIF uri
+  // prefix), while the dropdown shows the clean repoLabel.
+  function matchesRepo(repo){ return !state.repo || repo === state.repo; }
 
   function esc(s){ var d=document.createElement("div"); d.textContent=(s==null?"":String(s)); return d.innerHTML; }
   // Attribute-context escaper: esc() is only safe between tags (text nodes). Any value
@@ -549,6 +560,7 @@ _CLIENT_JS = r"""
       // the retiring operation is part of the identity, so it must be searchable too —
       // a PM filtering for "GetCategoryFeatures" has to land on its row
       var label = a.ref + (a.unit ? " " + a.unit : "");
+      if(!matchesRepo(a.repo)) return;                    // global repo scope
       if(!matchesQ((a.repoLabel||a.repo||"")+" "+label)) return;
       var tr=document.createElement("tr"); tr.className="row";
       var tgt = a.fix_version ? esc(a.current_version)+" → "+esc(a.fix_version)
@@ -731,39 +743,45 @@ _CLIENT_JS = r"""
     wrap.insertBefore(b,pre);
   });
 
-  // ---- SBOM preview: components + per-component vuln severity ----
-  (function(){
+  // ---- SBOM preview: components + per-component vuln severity (respects the repo scope) ----
+  function componentRepos(c){ return (c.properties||[]).filter(function(p){return p.name==="drift:repo";})
+    .map(function(p){return p.value;}); }
+  function renderSbom(){
     var tb=document.querySelector("#sbom-table tbody"); if(!tb) return;
-    var comps=(SBOM.components)||[], vulns=(SBOM.vulnerabilities)||[];
-    var worst={};   // bom-ref -> worst severity
-    var rank={critical:4,high:3,medium:2,low:1,unknown:0};
+    tb.innerHTML="";
+    var all=(SBOM.components)||[], vulns=(SBOM.vulnerabilities)||[];
+    var comps = state.repo ? all.filter(function(c){ return componentRepos(c).indexOf(state.repo)>-1; }) : all;
+    var worst={}, rank={critical:4,high:3,medium:2,low:1,unknown:0}, counts={};
     vulns.forEach(function(v){ (v.affects||[]).forEach(function(a){
       var s=((v.ratings||[{}])[0].severity)||"unknown";
-      if(!(a.ref in worst) || rank[s]>rank[worst[a.ref]]) worst[a.ref]=s; }); });
-    var counts={}; vulns.forEach(function(v){ (v.affects||[]).forEach(function(a){ counts[a.ref]=(counts[a.ref]||0)+1; }); });
+      if(!(a.ref in worst) || rank[s]>rank[worst[a.ref]]) worst[a.ref]=s; counts[a.ref]=(counts[a.ref]||0)+1; }); });
     var h=document.getElementById("sbom-h");
-    if(h) h.textContent="Components — "+comps.length+"  ·  "+vulns.length+" vulnerabilities";
+    if(h) h.textContent="Components — "+comps.length+(state.repo?(" in "+repoLabelOf(state.repo)):"")+"  ·  "+vulns.length+" vulnerabilities";
     comps.forEach(function(c){
       var ref=c["bom-ref"], n=counts[ref]||0, s=worst[ref];
       var vc = n ? '<span class="pill '+escA(s==="critical"?"crit":s==="high"?"high":s==="medium"?"med":"low")+'">'+esc(n)+' '+esc(s)+'</span>' : "—";
-      var repos=(c.properties||[]).filter(function(p){return p.name==="drift:repo";}).length;
+      var repos=componentRepos(c).length;
       var tr=document.createElement("tr");
       tr.innerHTML='<td>'+esc(c.type)+'</td><td class="mono">'+esc(c.purl||c["bom-ref"])+'</td><td>'+esc(c.version||"")+
         '</td><td>'+esc(repos)+' repo'+(repos===1?"":"s")+'</td><td>'+vc+'</td>';
       tb.appendChild(tr);
     });
-  })();
+  }
 
-  // ---- SARIF preview: results grouped by rule ----
-  (function(){
+  // ---- SARIF preview: results grouped by rule (respects the repo scope via the uri prefix) ----
+  function renderSarif(){
     var host=document.getElementById("sarif-groups"); if(!host) return;
-    var run=(SARIF.runs||[{}])[0]||{}, results=run.results||[];
+    host.innerHTML="";
+    var run=(SARIF.runs||[{}])[0]||{}, all=run.results||[];
+    function uriOf(r){ var l=(r.locations||[])[0]; return ((l&&l.physicalLocation||{}).artifactLocation||{}).uri||""; }
+    var results = state.repo ? all.filter(function(r){ return uriOf(r).indexOf(state.repo+"/")===0; }) : all;
     var byRule={}; results.forEach(function(r){ (byRule[r.ruleId]=byRule[r.ruleId]||[]).push(r); });
-    var h=document.getElementById("sarif-h"); if(h) h.textContent="Findings — "+results.length+" results, grouped by rule";
+    var h=document.getElementById("sarif-h");
+    if(h) h.textContent="Findings — "+results.length+" results"+(state.repo?(" in "+repoLabelOf(state.repo)):"")+", grouped by rule";
     Object.keys(byRule).sort().forEach(function(rid){
       var list=byRule[rid], d=document.createElement("details"); d.className="grp";
       var rows=list.slice(0,200).map(function(r){
-        var loc=(r.locations||[])[0]; var pl=loc&&loc.physicalLocation||{};
+        var pl=((r.locations||[])[0]||{}).physicalLocation||{};
         var uri=(pl.artifactLocation||{}).uri||""; var line=(pl.region||{}).startLine;
         var where=esc(uri)+(line?(":"+esc(line)):"");
         var lvl=r.level==="error"?"crit":r.level==="warning"?"high":"low";
@@ -774,7 +792,25 @@ _CLIENT_JS = r"""
         '<table class="big"><thead><tr><th>Location</th><th>Message</th><th>Level</th></tr></thead><tbody>'+rows+'</tbody></table>';
       host.appendChild(d);
     });
-  })();
+  }
+  renderSbom(); renderSarif();
+
+  // ---- the repo scope dropdown: populate from the data, wire to all three panels ----
+  var repoLabels={};   // repo key -> clean label
+  (DATA.actions||[]).forEach(function(a){ if(a.repo) repoLabels[a.repo]=a.repoLabel||a.repo; });
+  (DATA.shapes||[]).forEach(function(s){ if(s.repo && !(s.repo in repoLabels)) repoLabels[s.repo]=s.repoLabel||s.repo; });
+  function repoLabelOf(k){ return repoLabels[k]||k; }
+  var sel=document.getElementById("repo-filter");
+  if(sel){
+    Object.keys(repoLabels).sort(function(a,b){ return repoLabelOf(a).localeCompare(repoLabelOf(b)); })
+      .forEach(function(k){ var o=document.createElement("option"); o.value=k; o.textContent=repoLabelOf(k); sel.appendChild(o); });
+    sel.addEventListener("change", function(){
+      state.repo=sel.value;
+      var note=document.getElementById("repo-scope-note");
+      if(note) note.textContent = state.repo ? ("· scoped to "+repoLabelOf(state.repo)) : "";
+      render(); renderSbom(); renderSarif();
+    });
+  }
 
   // ---- native <dialog> (guarded; the Summary rows use the inline accordion) ----
   var dlg=document.getElementById("detail");
