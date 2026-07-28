@@ -457,6 +457,31 @@ def _cmd_absorb(args) -> int:
                       fp, resolved_by="absorb", date=args.now or "", repo_abs=args.repo,
                       note=f"{added['idioms']} idiom(s) absorbed")
         print(f"  attestation written for residue {fp}")
+
+    # shape memory: log this absorption to the overlay so `precedents` can point the next
+    # structurally-similar repo at the idiom instances that closed this one. Best-effort — a
+    # missing shape or no overlay just skips it, never fails the absorption.
+    if overlay and added["idioms"] and args.state:
+        import json as _json
+        from agent.lib import precedents as _prec
+        try:
+            with open(os.path.join(args.state, "inventory.json"), encoding="utf-8") as fh:
+                _inv = _json.load(fh)
+            rname = args.repo_name or os.path.basename(args.repo.rstrip("/"))
+            _shapes = (_inv.get("coverage") or {}).get("shapes", [])
+            shp = next((s for s in _shapes if s.get("repo") == rname
+                        or str(s.get("repo", "")).endswith("/" + rname)), None)
+            if shp is None and len(_shapes) == 1:      # single-repo scan state → the only shape
+                shp = _shapes[0]
+            if shp:
+                _prec.append_absorption(
+                    os.path.join(overlay, _prec.ABSORPTIONS),
+                    _prec.record(shp, [i.get("id") for i in staged_idioms], repo=rname,
+                                 date=args.now or "",
+                                 attributed_delta=m["attributedAfter"] - m["attributedBefore"]))
+                print("  logged to shape memory (absorptions.yaml)")
+        except (OSError, ValueError):
+            pass
     return 0
 
 
@@ -547,6 +572,41 @@ def _cmd_brief(args) -> int:
     with open(out, "w", encoding="utf-8") as fh:
         fh.write(md)
     print(f"✓ absorption brief for {args.repo} → {out}")
+    return 0
+
+
+def _cmd_precedents(args) -> int:
+    """Shape memory: prior absorptions of a STRUCTURALLY-SIMILAR shape (same language + residue
+    reasons), so the assimilator can reuse the idiom family that closed them. Reads the repo's
+    shape from inventory.json + the overlay's absorptions.yaml. Zero AI, deterministic."""
+    import json as _json
+    from agent.lib import precedents as _prec, catalog_overlay
+    try:
+        with open(os.path.join(args.state, "inventory.json"), encoding="utf-8") as fh:
+            inventory = _json.load(fh)
+    except OSError as exc:
+        print(f"precedents: run a scan first ({exc})", file=sys.stderr)
+        return 4
+    shape = next((s for s in (inventory.get("coverage") or {}).get("shapes", [])
+                  if s.get("repo") == args.repo), None)
+    if shape is None:
+        print(f"precedents: no shape for {args.repo!r} in the scan", file=sys.stderr)
+        return 3
+    overlay = catalog_overlay.overlay_dir()
+    path = args.catalog or (os.path.join(overlay, _prec.ABSORPTIONS) if overlay else None)
+    hits = _prec.find_precedents(shape, _prec.load_absorptions(path) if path else [])
+    print(f"precedents for {args.repo} (bucket: {_prec.bucket_key(shape)}):")
+    if not hits:
+        print("  no prior absorption of this shape — you're the first. Author the idiom from "
+              "the blind-spot files.")
+        return 0
+    print(f"  {len(hits)} prior absorption(s) closed a similar shape:")
+    for h in hits:
+        d = f" — +{h['attributedDelta']} traced" if h.get("attributedDelta") is not None else ""
+        print(f"  • {h['repo']} ({h.get('date', '?')}) — idioms: "
+              f"{', '.join(h.get('idioms', []))}{d}")
+    print("  Read those idiom instances in the overlay (idioms.local.yaml) — the same family "
+          "likely applies here.")
     return 0
 
 
@@ -764,6 +824,12 @@ def main(argv: list[str]) -> int:
     pbr.add_argument("--out", help="output path (default <state>/ABSORPTION.md)")
     pbr.add_argument("--flag-url", help="link back to the flag issue")
     pbr.set_defaults(func=_cmd_brief)
+
+    ppr = sub.add_parser("precedents")    # prior absorptions of a similar shape (structural bucket)
+    ppr.add_argument("--state", required=True)
+    ppr.add_argument("--repo", required=True)
+    ppr.add_argument("--catalog", help="absorptions.yaml path (default: the $DRIFT_CATALOG_DIR overlay)")
+    ppr.set_defaults(func=_cmd_precedents)
 
     pcp = sub.add_parser("config-preflight")   # 5s gate: tokens + reachability + config, PRE-scan
     pcp.add_argument("--config", required=True)

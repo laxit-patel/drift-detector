@@ -61,6 +61,12 @@ Write only to `<folder>/.drift-detector/absorb-staged/`:
 
 ## 3 · The loop — climb the delta
 
+**First, check the memory.** Has a structurally-similar shape been absorbed before? If so, reuse the idiom family that closed it instead of starting cold:
+
+```bash
+"$SCAN" precedents --state "$D" --repo "$REPO"   # prior absorptions in the same bucket (language + reasons)
+```
+
 This is the assimilation. Iterate with **`absorb --check`** — a dry run that reports the attributed-call delta and writes nothing:
 
 ```bash
