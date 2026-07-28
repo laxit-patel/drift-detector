@@ -12,7 +12,11 @@
 - { vendor: eBay,              techKey: api:ebay,                domains: [ebay.com] }
 - { vendor: Walmart,           techKey: api:walmart-marketplace, domains: [walmartapis.com] }
 - { vendor: Etsy,              techKey: api:etsy,                domains: [etsy.com] }
-- { vendor: Shopify,           techKey: api:shopify,             domains: [myshopify.com, shopify.dev] }
+# pathSignature: the Admin API path `/admin/api/{YYYY-MM}/` is host-independent — merchant
+# calls build the host at runtime (`https://{$shop}/admin/api/2024-01/…`), so host matching is
+# blind but this path is Shopify and nothing else. Group 1 = the calendar version, which
+# version_lifecycle dates (2024-01 → retired 2025-01-16). Source: shopify.dev/docs/api/admin.
+- { vendor: Shopify,           techKey: api:shopify,             domains: [myshopify.com, shopify.dev], pathSignature: '/admin/api/([0-9]{4}-[0-9]{2})/' }
 - { vendor: BigCommerce,       techKey: api:bigcommerce,         domains: [bigcommerce.com] }
 - { vendor: WooCommerce,       techKey: api:woocommerce,         domains: [woocommerce.com] }
 - { vendor: Mirakl,            techKey: api:mirakl,              domains: [mirakl.net] }

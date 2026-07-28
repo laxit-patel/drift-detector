@@ -89,6 +89,15 @@ def scan_endpoints(matches: list, repo_root: str, vendors: list, *, max_files: i
                     continue
                 add(v.vendor if v else UNKNOWN, v.techKey if v else "", host,
                     classify_url.version_of(url, v), url, rel, lineno)
+            # Interpolated/variable host ("https://{$shop}/admin/api/2024-01/…"): the host is
+            # a runtime value so extract_urls truncates and host classification is blind, but a
+            # distinctive PATH signature still names the vendor + version. seen_known dedups by
+            # (techKey, loc), so a fully-classified host on the same line already wins — this
+            # only fires when the host branch found nothing for that vendor.
+            sig = classify_url.path_signature_match(line, vendors)
+            if sig:
+                sv, sver, ssample = sig
+                add(sv.vendor, sv.techKey, sv.domains[0], sver, ssample, rel, lineno)
         elif kind == "endpoint":
             v = by_tk.get(m.get("techKey", ""))
             d = classify_url.domain_in_line(line, v.domains) if v else ""
