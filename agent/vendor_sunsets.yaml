@@ -289,3 +289,19 @@
 # All four stay DETECTED but UNAUDITED (honest: we name the integration, we do not claim its versions
 # are current). THE ICONIC/MyDeal/TheMarket need SELLER-PORTAL material (a dated deprecation notice +
 # its origin = a valid source); Kogan is public and simply has nothing dated to catalog.
+
+# ── eBay — absorbed 2026-07-29 from the deprecation RSS (the freshness loop's first live catch).
+# The monthly catalog-check stage (run 2026-07-29) diffed the live feed against this catalog and
+# flagged ONE new retirement the vendor lists that we lacked. The feed was re-fetched the same
+# session and the item re-read before staging (never a remembered date); entered via
+# `drift-scan absorb` (staging + gate), not a direct edit. Vendor wording: "GetAdFormatLeads has
+# been deprecated and will be decommissioned on September 21, 2026. Current users should migrate
+# to the REST Leads API."
+- vendor: eBay
+  operation: GetAdFormatLeads
+  retires: '2026-09-21'
+  replacement: the REST Leads API
+  source: https://www.edp.ebay.com/rss/api-deprecation#GetAdFormatLeads
+  note: Trading API. Deprecated 2026-07-02, decommissioned 2026-09-21. First live
+    catch of the monthly catalog-check stage (flagged by the 2026-07-29 run); feed
+    re-fetched and the item re-read at absorb time, same session.
