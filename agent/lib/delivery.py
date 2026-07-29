@@ -54,6 +54,13 @@ def shape_fingerprint(repo: str) -> str:
     return hashlib.sha256(f"shape|{repo}".encode()).hexdigest()[:16]
 
 
+def freshness_fingerprint() -> str:
+    """Constant identity for THE catalog-freshness work-order: one issue for the whole catalog
+    (the work-order is one maintainer queue, not an issue per vendor) that updates in place as
+    vendors go stale/current and closes itself via `_finish` when nothing is due."""
+    return hashlib.sha256(b"freshness|catalog").hexdigest()[:16]
+
+
 def marker(fp: str) -> str:
     return f"<!-- drift-detector:{fp} -->"
 
@@ -236,7 +243,7 @@ def _issue_op(fp: str, title: str, body: str, by_fp: dict, project: str) -> dict
 # ----------------------------------------------------------------------- the planner (pure)
 def build_plan(payload: dict, repo_meta: dict, existing: dict, devops_project: str,
                *, dev_as_issues: bool = False, links: dict | None = None,
-               shape_stream: bool = False) -> dict:
+               shape_stream: bool = False, freshness_stream: bool = False) -> dict:
     """Compute the create/update/close plan. PURE: no I/O.
 
     `repo_meta`   : {repo -> {"project": "group/repo"}} for the scanned repos.
@@ -249,6 +256,10 @@ def build_plan(payload: dict, repo_meta: dict, existing: dict, devops_project: s
                     every UNKNOWN shape in the payload — the repo has integration calls the
                     scanner could not read. Repo-keyed, updates in place, and closes itself via
                     `_finish` once the repo goes KNOWN.
+    `freshness_stream`: also file THE maintainer catalog-freshness work-order (one issue for
+                    the whole catalog) while any DETECTED vendor is STALE/unaudited and off the
+                    auto lane — the drift:freshness label's producer. Constant-keyed, updates
+                    in place, closes itself via `_finish` when the due-list empties.
     Returns {"issues": [...], "mrs": [...]} where each item has an `op`
     (create|update|close|skip) and the rendered content.
     """
@@ -289,6 +300,32 @@ def build_plan(payload: dict, repo_meta: dict, existing: dict, devops_project: s
                            shape_issue_body(sh, display, samples_by_repo.get(repo), links),
                            by_fp, devops_project)
             op["stream"] = "shape"          # so execute_plan labels it drift:shape
+            issue_plan.append(op)
+
+    # ---- freshness work-order (maintainer: ONE issue while any vendor is due) ----
+    # The human-lane twin of catalog-check, DELIVERED: which detected vendors' retirement
+    # audit is STALE or never done and no machine can re-fetch their source, with the right
+    # action per vendor (freshness.work_order_md — the same body `drift-scan freshness`
+    # renders). Until this block existed the drift:freshness label had a taxonomy and an
+    # execute_plan branch but no producer — the due-list lived only in a CLI nobody was
+    # required to run. Placed with the shape block so it lands in live_fps for both return
+    # paths; an emptied due-list drops the fp and _finish closes the work-order on its own.
+    if freshness_stream:
+        from agent import catalog_check
+        from agent.lib import freshness as freshness_mod
+        due = freshness_mod.due_for_refresh(payload.get("catalog", []),
+                                            set(catalog_check.CHECKS),
+                                            catalog_check.UNAUTOMATED)
+        if due:
+            fp = freshness_fingerprint()
+            live_fps.add(fp)
+            # `generated` (the scan date in the payload) — never wall-clock — keeps the
+            # body a pure function of the payload, so an unchanged due-list SKIPS.
+            body = (marker(fp) + "\n\n"
+                    + freshness_mod.work_order_md(due, payload.get("generated", "")))
+            op = _issue_op(fp, f"[drift] catalog freshness: {len(due)} vendor(s) due a re-check",
+                           body, by_fp, devops_project)
+            op["stream"] = "freshness"      # so execute_plan labels it drift:freshness
             issue_plan.append(op)
 
     # ---- Developer stream: one per scanned repo, as a draft MR OR (fallback) an issue ----

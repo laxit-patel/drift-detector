@@ -111,5 +111,14 @@ def work_order_md(due: list, now: str) -> str:
           "Run **`/drift-refresh`** and paste what you gather. Every proposed retirement goes "
           "through `drift-scan absorb`: no `source` + parseable date → **refused** (a borrowed "
           "or invented date is worse than none). A clean gate promotes the entry to the drift-ops "
-          "overlay and attests the vendor **CURRENT** — resetting its staleness clock.", ""]
+          "overlay and attests the vendor **CURRENT** — resetting its staleness clock.",
+          "",
+          "**Reviewed the page and found nothing dated?** That is a real outcome, not a "
+          "failure: record it as an attestation (`{vendor, checked: <fetch date>, source: <the "
+          "page>, note: \"nothing dated to catalog\"}` in the drift-ops overlay's "
+          "`attestations.local.yaml`) so the vendor goes CURRENT and stops re-surfacing every "
+          "cycle — zero catalog entries and a zero-retirement page AGREE, which is exactly what "
+          "an attestation claims. Only after the canonical page was actually read in full "
+          "(rendered, if it's a JS page a plain fetch can't read) — \"the fetch showed nothing\" "
+          "is not \"the page says nothing\".", ""]
     return "\n".join(L)
