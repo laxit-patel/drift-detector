@@ -94,6 +94,34 @@ bottleneck. Not a rewrite — a second entry point beside the promptfile.
 
 ---
 
+## Vendor-scoped idioms (multi-vendor repos can't absorb via idioms)
+
+**Status:** banked 2026-07-29. Referenced elsewhere in this file as "itself banked" — this is
+the entry that was missing.
+
+**Today.** The concat/url-assembly idiom attribution (`agent/lib/endpoints.py`, the
+single-classified-vendor guard) only auto-attributes host-less path literals when the repo has
+EXACTLY ONE classified vendor — the guard exists so an idiom never attributes a call to the
+wrong API. Consequence: a multi-vendor client app (channelwiz is 9-vendor) can never absorb via
+idioms; its assembled-URL calls stay in residue. The obvious upgrade is idioms scoped to a
+vendor (this `$client->getHost()` pattern is the *Shopify* wrapper's) so the guard can attribute
+per-idiom instead of per-repo. `pathSignature` (host-independent, vendor-declared,
+`agent/vendors.yaml`) is the natural seam — it is already a vendor-scoped attribution mechanism;
+a vendor-scoped idiom is the same idea applied to assembly patterns instead of paths.
+
+**Why deferred — fleet access beats teaching the scanner.** The probe's own EDGES output shows
+the residue-producing calls in multi-vendor apps route through in-house wrapper repos
+(akshit.tops/shopify-api, shubhtops/koganapi, shubhtops/mydeal, … — one vendor each). Scan the
+wrappers as fleet members and the existing single-vendor idiom attribution works inside each of
+them unchanged — no new mechanism, and the client app's calls are seen where they actually live.
+That is an *access ask* (add the repos to the fleet), not an engineering project, and it also
+composes with banked concern #5 below (PR the wrappers toward detectable shapes). Build
+vendor-scoped idioms only if a real multi-vendor repo's calls demonstrably do NOT route through
+scannable wrappers — until then it's a permanent detection special-case bought where a fleet
+edit would do.
+
+---
+
 # Banked concerns — 2026-07-29 (runtime signal + detectability feedback loop)
 
 Five ideas raised together. The first two are one axis (a **dynamic/runtime** egress signal to
