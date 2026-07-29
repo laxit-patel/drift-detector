@@ -45,7 +45,7 @@ The work-order groups the due vendors by action — **portal** (needs you), **pu
 - **Cli**: run the noted `catalog-refresh` command and read its diff.
 - **Unmapped**: don't invent a source — help the user find where the vendor publishes deprecations, then treat it as public or portal.
 
-If a vendor genuinely publishes **no dated retirement** (relative timestamps, nothing removed), record that as the outcome and move on — do NOT manufacture an entry.
+If a vendor genuinely publishes **no dated retirement** (relative timestamps, nothing removed), that is a real outcome — do NOT manufacture an entry. Record it as an **attestation instead of an entry**: `{vendor, checked: <today>, source: <the page you reviewed>, note: "nothing dated to catalog"}` in the drift-ops overlay's `attestations.local.yaml`. Zero catalog entries and a zero-retirement page AGREE — that reconciliation is exactly what an attestation claims, it flips the vendor CURRENT, and it stops the work-order re-listing the same vendor every cycle. **Guard:** only when the canonical page was actually read in full — for a JS-rendered changelog (Kogan) that means a human/browser render, not a fetch that came back empty. "The fetch showed nothing" is not "the page says nothing"; if you could not truly read it, the vendor stays UNAUDITED with the reason noted.
 
 ## 3 · Stage → gate → attest
 

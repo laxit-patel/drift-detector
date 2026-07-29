@@ -27,7 +27,8 @@ def test_valid_config_loads_and_derives_the_host(tmp_path):
     assert cfg["fleet"] == ["https://git.x/g/a", "https://git.x/g/b"]
     assert cfg["host"] == "git.x"                              # derived from the fleet URLs
     assert cfg["delivery"] == {"mode": "live", "dev_as_issues": True,
-                               "devops_project": "root/ops", "shape_stream": False}
+                               "devops_project": "root/ops", "shape_stream": False,
+                               "freshness_stream": False}
 
 
 def test_delivery_defaults_when_omitted(tmp_path):
@@ -35,7 +36,15 @@ def test_delivery_defaults_when_omitted(tmp_path):
     # deployment may not have, so the safe default routes developer findings to issues too.
     cfg = ops_config.load(_write(tmp_path, "fleet: [https://git.x/g/a]\n"))
     assert cfg["delivery"] == {"mode": "dry-run", "dev_as_issues": True,
-                               "devops_project": None, "shape_stream": False}
+                               "devops_project": None, "shape_stream": False,
+                               "freshness_stream": False}
+
+
+def test_freshness_stream_opt_in(tmp_path):
+    # the catalog work-order stream parses like shape_stream: off by default, opt-in bool
+    cfg = ops_config.load(_write(tmp_path,
+        "fleet: [https://git.x/g/a]\ndelivery:\n  freshness_stream: true\n"))
+    assert cfg["delivery"]["freshness_stream"] is True
 
 
 def test_shape_stream_opt_in(tmp_path):

@@ -48,7 +48,7 @@ _TOP = {"version", "fleet", "delivery", "auth", "notify", "probe"}
 _DELIVERY_V1 = {"mode", "dev_as_issues", "devops_project"}
 _DELIVERY_V2 = {"mode", "devops", "developer"}
 # orthogonal to the v1/v2 split — allowed in either form, never counts toward the mix check
-_DELIVERY_COMMON = {"shape_stream"}
+_DELIVERY_COMMON = {"shape_stream", "freshness_stream"}
 _DELIVERY = _DELIVERY_V1 | _DELIVERY_V2 | _DELIVERY_COMMON
 _AUTH = {"clone", "persist", "deliver"}
 _NOTIFY = {"gchat"}
@@ -168,10 +168,14 @@ def _load_delivery(path: str, raw: dict) -> dict:
     else:                                # v1 form (or nothing → defaults)
         dev_as_issues = bool(d.get("dev_as_issues", True))   # default: issues (Reporter-friendly)
         devops_project = d.get("devops_project")
-    # the absorption-flag stream: file a maintainer issue per UNKNOWN repo. Off by default —
-    # opt in once the fleet is stable, so early scans don't flag every not-yet-modeled repo.
+    # the two maintainer streams, both off by default and opted into independently:
+    # shape_stream files an absorption flag per UNKNOWN repo (opt in once the fleet is stable,
+    # so early scans don't flag every not-yet-modeled repo); freshness_stream files THE
+    # catalog-freshness work-order while any detected vendor is STALE/unaudited off the auto
+    # lane (opt in once someone owns the maintainer queue — an issue nobody triages is noise).
     return {"mode": mode, "dev_as_issues": dev_as_issues, "devops_project": devops_project,
-            "shape_stream": bool(d.get("shape_stream", False))}
+            "shape_stream": bool(d.get("shape_stream", False)),
+            "freshness_stream": bool(d.get("freshness_stream", False))}
 
 
 def load(path: str) -> dict:

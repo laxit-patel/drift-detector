@@ -320,6 +320,66 @@ def test_shape_fingerprint_is_repo_keyed_and_distinct():
     assert delivery.shape_fingerprint("svc") != delivery.repo_fingerprint("svc")
 
 
+# ------------------------------------------------- freshness stream (catalog work-order)
+def _cat(vendor, verdict="UNAUDITED", sites=4, checked=None):
+    return {"vendor": vendor, "verdict": verdict, "callSites": sites, "checked": checked}
+
+
+def _pl_catalog(records):
+    return {"actions": [], "catalog": records, "generated": "2026-07-29"}
+
+
+def test_freshness_stream_is_off_by_default():
+    plan = delivery.build_plan(_pl_catalog([_cat("MyDeal")]), _META,
+                               {"issues": [], "mrs": {}}, "root/drift-detector")
+    assert plan["issues"] == []                       # no work-order unless the stream is on
+
+
+def test_freshness_stream_files_one_work_order_for_the_due_vendors():
+    """WIRING GAP (found in review): drift:freshness had a label and an execute_plan branch
+    but NO producer — build_plan never set stream='freshness', so the maintainer's due-list
+    lived only in a CLI nobody was required to run. With the stream on, the due vendors are
+    filed as ONE maintainer work-order issue (the work-order is one queue, not one issue per
+    vendor), auto-lane vendors (catalog-check re-fetches those) and CURRENT vendors excluded."""
+    records = [_cat("MyDeal"),                          # portal-gated -> due
+               _cat("Kogan", verdict="STALE", checked="2026-03-01"),
+               _cat("Stripe", verdict="CURRENT", checked="2026-07-20"),   # fresh -> not due
+               _cat("eBay", verdict="STALE")]           # auto lane -> catalog-check's job
+    plan = delivery.build_plan(_pl_catalog(records), _META, {"issues": [], "mrs": {}},
+                               "root/drift-detector", freshness_stream=True)
+    creates = [i for i in plan["issues"] if i["op"] == "create"]
+    assert len(creates) == 1                            # ONE work-order, not one per vendor
+    op = creates[0]
+    assert op.get("stream") == "freshness" and op["project"] == "root/drift-detector"
+    assert "catalog freshness" in op["title"] and "2 vendor(s)" in op["title"]
+    assert delivery.marker(delivery.freshness_fingerprint()) in op["body"]
+    assert "MyDeal" in op["body"] and "Kogan" in op["body"]
+    assert "Stripe" not in op["body"] and "eBay" not in op["body"]
+
+
+def test_freshness_work_order_is_idempotent():
+    records = [_cat("MyDeal")]
+    first = delivery.build_plan(_pl_catalog(records), _META, {"issues": [], "mrs": {}},
+                                "root/drift-detector", freshness_stream=True)["issues"][0]
+    existing = {"issues": [{"iid": 7, "state": "opened",
+                            "description": first["body"], "title": first["title"]}], "mrs": {}}
+    again = delivery.build_plan(_pl_catalog(records), _META, existing,
+                                "root/drift-detector", freshness_stream=True)
+    assert again["issues"][0]["op"] == "skip"           # unchanged due-list -> no rewrite
+
+
+def test_freshness_work_order_closes_itself_when_nothing_is_due():
+    fp = delivery.freshness_fingerprint()
+    existing = {"issues": [{"iid": 7, "state": "opened", "description": delivery.marker(fp),
+                            "title": "[drift] catalog freshness: 1 vendor(s) due a re-check"}],
+                "mrs": {}}
+    plan = delivery.build_plan(_pl_catalog([_cat("MyDeal", verdict="CURRENT",
+                                                 checked="2026-07-29")]), _META, existing,
+                               "root/drift-detector", freshness_stream=True)
+    closes = [i for i in plan["issues"] if i["op"] == "close"]
+    assert len(closes) == 1 and closes[0]["iid"] == 7   # all CURRENT -> work-order closes
+
+
 def test_maintainer_streams_carry_the_shared_audience_tag():
     """Absorption (shape) and freshness both go to the maintainer, so both carry drift:maintainer
     AND their own stream tag; the DevOps finding stream stays separate."""
