@@ -97,3 +97,21 @@ def test_cli_probe_trips_gate_on_a_private_dep(tmp_path, capsys):
     assert code == probe.GATE_TRIPPED
     assert "dep:git.x/acme/wrapper" in out          # the private dep, not in fleet
     assert "MISSING : git.x/acme/wrapper" in out
+
+
+def test_markdown_summary_has_scope_table_covered_and_blind():
+    edges = [{"repo": "channelwiz",
+              "present": [{"url": "u", "id": "git.x/chetan/amazonspapi"}],
+              "missing": [{"url": "u2", "id": "git.x/hiral/neto"}]}]
+    r = probe.assess(_facts(edges=edges))
+    md = r["markdown"]
+    assert "## Drift probe" in md
+    assert "| Repo | Covered (in fleet) | Blind (not in fleet) |" in md
+    assert "| channelwiz | amazonspapi | neto |" in md          # short names in the table
+    assert "1 repo(s) in scope" in md and "KNOWN" in md
+
+
+def test_markdown_lists_open_holes_with_gap_ids():
+    r = probe.assess(_facts(unmodeledLangs={"javascript": ["a"]},
+                            languageSignal={"php": True, "javascript": False}))
+    assert "`lang:javascript`" in r["markdown"] and "**OPEN**" in r["markdown"]

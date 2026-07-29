@@ -378,6 +378,14 @@ def _cmd_probe(args) -> int:
         "host": host, "projects": projects, "errors": errors, "repos": repos, "edges": edges,
         "unmodeledLangs": unmodeled_langs, "languageSignal": lang_signal, "accept": accept})
     print(result["text"])
+    # --summary-md appends a markdown view (for $GITHUB_STEP_SUMMARY, so the scope map shows on
+    # the CI run's Summary page). Append, never truncate — the summary file accumulates steps.
+    if getattr(args, "summary_md", None):
+        try:
+            with open(args.summary_md, "a", encoding="utf-8") as fh:
+                fh.write(result["markdown"] + "\n")
+        except OSError as exc:
+            print(f"probe: could not write --summary-md ({exc})", file=sys.stderr)
     return result["exit_code"]
 
 
@@ -969,6 +977,7 @@ def main(argv: list[str]) -> int:
     ppb.add_argument("--root", action="append")
     ppb.add_argument("--config", help="drift.yml — fleet + probe.accept acknowledgements")
     ppb.add_argument("--state", required=True)
+    ppb.add_argument("--summary-md", help="append a markdown scope map here (e.g. $GITHUB_STEP_SUMMARY)")
     ppb.set_defaults(func=_cmd_probe)
 
     pa = sub.add_parser("audit")

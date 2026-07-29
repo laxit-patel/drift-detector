@@ -74,7 +74,8 @@ jobs:
           DRIFT_CATALOG_DIR: ${{ github.workspace }}/drift-ops/catalog
         run: |
           set +e
-          python3 -m agent.cli probe --config drift-ops/config/drift.yml --state drift-ops/state
+          python3 -m agent.cli probe --config drift-ops/config/drift.yml --state drift-ops/state \
+            --summary-md "$GITHUB_STEP_SUMMARY"
           code=$?
           set -e
           case "$code" in
