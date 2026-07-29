@@ -66,3 +66,28 @@ zipped drop, a public URL) as first-class config rather than a happy accident.
 **Why deferred:** the current single-GitLab-host model covers the near-term deployments, and a
 multi-forge resolver drags delivery routing along with it (above). Bank it until a real fleet
 spans more than one forge, or a client needs GitHub-org / non-git sources.
+
+---
+
+## Public-lane freshness research as a Workflow (parallel fan-out)
+
+**Status:** banked 2026-07-29. Today the freshness agent (`/drift-refresh`, the Curator) is a
+**promptfile** — one Claude session working vendors sequentially. That is correct for the
+current scale (a handful of unaudited vendors) and for the **portal lane** (human-in-the-loop
+seller logins — you cannot parallelize a person).
+
+**The upgrade, when it's worth it:** the **public lane** — vendors whose deprecation docs are
+public (AWS, Google, Kogan, Mailgun, …) — is compute-bound and independent. Each vendor's
+changelog is its own web-research task, so it fans out cleanly: a Workflow script spawns one
+`agent()` per vendor via `parallel()`, each returns a candidate sunset (schema-validated), then
+ONE `absorb` pass sweeps them all. Wall-clock collapses from Σ(vendors) to the slowest single
+vendor (~12 min → ~3 min for 6, in the sketch).
+
+**What must NOT change:** every candidate still funnels through the deterministic `absorb` gate
+(no `source` + parseable date → refused), and a human still merges the catalog MR. The workflow
+parallelizes only the *research*, never the firewall. The portal/HIL lane stays a promptfile.
+
+**Why deferred:** at today's vendor count the promptfile handles both lanes fine; parallelism
+buys nothing until the unaudited-**public**-vendor list grows to ~a dozen+. Build the Workflow
+for the public lane only when that list is long enough that sequential research is the
+bottleneck. Not a rewrite — a second entry point beside the promptfile.
