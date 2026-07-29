@@ -25,6 +25,13 @@ a token. Pure function of the file bytes: same file → same config.
     notify:
       gchat: GCHAT_WEBHOOK      # env-var NAME of the webhook; omitted → no chat push
 
+    probe:                      # acknowledged scope blind spots (from `drift-scan probe`).
+      accept:                   # each needs a `reason` — a blind spot may be accepted, never
+        - gap: dep:git.example.com/grp/wrapper    # silently. Paste the gap id from the probe
+          reason: "access pending — TICKET-123"   # report; the gate stops failing on it but
+        - gap: lang:javascript                    # still lists it (with the reason) so the
+          reason: "no JS integrations"            # blindness stays visible.
+
 The delivery block also accepts the v1 spelling (`dev_as_issues: true`, `devops_project: x`);
 the two forms may not be mixed (that would say the same thing two ways). Either way `load`
 returns the same normalized `delivery` dict, so existing consumers are unchanged.
@@ -37,7 +44,7 @@ import yaml
 
 _MODES = {"dry-run", "live", "off"}
 _TARGETS = {"issues", "mrs"}
-_TOP = {"version", "fleet", "delivery", "auth", "notify"}
+_TOP = {"version", "fleet", "delivery", "auth", "notify", "probe"}
 _DELIVERY_V1 = {"mode", "dev_as_issues", "devops_project"}
 _DELIVERY_V2 = {"mode", "devops", "developer"}
 # orthogonal to the v1/v2 split — allowed in either form, never counts toward the mix check
@@ -111,6 +118,28 @@ def _load_notify(path: str, raw: dict) -> dict:
     return {"gchat": _env_name(f"{path}: notify.gchat", gchat) if gchat else None}
 
 
+def _load_probe(path: str, raw: dict) -> dict:
+    """probe.accept — the acknowledged scope blind spots. Each entry needs a `gap` id (from
+    the probe report) AND a non-empty `reason`: you may accept blindness, never silently.
+    Same discipline as never-invent-a-date — a bare acceptance with no stated why is refused."""
+    block = raw.get("probe") or {}
+    if not isinstance(block, dict):
+        raise ConfigError(f"{path}: `probe` must be a mapping")
+    unknown = set(block) - {"accept"}
+    if unknown:
+        raise ConfigError(f"{path}: unknown probe key(s) {sorted(unknown)} (allowed: ['accept'])")
+    accept = block.get("accept") or []
+    if not isinstance(accept, list):
+        raise ConfigError(f"{path}: probe.accept must be a list")
+    out = []
+    for i, e in enumerate(accept):
+        if not isinstance(e, dict) or not e.get("gap") or not str(e.get("reason") or "").strip():
+            raise ConfigError(f"{path}: probe.accept[{i}] needs a `gap` and a non-empty `reason` "
+                              "— a blind spot may be accepted, never silently")
+        out.append({"gap": str(e["gap"]), "reason": str(e["reason"]).strip()})
+    return {"accept": out}
+
+
 def _load_delivery(path: str, raw: dict) -> dict:
     d = raw.get("delivery") or {}
     if not isinstance(d, dict):
@@ -148,7 +177,7 @@ def _load_delivery(path: str, raw: dict) -> dict:
 def load(path: str) -> dict:
     """Parse + validate drift.yml. Returns
         {fleet, host, delivery:{mode,dev_as_issues,devops_project}, auth:{clone,persist,deliver},
-         notify:{gchat}}.
+         notify:{gchat}, probe:{accept:[{gap,reason}]}}.
     Raises ConfigError on anything malformed — an unknown key is an error, not ignored, so a
     typo can't silently disable delivery or drop a repo. `auth`/`notify` values are env-var
     NAMES; a pasted secret is refused."""
@@ -180,4 +209,5 @@ def load(path: str) -> dict:
         "delivery": _load_delivery(path, raw),
         "auth": _load_auth(path, raw),
         "notify": _load_notify(path, raw),
+        "probe": _load_probe(path, raw),
     }

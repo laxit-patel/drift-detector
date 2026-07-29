@@ -307,6 +307,80 @@ def _cmd_preflight(args) -> int:
     return 0
 
 
+def _cmd_probe(args) -> int:
+    """Pre-scan scope gate: resolve the fleet and report what a run WILL and WON'T read —
+    which sources resolve, how deep the walk goes, and (the piece no scan computes) which
+    private deps a repo pulls in that are NOT themselves in the fleet. Exit 0 clean, 3 on an
+    unacknowledged blind spot, 4 if nothing resolves. The setup ritual: edit drift.yml, probe,
+    then run. Consolidates plan (resolve) + preflight (private sources) + recommend (census)."""
+    import json
+    import subprocess
+    from agent.lib import (source_resolver, private_sources, shapes, scope_edges,
+                           probe as probe_mod)
+    from agent.lib.vendors import load_vendors
+    from agent.lib.vendor_rules import rule_kinds_by_language
+
+    roots, accept, host = args.root, [], None
+    if getattr(args, "config", None):
+        from agent.lib import ops_config
+        try:
+            cfg = ops_config.load(args.config)
+        except (OSError, ops_config.ConfigError) as exc:
+            print(f"probe: bad --config — {exc}", file=sys.stderr)
+            return 2
+        roots = args.root or cfg["fleet"]
+        accept, host = cfg["probe"]["accept"], cfg["host"]
+    if not roots:
+        print("probe: no fleet — pass --root or a --config with a fleet", file=sys.stderr)
+        return 2
+
+    resolved = source_resolver.resolve_sources(roots, args.state)
+    projects, errors = resolved["projects"], resolved["errors"]
+
+    prior = {}
+    try:
+        with open(os.path.join(args.state, "inventory.json"), encoding="utf-8") as fh:
+            prior = {s["repo"]: s for s in (json.load(fh).get("coverage") or {}).get("shapes", [])}
+    except (OSError, ValueError):
+        pass
+
+    kinds = rule_kinds_by_language(load_vendors())
+
+    def _modeled(lang):
+        return any(k in ("sink", "path-assembly") for k in kinds.get(lang, []))
+
+    def _remote(abs_):
+        try:
+            r = subprocess.run(["git", "-C", abs_, "remote", "get-url", "origin"],
+                               capture_output=True, text=True, timeout=10)
+            return r.stdout.strip() if r.returncode == 0 else ""
+        except (OSError, subprocess.SubprocessError):
+            return ""
+
+    fleet_ids, repos, consumers, unmodeled_langs, lang_signal = set(), [], [], {}, {}
+    for abs_, ident, _kind in projects:
+        rid = scope_edges.identity(_remote(abs_))
+        if rid:
+            fleet_ids.add(rid)
+        counts, _u = shapes.census(abs_)
+        for lang in shapes.meaningful_languages(counts):
+            m = _modeled(lang)
+            lang_signal[lang] = lang_signal.get(lang, True) and m   # any repo unmodeled → False
+            if not m:
+                unmodeled_langs.setdefault(lang, []).append(ident)
+        repos.append({"name": ident, "verdict": (prior.get(ident) or {}).get("verdict")})
+        ps = private_sources.detect(abs_)
+        if ps["repositories"]:
+            consumers.append({"repo": ident, "deps": ps["repositories"]})
+
+    edges = scope_edges.find_missing(consumers, fleet_ids)
+    result = probe_mod.assess({
+        "host": host, "projects": projects, "errors": errors, "repos": repos, "edges": edges,
+        "unmodeledLangs": unmodeled_langs, "languageSignal": lang_signal, "accept": accept})
+    print(result["text"])
+    return result["exit_code"]
+
+
 def _cmd_recommend(args) -> int:
     """Suggest a scan profile per repo — for when the user can't decide which mode to run.
 
@@ -890,6 +964,12 @@ def main(argv: list[str]) -> int:
     ppl.add_argument("--root", action="append", required=True)
     ppl.add_argument("--state", required=True)
     ppl.set_defaults(func=_cmd_plan)
+
+    ppb = sub.add_parser("probe")         # pre-scan scope GATE: what will/won't be read
+    ppb.add_argument("--root", action="append")
+    ppb.add_argument("--config", help="drift.yml — fleet + probe.accept acknowledgements")
+    ppb.add_argument("--state", required=True)
+    ppb.set_defaults(func=_cmd_probe)
 
     pa = sub.add_parser("audit")
     pa.add_argument("--in", dest="in_json", required=True)

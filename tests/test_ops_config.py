@@ -155,3 +155,26 @@ def test_mixing_v1_and_v2_delivery_forms_is_rejected(tmp_path):
         ops_config.load(_write(tmp_path,
             "fleet: [https://git.x/g/a]\ndelivery:\n"
             "  dev_as_issues: true\n  developer: {target: mrs}\n"))
+
+
+def test_probe_accept_defaults_empty(tmp_path):
+    cfg = ops_config.load(_write(tmp_path, "fleet: [https://git.x/g/a]\n"))
+    assert cfg["probe"] == {"accept": []}
+
+
+def test_probe_accept_parses_gap_and_reason(tmp_path):
+    cfg = ops_config.load(_write(tmp_path,
+        "fleet: [https://git.x/g/a]\nprobe:\n  accept:\n"
+        "    - {gap: 'repo:ebayapinew', reason: 'decommissioned next sprint'}\n"))
+    assert cfg["probe"]["accept"] == [{"gap": "repo:ebayapinew",
+                                       "reason": "decommissioned next sprint"}]
+
+
+def test_probe_accept_without_reason_is_refused(tmp_path):
+    # a blind spot may be accepted, never SILENTLY — mirrors never-invent-a-date
+    try:
+        ops_config.load(_write(tmp_path,
+            "fleet: [https://git.x/g/a]\nprobe:\n  accept:\n    - {gap: 'repo:x'}\n"))
+        assert False, "expected ConfigError for a reasonless acceptance"
+    except ops_config.ConfigError as exc:
+        assert "reason" in str(exc)
