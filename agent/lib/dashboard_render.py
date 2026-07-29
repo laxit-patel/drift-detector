@@ -388,7 +388,9 @@ def _tile_group(title: str, tiles) -> str:
 
 _CSS = """
 :root{
-  color-scheme:light dark;
+  /* dark is the DEFAULT — light-dark() resolves to the dark value unless the theme toggle
+     sets color-scheme:light (or auto → light dark, following the OS). No first-paint flash. */
+  color-scheme:dark;
   --accent:#e0533d; --accent-2:#3d7de0;
   --bg:light-dark(#f5f5f2,#0f1114); --panel:light-dark(#fff,#16191e);
   --panel-2:light-dark(#efefEA,#1b1f26); --line:light-dark(#e4e4de,#2a2f38);
@@ -709,7 +711,7 @@ _CLIENT_JS = r"""
 
   // ---- theme: cycle auto → light → dark, driving light-dark() via color-scheme ----
   var root=document.documentElement, tbtn=document.getElementById("theme");
-  var modes=["auto","light","dark"], ti=0;
+  var modes=["auto","light","dark"], ti=2;   // default: dark (index 2); a saved choice wins
   try{ var s=localStorage.getItem("drift-theme"); if(s){ ti=Math.max(0,modes.indexOf(s)); } }catch(e){}
   function applyTheme(){ var m=modes[ti]; if(root.style) root.style.colorScheme = m==="auto" ? "light dark" : m;
     if(tbtn) tbtn.textContent=(m==="dark"?"●":m==="light"?"○":"◐")+" Theme: "+m;
