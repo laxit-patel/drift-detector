@@ -309,6 +309,59 @@ def test_path_signature_does_not_fire_on_unrelated_admin_paths(tmp_path):
     assert not [e for e in eps if e["techKey"] == "api:shopify"]
 
 
+def test_two_versions_of_one_vendor_on_one_line_both_survive(tmp_path):
+    """SHIPPED BUG: the seen_known dedup key was (techKey, loc, operation) — no version — so
+    the SECOND same-vendor URL on a line was silently dropped whenever its version differed.
+    A migration-mapping line `'…/sell/v1/x' => '…/sell/v2/x'` reported only v1; v2 vanished
+    (present in neither endpoints nor residue). Both versions are real call-site facts and
+    both must survive — dedup may only collapse records that carry the SAME version."""
+    _write(tmp_path, "map.php",
+           "x\n'https://api.ebay.com/sell/v1/x' => 'https://api.ebay.com/sell/v2/x',\n")
+    ebay = Vendor("eBay", "api:ebay", ("ebay.com",), r'/(v\d+)')
+    eps = build_endpoints([_url("map.php", 2)], str(tmp_path), [ebay])
+    assert {e["version"] for e in eps} == {"v1", "v2"}
+
+
+def test_unversioned_host_match_does_not_suppress_the_path_signature_version(tmp_path):
+    """SHIPPED BUG: an UNVERSIONED same-vendor match at the same loc suppressed the
+    path-signature's VERSIONED add — the dedup key ignored version. Real shape: a line
+    carrying a `myshopify.com` OAuth literal (no version) beside the interpolated
+    `https://{$shop}/admin/api/2024-01/…` call; the engine emits one url match per literal,
+    the OAuth match registers (api:shopify, loc, None) first, and the retired 2024-01 call —
+    the exact finding the path signature exists to recover — was deduped away. The versioned
+    record must survive an unversioned sibling, in EITHER match order."""
+    _write(tmp_path, "app/Shop.php",
+           'x\n$c = ["auth" => "https://x.myshopify.com/admin/oauth/token",'
+           ' "api" => "https://{$shop}/admin/api/2024-01/shop.json"];\n')
+    ms = [  # one engine match per string literal, each carrying its own matched text
+        {**_url("app/Shop.php", 2), "text": '"https://x.myshopify.com/admin/oauth/token"'},
+        {**_url("app/Shop.php", 2), "text": '"https://{$shop}/admin/api/2024-01/shop.json"'},
+    ]
+    for order in (ms, list(reversed(ms))):
+        eps = build_endpoints(order, str(tmp_path), [_SHOPIFY])
+        versions = {e["version"] for e in eps if e["techKey"] == "api:shopify"}
+        assert "2024-01" in versions, f"retired call lost: {versions}"
+    # the whole-line fallback shape (an engine match with no text) must recover it too
+    eps = build_endpoints([_url("app/Shop.php", 2)], str(tmp_path), [_SHOPIFY])
+    assert "2024-01" in {e["version"] for e in eps if e["techKey"] == "api:shopify"}
+
+
+def test_same_loc_dedup_is_order_independent(tmp_path):
+    """Principle 3 (byte-identical): first-wins dedup at one loc must not let the engine's
+    match order pick which record survives. With version in the dedup key the unversioned and
+    versioned facts are distinct records, so forward and reversed match order agree exactly."""
+    _write(tmp_path, "app/Shop.php",
+           'x\n$c = ["auth" => "https://x.myshopify.com/admin/oauth/token",'
+           ' "api" => "https://{$shop}/admin/api/2024-01/shop.json"];\n')
+    ms = [
+        {**_url("app/Shop.php", 2), "text": '"https://x.myshopify.com/admin/oauth/token"'},
+        {**_url("app/Shop.php", 2), "text": '"https://{$shop}/admin/api/2024-01/shop.json"'},
+    ]
+    fwd = scan_endpoints(ms, str(tmp_path), [_SHOPIFY])
+    rev = scan_endpoints(list(reversed(ms)), str(tmp_path), [_SHOPIFY])
+    assert fwd == rev
+
+
 def test_au_nz_marketplaces_are_classified_not_unknown():
     """AU/NZ marketplaces catalogued for detection (channelwiz-api evidence). A URL literal on
     each host must classify to the vendor, not fall through to Unknown."""
