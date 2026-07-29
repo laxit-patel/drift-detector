@@ -48,9 +48,27 @@ def _rollup_coverage(coverage: dict, repos: list, *, discovered_count: int) -> N
     eps = [e for r in repos for e in r.get("endpoints", [])]
     pkgs = [s for r in repos for s in r.get("sdks", [])]
     resolved = sum(1 for s in pkgs if s.get("versionSource") == "lockfile")
-    private = [{"repo": r.get("path"), "packages": (r.get("privateSources") or {}).get("packages", []),
-                "repositories": (r.get("privateSources") or {}).get("repositories", [])}
-               for r in repos if any((r.get("privateSources") or {}).values())]
+    # A repo's private composer dep that is ITSELF a scanned fleet member is NOT a blind spot —
+    # its calls ARE read, as its own repo. Reconcile each private repo URL against the scanned
+    # set (by git identity) so covered deps move out of `repositories` (the "couldn't crawl"
+    # list, and its tile count) into `covered`. This is probe's cross-fleet edge, applied to
+    # the canonical drift.json so every surface stops over-reporting them.
+    from agent.lib import scope_edges
+    fleet_ids = {scope_edges.identity(r.get("remote_url")) for r in repos}
+    fleet_ids.discard("")
+    private = []
+    for r in repos:
+        ps = r.get("privateSources") or {}
+        if not any(ps.values()):
+            continue
+        urls = ps.get("repositories", [])
+        covered = [u for u in urls if scope_edges.identity(u) in fleet_ids]
+        unreachable = [u for u in urls if scope_edges.identity(u) not in fleet_ids]
+        entry = {"repo": r.get("path"), "packages": ps.get("packages", []),
+                 "repositories": unreachable}
+        if covered:
+            entry["covered"] = covered
+        private.append(entry)
     coverage["repos"] = {"discovered": discovered_count, "scanned": coverage["reposScanned"],
                          "errored": len(coverage["reposErrored"])}
     coverage["endpoints"] = {"known": sum(1 for e in eps if e.get("vendor") and e["vendor"] != "Unknown"),

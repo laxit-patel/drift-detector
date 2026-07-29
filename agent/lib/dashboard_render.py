@@ -99,13 +99,17 @@ def _build_projection(inventory: dict, audit: dict) -> dict:
     endpoints = _endpoints_of(inventory)
     cov = inventory.get("coverage") or {}
     residue = cov.get("residue") or {}
-    private = []
+    private, covered_deps = [], []
     for p in cov.get("privateSources", []):
         for pkg in p.get("packages", []):
             private.append({"repo": p.get("repo"), "source": pkg.get("pkg"),
                             "kind": "package", "via": pkg.get("via", "")})
         for url in p.get("repositories", []):
             private.append({"repo": p.get("repo"), "source": url, "kind": "repo", "via": ""})
+        # deps that ARE scanned as their own fleet repo — the dependency edge, NOT a blind
+        # spot; surfaced separately so they never inflate the "couldn't crawl" tile/list.
+        for url in p.get("covered", []):
+            covered_deps.append({"repo": p.get("repo"), "source": url})
     counts = {
         "critical": sum(1 for a in actions if a["worst"] == "CRITICAL"),
         "fixes": sum(1 for a in actions if a["status"] == "DEPRECATED"),
@@ -156,6 +160,7 @@ def _build_projection(inventory: dict, audit: dict) -> dict:
         "actions": actions,
         "endpoints": endpoints,
         "private": private,
+        "coveredDeps": covered_deps,
         "sdkMediated": cov.get("sdkMediated", []),
         "catalog": (audit.get("coverage") or {}).get("catalog", []),
         "coverageNotes": (audit.get("coverage") or {}).get("notes", []),
@@ -883,6 +888,13 @@ _CLIENT_JS = r"""
         +'undercount:</div><ul>';
       sm.forEach(function(m){ h+='<li>'+esc(m.repo)+' ('+esc(m.sdkCount)+' SDKs, '
         +esc(m.endpointCount)+' endpoints)</li>'; });
+      h+='</ul>';
+    }
+    var cd=DATA.coveredDeps||[];
+    if(cd.length){
+      h+='<div class="note">'+esc(cd.length)+' private dependency(ies) are <b>scanned directly</b> '
+        +'as their own fleet repo — a dependency edge, not a blind spot:</div><ul>';
+      cd.forEach(function(d){ h+='<li>'+esc(d.repo)+' → '+esc(d.source)+'</li>'; });
       h+='</ul>';
     }
     cov.innerHTML = h ? ("<h2>Coverage</h2>"+h) : "";

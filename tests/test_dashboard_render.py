@@ -599,3 +599,28 @@ def test_repo_filter_present_and_wired_across_panels():
     for hook in ("matchesRepo", "state.repo", "renderSbom", "renderSarif", "repo-filter"):
         assert hook in js, hook
     assert "if(!matchesRepo(a.repo)) return" in js                   # Summary honours it
+
+
+def test_covered_private_dep_is_excluded_from_the_tile_and_surfaced_separately():
+    """A private dep the fleet DOES scan is `covered` in drift.json — it must NOT count in the
+    Private tile or the 'couldn't crawl' rows, but IS surfaced (as the dependency edge) via a
+    coveredDeps projection. Fixes the dashboard listing amazonspapi/ebayapi as unreachable."""
+    from agent.lib.dashboard_render import _build_projection
+    inv = _inv_with_private([
+        {"repo": "channelwiz", "packages": [], "repositories": ["https://git.x/akshit/catchapi.git"],
+         "covered": ["https://git.x/chetan/amazonspapi.git"]},
+    ])
+    proj = _build_projection(inv, {"actions": []})
+    assert proj["counts"]["private"] == 1                       # only the blind one counts
+    assert [r["source"] for r in proj["private"]] == ["https://git.x/akshit/catchapi.git"]
+    assert proj["coveredDeps"] == [{"repo": "channelwiz",
+                                    "source": "https://git.x/chetan/amazonspapi.git"}]
+
+
+def test_dashboard_names_covered_deps_as_scanned_not_unreachable():
+    from agent.lib.dashboard_render import render_dashboard
+    inv = _inv_with_private([
+        {"repo": "channelwiz", "packages": [], "repositories": [],
+         "covered": ["https://git.x/chetan/amazonspapi.git"]}])
+    html = render_dashboard(inv, {"generated": "2026-07-29", "actions": []}, "2026-07-29")
+    assert "amazonspapi" in html and "scanned directly" in html      # edge, not a blind spot
