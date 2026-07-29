@@ -91,3 +91,85 @@ parallelizes only the *research*, never the firewall. The portal/HIL lane stays 
 buys nothing until the unaudited-**public**-vendor list grows to ~a dozen+. Build the Workflow
 for the public lane only when that list is long enough that sequential research is the
 bottleneck. Not a rewrite — a second entry point beside the promptfile.
+
+---
+
+# Banked concerns — 2026-07-29 (runtime signal + detectability feedback loop)
+
+Five ideas raised together. The first two are one axis (a **dynamic/runtime** egress signal to
+complement today's **static** analysis); the middle two are one axis (a **feedback loop** that
+makes the codebase easier to scan over time); the last is a minor note.
+
+## 1 · Runtime egress from access logs (dynamic detection)
+
+**Idea:** identify the actual network calls from **access logs** (not necessarily live) rather
+than only from source. Especially for languages we read poorly (the 7-of-8 egress-rule gap —
+Kotlin/Go/etc.), a log line `GET https://api.x/v2/orders` is **language-agnostic ground truth**:
+it sidesteps "every language abstracts egress differently."
+
+**Honest assessment.** High-value as a SECOND signal that *augments* static (confirms calls,
+adds hosts/versions static missed), never replaces it. But it breaks three things static gives:
+(a) **determinism** — logs vary run to run; (b) **exhaustiveness** — a log only shows code paths
+that actually EXECUTED, so absence in logs ≠ absence in code (the opposite failure mode from
+static); (c) **access/PII** — needs staging/prod egress logs, which carry privacy + credential
+exposure. The user's "not live, a batch of historical logs" framing is the right one — a day of
+egress as a corpus, less friction than live tapping. Would feed the SAME endpoint/attribution
+model (host → vendor, path → version), tagged `attribution: observed-runtime` so a reader can
+tell a real hit from a static match. **Deferred:** it's a whole new ingestion path + a
+determinism carve-out; bank until a client has weak-static-language repos AND accessible logs.
+
+## 2 · Async local observer / middleware (embedded runtime signal)
+
+**Idea:** a middleware / log hook that runs **async** (never blocks the main thread) alongside
+the project locally and observes its outbound calls — the embedded, dev-time version of #1.
+
+**Honest assessment.** This is exactly what **OpenTelemetry / APM HTTP-client instrumentation**
+already produces (outbound HTTP spans: method, host, path, status). The honest move is to
+**consume OTel/APM egress spans** rather than build a bespoke per-framework observer — otherwise
+it's a Laravel middleware + a Guzzle interceptor + a Node hook + … forever. Same value and
+caveats as #1 (ground truth, but execution-coverage-bound, non-deterministic). It's also a
+different PRODUCT surface (an agent/sidecar, not a static scanner) — a bigger commitment than a
+CI job. **Deferred:** revisit if a client already runs OTel and wants drift fed from real
+traffic; then it's "read their existing spans," not "build an observer."
+
+## 3 · Flag confusing net-call code for standardization (detectability linter)
+
+**Idea:** when someone writes confusing/non-standard network-call code the scanner can't follow,
+**flag it for simplification/standardization** — so next scan it's an easy catch, making the net
+we cast more robust (we stop missing obvious strings).
+
+**Honest assessment.** The tool ALREADY localizes exactly this: `residue.sinks` +
+`config-driven-url` path literals ARE the "confusing code" signals, at `file:line`. So this is
+mostly a RENDERING + a suggested-pattern library on top of data we compute: turn a residue entry
+into an actionable "this call assembles its URL in a way we can't trace — here's the standard
+shape." Creates a virtuous loop: as devs standardize, detection improves for free. Fits the
+Developer/Maintainer streams as a low-severity "detectability" suggestion. **Guardrail:** only
+flag where it actually caused a MISS (residue), never stylistic nagging — a preachy linter gets
+muted. **Deferred:** additive and low-risk; do it when someone wants the loop, after the higher-
+value access work.
+
+## 4 · URLs in `.env` (minor)
+
+**Concern:** base URLs may live in `.env` (unreadable — gitignored/secret), so a host set only
+there is invisible. **Assessment — mostly a non-issue, as the user reasoned:** `.env` typically
+holds the HOST + credentials; the PATH + VERSION (what retirement detection needs) is written at
+the call site, so the version is usually still visible in code. And a host-less versioned path is
+NOT a silent miss — it lands in `config-driven-url` residue, honestly flagged. Cheap future win:
+read `.env.example` (often committed) for the host when present. Low priority.
+
+## 5 · PR in-house libraries to improve their detectable shape
+
+**Idea:** the wrapper libs (`tops/*`) are in-house — we can modify them — so the tool should be
+able to open PRs against THEM to make their integration calls easier to detect (explicit URL
+assembly, operation markers, standard patterns).
+
+**Honest assessment.** Strong, and it's the counterpart to absorption: instead of teaching the
+SCANNER a confusing shape (a vendor-scoped idiom — itself banked), **fix the CODE to a standard
+shape** so no idiom is needed and every future scan catches it plainly. Fits the Developer/
+Maintainer MR stream, scoped to in-house repos: scan the wrapper as a fleet repo → its residue
+localizes the un-scannable calls → generate a suggested-refactor MR. **Blast radius:** a shared
+library's code change affects every consumer, so these MRs are proposals a human weighs, not
+auto-applied. **Relationship:** often *cheaper and more durable* than the vendor-scoped-idiom
+enhancement — a one-time code cleanup vs. a permanent detection special-case. Bank alongside
+vendor-scoped idioms; when both are on the table, prefer fixing in-house code over teaching the
+scanner a workaround.
