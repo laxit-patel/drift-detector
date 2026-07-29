@@ -3,8 +3,10 @@
 # scanning, auditing, delivering, publishing, or notifying. Run it after editing drift.yml or
 # when access to a new repo lands, to check scope in ~1 minute instead of a full scan cycle.
 #
-# The scan workflow (scan.yml) still runs probe as a pre-scan GATE; this is for iterating on
-# the fleet config on demand. Manual only.
+# This is the ONLY place probe runs in CI: the scan workflow (scan.yml) deliberately does NOT
+# run it (a slow/failing side-check must never clog the core scan → deliver path — see the
+# stage-separation note there), so scope holes surface here, on demand, not on the weekly run.
+# Manual only; check 'enforce' to fail on an unacknowledged hole instead of just reporting.
 
 name: drift-probe
 
