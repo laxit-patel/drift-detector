@@ -624,3 +624,11 @@ def test_dashboard_names_covered_deps_as_scanned_not_unreachable():
          "covered": ["https://git.x/chetan/amazonspapi.git"]}])
     html = render_dashboard(inv, {"generated": "2026-07-29", "actions": []}, "2026-07-29")
     assert "amazonspapi" in html and "scanned directly" in html      # edge, not a blind spot
+
+
+def test_dark_is_the_default_theme():
+    from agent.lib.dashboard_render import render_dashboard
+    html = render_dashboard(_inv(), _audit([_cve()]), "2026-07-29")
+    assert "color-scheme:dark" in html                          # CSS default resolves dark
+    js = html.split("<script>")[-1]
+    assert 'modes=["auto","light","dark"], ti=2' in js          # JS default index = dark
