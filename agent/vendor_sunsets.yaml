@@ -270,16 +270,22 @@
 
 # ── AU/NZ marketplaces (MyDeal, THE ICONIC, TheMarket, Kogan) — RESEARCHED 2026-07-29, NO ENTRY.
 # Detected in channelwiz/channelwiz-api (catalogued for detection in vendors.yaml). Retirement
-# research this session found NO public, instance-specific sunset date for any of them, so
-# nothing is added — per the rule above, no source = no entry (a borrowed or invented date is
-# worse than none). What was checked, so this is not re-run:
-#   • THE ICONIC — runs on the Seller Center platform; its own docs
-#     (https://sellercenter-api.theiconic.com.au/docs/) publish no deprecation/version-retirement.
-#     The Seller Center decommission notices (https://lazada-sellercenter.readme.io/docs/announcement,
-#     "out of support 2018-05-31 → Lazada Open Platform") are LAZADA SEA ventures, NOT THE ICONIC
-#     (Australia, a different Global Fashion Group instance) — attributing them here would misattribute.
-#   • Kogan — current API is v2 (https://nimda.kogan.com/api/marketplace/v2/); no public dated v1 retirement.
-#   • MyDeal, TheMarket (NZ) — no public API changelog/deprecation; behind the seller portal.
-# These stay DETECTED but UNAUDITED (honest: we name the integration, we do not claim its versions
-# are current). Real retirement coverage needs SELLER-PORTAL access (changelogs behind login), not
-# public research — revisit if/when the CI seller-API credentials expose those announcements.
+# research found NO sourced, catalogable sunset date for any, so nothing is added — no source =
+# no entry (a borrowed or invented date is worse than none). Accessibility DIFFERS per vendor
+# (corrected after a direct check — do not re-lump them as "all behind login"):
+#   • Kogan — PUBLIC changelog (https://developers.kogan.com/changelog). CHECKED: it uses relative
+#     timestamps ("over 5 years ago"), announces additions (Orders API on v2), and its one
+#     deprecation (select-category-by-name → use IDs) is UNDATED and field-level — not a
+#     version/host/path the endpoint model can join on. Nothing catalogable, but publicly verified.
+#     (Caveat: the changelog is a JS-rendered SPA; a human render may surface entries a fetch cannot.)
+#   • THE ICONIC — CONFIRMED login-gated: the docs page (https://sellercenter-api.theiconic.com.au/docs/)
+#     says "Sign in to access the full documentation." The Lazada Seller Center decommissions
+#     (https://lazada-sellercenter.readme.io/docs/announcement, "out of support 2018-05-31") are
+#     LAZADA SEA ventures, NOT THE ICONIC (Australia, a different GFG instance) — misattribution refused.
+#   • MyDeal — CONFIRMED docs-by-request: sellerhelp.mydeal.com.au states "submit a request to enquire
+#     about receiving the latest API documentation." Not public.
+#   • TheMarket (NZ) — no public API docs found (integrates via middleware: Omnivore/Cresco/ChannelAdvisor);
+#     not proven a hard login wall, just no public source.
+# All four stay DETECTED but UNAUDITED (honest: we name the integration, we do not claim its versions
+# are current). THE ICONIC/MyDeal/TheMarket need SELLER-PORTAL material (a dated deprecation notice +
+# its origin = a valid source); Kogan is public and simply has nothing dated to catalog.
