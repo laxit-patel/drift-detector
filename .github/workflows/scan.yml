@@ -93,36 +93,9 @@ jobs:
           GCHAT_WEBHOOK: ${{ secrets.GCHAT_WEBHOOK }}
         run: python3 -m agent.cli config-preflight --config drift-ops/config/drift.yml
 
-      - name: Probe — pre-scan scope gate (what will & won't be read)
-        # Resolves the fleet and maps coverage BEFORE the scan: which sources resolve, how deep
-        # the walk goes, and which PRIVATE deps a repo pulls in that are NOT themselves in the
-        # fleet (a wrapped integration invisible until that repo is scanned first-class). The
-        # clones it makes are reused by the scan step below. Acknowledge known gaps in drift.yml
-        # `probe.accept` (each needs a reason — a blind spot is accepted, never silently).
-        #
-        # GATED on the PROBE_GATE repo variable so turning enforcement on is a deliberate,
-        # one-variable act (the private drift.yml must be seeded first, or every run fails on a
-        # known-missing wrapper). PROBE_GATE=enforce → exit 3 fails the run; anything else
-        # (default) prints the scope map as a warning and continues. exit 4/2 (fleet can't be
-        # resolved at all) ALWAYS fails — that is not a clean pre-scan, gate or no gate.
-        env:
-          GITLAB_TOKEN: ${{ secrets.GITLAB_TOKEN }}
-          DRIFT_CATALOG_DIR: ${{ github.workspace }}/drift-ops/catalog
-        run: |
-          set +e
-          python3 -m agent.cli probe --config drift-ops/config/drift.yml --state drift-ops/state \
-            --summary-md "$GITHUB_STEP_SUMMARY"
-          code=$?
-          set -e
-          case "$code" in
-            0) : ;;
-            2|4) echo "::error::probe could not resolve the fleet (exit $code) — fix before scanning"; exit "$code" ;;
-            3) if [ "${{ vars.PROBE_GATE }}" = "enforce" ]; then
-                 echo "::error::probe found unacknowledged scope blind spots — add the repo(s) to the fleet, or acknowledge in drift.yml probe.accept (with a reason)"; exit 3
-               fi
-               echo "::warning::probe found scope blind spots (advisory — set the PROBE_GATE variable to 'enforce' to block the scan on them)" ;;
-            *) echo "::error::probe exited unexpectedly ($code)"; exit "$code" ;;
-          esac
+      # Scope probe and catalog-freshness are SEPARATE workflows (drift-probe.yml,
+      # drift-catalog-check.yml) — kept out of the main scan so each stage runs on its own and
+      # a slow/failing side-check never clogs the core scan → audit → deliver → publish path.
 
       - name: Scan the fleet + verify
         env:
