@@ -389,6 +389,33 @@ def _cmd_probe(args) -> int:
     return result["exit_code"]
 
 
+def _cmd_freshness(args) -> int:
+    """The maintainer FRESHNESS work-order: which DETECTED vendors need a human re-check
+    (STALE or unaudited, and no machine can re-fetch their source) and exactly what to fetch
+    for each — the human lane, where `catalog-check` is the auto lane. exit 0 nothing due,
+    3 when a maintainer action is needed (mirrors catalog-check)."""
+    import json as _json
+    from agent.lib import freshness
+    from agent import catalog_check
+    try:
+        with open(os.path.join(args.state, "audit.json"), encoding="utf-8") as fh:
+            audit = _json.load(fh)
+    except (OSError, ValueError) as exc:
+        print(f"freshness: cannot read audit.json in {args.state} — run a scan first ({exc})",
+              file=sys.stderr)
+        return 2
+    records = (audit.get("coverage") or {}).get("catalog", [])
+    due = freshness.due_for_refresh(records, set(catalog_check.CHECKS), catalog_check.UNAUTOMATED)
+    md = freshness.work_order_md(due, args.now)
+    if getattr(args, "out", None):
+        with open(args.out, "w", encoding="utf-8") as fh:
+            fh.write(md)
+        print(f"✓ freshness work-order ({len(due)} vendor(s) due) → {args.out}")
+    else:
+        print(md)
+    return 3 if due else 0
+
+
 def _cmd_recommend(args) -> int:
     """Suggest a scan profile per repo — for when the user can't decide which mode to run.
 
@@ -979,6 +1006,12 @@ def main(argv: list[str]) -> int:
     ppb.add_argument("--state", required=True)
     ppb.add_argument("--summary-md", help="append a markdown scope map here (e.g. $GITHUB_STEP_SUMMARY)")
     ppb.set_defaults(func=_cmd_probe)
+
+    pfr = sub.add_parser("freshness")     # maintainer work-order: vendors due for a human re-check
+    pfr.add_argument("--state", required=True)
+    pfr.add_argument("--now", required=True)
+    pfr.add_argument("--out", help="write the work-order here (default: stdout)")
+    pfr.set_defaults(func=_cmd_freshness)
 
     pa = sub.add_parser("audit")
     pa.add_argument("--in", dest="in_json", required=True)
