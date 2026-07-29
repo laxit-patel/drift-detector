@@ -28,3 +28,14 @@ def test_owner_is_always_one_of_the_two_streams():
     for rec in ({"kind": "cve"}, {"kind": "eol", "refKind": "runtime"},
                 {"kind": "eol", "refKind": "framework"}, {"kind": "sunset"}, {"kind": None}):
         assert owner(rec) in (DEVOPS, DEVELOPER)
+
+
+def test_maintainer_is_a_stream_not_a_finding_owner():
+    """The maintainer owns the tool/catalog (absorption, freshness) — never a per-repo finding.
+    owner() must keep returning only devops/developer so verify's recompute stays valid."""
+    from agent.lib import owners
+    assert owners.MAINTAINER == "maintainer"
+    assert owners.MAINTAINER not in owners.OWNERS
+    for rec in ({"kind": "cve"}, {"kind": "eol", "refKind": "runtime"},
+                {"kind": "eol", "refKind": "framework"}, {"kind": "sunset"}):
+        assert owners.owner(rec) in (owners.DEVOPS, owners.DEVELOPER)

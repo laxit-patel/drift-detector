@@ -318,3 +318,12 @@ def test_shape_flag_closes_itself_when_the_repo_goes_known():
 def test_shape_fingerprint_is_repo_keyed_and_distinct():
     assert delivery.shape_fingerprint("svc") == delivery.shape_fingerprint("svc")
     assert delivery.shape_fingerprint("svc") != delivery.repo_fingerprint("svc")
+
+
+def test_maintainer_streams_carry_the_shared_audience_tag():
+    """Absorption (shape) and freshness both go to the maintainer, so both carry drift:maintainer
+    AND their own stream tag; the DevOps finding stream stays separate."""
+    from agent.lib.delivery import _issue_labels
+    assert _issue_labels("shape") == "drift-detector,drift:maintainer,drift:shape"
+    assert _issue_labels("freshness") == "drift-detector,drift:maintainer,drift:freshness"
+    assert _issue_labels(None) == "drift-detector,drift:devops"        # DevOps default, no maintainer tag

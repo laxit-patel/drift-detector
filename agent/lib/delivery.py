@@ -22,7 +22,11 @@ import re
 LABEL = "drift-detector"
 DEVOPS_LABEL = "drift:devops"
 DEV_LABEL = "drift:developer"
-SHAPE_LABEL = "drift:shape"
+# MAINTAINER audience (tool/catalog upkeep) — carried ALONGSIDE a stream label so all
+# maintainer work filters as one queue, while shape vs freshness stay distinguishable.
+MAINTAINER_LABEL = "drift:maintainer"
+SHAPE_LABEL = "drift:shape"           # absorption: a repo shape the scanner can't read
+FRESHNESS_LABEL = "drift:freshness"   # a catalogued vendor's retirements went stale / need a re-check
 MR_BRANCH = "drift/migrations"
 MIGRATIONS_PATH = ".drift/MIGRATIONS.md"
 _MARKER = re.compile(r"<!--\s*drift-detector:([0-9a-f]{16})\s*-->")
@@ -373,14 +377,24 @@ def fetch_existing(gl, devops_project: str, dev_projects: list) -> dict:
             "mrs": {p: gl.list_mrs(p, labels=LABEL) for p in dev_projects}}
 
 
+def _issue_labels(stream: str) -> str:
+    """The label set for an issue by stream. Maintainer streams (shape, freshness) carry the
+    shared `drift:maintainer` audience tag AND their own stream tag, so all tool-upkeep work
+    filters as one queue while staying distinguishable; the DevOps finding stream stands alone."""
+    if stream == "shape":
+        return f"{LABEL},{MAINTAINER_LABEL},{SHAPE_LABEL}"
+    if stream == "freshness":
+        return f"{LABEL},{MAINTAINER_LABEL},{FRESHNESS_LABEL}"
+    return f"{LABEL},{DEVOPS_LABEL}"
+
+
 def execute_plan(gl, plan: dict) -> dict:
     """Perform the writes. Every op is idempotent given the same plan."""
     done = {"created": 0, "updated": 0, "closed": 0, "skipped": 0, "unroutable": 0}
     for it in plan["issues"]:
         if it["op"] == "create":
-            stream_label = SHAPE_LABEL if it.get("stream") == "shape" else DEVOPS_LABEL
             gl.create_issue(it["project"], title=it["title"], description=it["body"],
-                            labels=f"{LABEL},{stream_label}")
+                            labels=_issue_labels(it.get("stream")))
             done["created"] += 1
         elif it["op"] == "update":
             fields = {"description": it["body"], "title": it["title"]}
