@@ -267,3 +267,19 @@
   status: deprecated-no-date
   source: https://developer.walmart.com/us-marketplace/docs/walmart-marketplace-api-deprecation-guide#:~:text=WFS%20inventory
   note: WFS inventory (GET). Legacy since 2025-09-03; vendor states sunset "2026" with no specific day, so no date is invented.
+
+# ── AU/NZ marketplaces (MyDeal, THE ICONIC, TheMarket, Kogan) — RESEARCHED 2026-07-29, NO ENTRY.
+# Detected in channelwiz/channelwiz-api (catalogued for detection in vendors.yaml). Retirement
+# research this session found NO public, instance-specific sunset date for any of them, so
+# nothing is added — per the rule above, no source = no entry (a borrowed or invented date is
+# worse than none). What was checked, so this is not re-run:
+#   • THE ICONIC — runs on the Seller Center platform; its own docs
+#     (https://sellercenter-api.theiconic.com.au/docs/) publish no deprecation/version-retirement.
+#     The Seller Center decommission notices (https://lazada-sellercenter.readme.io/docs/announcement,
+#     "out of support 2018-05-31 → Lazada Open Platform") are LAZADA SEA ventures, NOT THE ICONIC
+#     (Australia, a different Global Fashion Group instance) — attributing them here would misattribute.
+#   • Kogan — current API is v2 (https://nimda.kogan.com/api/marketplace/v2/); no public dated v1 retirement.
+#   • MyDeal, TheMarket (NZ) — no public API changelog/deprecation; behind the seller portal.
+# These stay DETECTED but UNAUDITED (honest: we name the integration, we do not claim its versions
+# are current). Real retirement coverage needs SELLER-PORTAL access (changelogs behind login), not
+# public research — revisit if/when the CI seller-API credentials expose those announcements.
