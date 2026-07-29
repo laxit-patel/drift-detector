@@ -49,8 +49,48 @@ def _holes(facts: dict) -> list:
     return out
 
 
+def _markdown(facts: dict, holes: list, code: int) -> str:
+    """A GitHub-flavored markdown view of the scope map — for `$GITHUB_STEP_SUMMARY`, so the
+    targeted-vs-covered scope shows on the CI run's Summary page instead of buried in a log."""
+    projects = facts.get("projects", [])
+    verdicts = [r.get("verdict") for r in facts.get("repos", [])]
+    known = sum(1 for v in verdicts if v == "KNOWN")
+    unknown = sum(1 for v in verdicts if v == "UNKNOWN")
+    open_n = sum(1 for h in holes if not h["accepted"])
+    blind = sum(1 for h in holes if h["kind"] == "dep" and not h["accepted"])
+    status = ("✓ scope clean" if code == CLEAN else
+              "✗ nothing resolved" if code == NOTHING else f"✗ {open_n} open scope hole(s)")
+
+    L = [f"## Drift probe · {facts.get('host') or 'local'}", ""]
+    L.append(f"**{len(projects)} repo(s) in scope** · {known} KNOWN · {unknown} UNKNOWN · "
+             f"**{blind} blind dep(s)** · verdict: {status}")
+    L.append("")
+    edges = facts.get("edges", [])
+    if edges:
+        L += ["### Dependency scope", "",
+              "| Repo | Covered (in fleet) | Blind (not in fleet) |", "|---|---|---|"]
+        for row in edges:
+            cov = ", ".join(e["id"].rsplit("/", 1)[-1] for e in row.get("present", [])) or "—"
+            bl = ", ".join((e["id"] or e["url"]).rsplit("/", 1)[-1]
+                           for e in row.get("missing", [])) or "—"
+            L.append(f"| {row['repo']} | {cov} | {bl} |")
+        L.append("")
+    errs = facts.get("errors", [])
+    if errs:
+        L += ["### Unreachable sources", ""]
+        L += [f"- {_last_seg(e.get('root', '')) or '?'} — {e.get('reason', '')}" for e in errs]
+        L.append("")
+    if holes:
+        L += ["### Won't read (blind spots)", ""]
+        for h in holes:
+            tag = f"acknowledged — {h['reason']}" if h["accepted"] else "**OPEN**"
+            L.append(f"- `{h['gap']}` — {h['label']} [{tag}]")
+        L.append("")
+    return "\n".join(L)
+
+
 def assess(facts: dict) -> dict:
-    """{text, exit_code, holes}. `facts` carries the gathered scope (see _cmd_probe)."""
+    """{text, markdown, exit_code, holes}. `facts` carries the gathered scope (see _cmd_probe)."""
     accepted = {a["gap"]: a.get("reason", "") for a in facts.get("accept", [])}
     holes = _holes(facts)
     for h in holes:
@@ -126,4 +166,5 @@ def assess(facts: dict) -> dict:
         L.append(f"VERDICT  ✗ {len(open_holes)} open scope hole(s) — fix, or acknowledge in "
                  f"drift.yml `probe.accept` with a reason (exit 3)")
 
-    return {"text": "\n".join(L), "exit_code": code, "holes": holes}
+    return {"text": "\n".join(L), "markdown": _markdown(facts, holes, code),
+            "exit_code": code, "holes": holes}
