@@ -47,10 +47,18 @@ def scan_endpoints(matches: list, repo_root: str, vendors: list, *, max_files: i
     def add(vendor, techKey, host, version, example, rel, lineno, operation=None,
             inferred=False):
         loc = f"{rel}:{lineno}"
-        if techKey and (techKey, loc, operation) in seen_known:
+        # One call-site, one record — but only for the SAME (version, operation). The key
+        # deliberately ignores host so a full-URL match and the host-only vendor rule firing
+        # on the same line collapse into one record (their host fields differ: actual host vs
+        # catalog domain). It MUST carry version: without it, the second of two same-vendor
+        # versions on one line ('…/sell/v1/x' => '…/sell/v2/x') was silently dropped, and an
+        # unversioned sibling (an OAuth literal, a doc link) suppressed the path-signature's
+        # versioned add — the retired call vanished, the exact invisibility the signature
+        # exists to prevent. Distinct versions are distinct facts; both survive.
+        if techKey and (techKey, loc, operation, version) in seen_known:
             return
         if techKey:
-            seen_known.add((techKey, loc, operation))
+            seen_known.add((techKey, loc, operation, version))
         # The API FAMILY, e.g. /fba/inbound/v0 — a fourth axis, for vendors that retire
         # per (family, version). Without it every Amazon "v0" call-site shares one record
         # and one catalog entry would date 78 sites identically, when in truth 34 of them
@@ -73,7 +81,12 @@ def scan_endpoints(matches: list, repo_root: str, vendors: list, *, max_files: i
         if loc not in rec["files"]:        # collect all unique locs; sort + cap at the end
             rec["files"].append(loc)
 
-    for m in sorted(matches, key=lambda x: 0 if x.get("kind") == "url" else 1):
+    # url matches first (full-URL evidence outranks a host-only vendor rule at the same loc),
+    # then path+line so PROCESSING order never inherits the engine's match order — which is
+    # NOT stable run-to-run. seen_known is first-wins; an unstable walk order would let the
+    # engine pick which same-key record survives (a principle-3 violation, not just cosmetic).
+    for m in sorted(matches, key=lambda x: (0 if x.get("kind") == "url" else 1,
+                                            str(x.get("path", "")), int(x.get("line", 0) or 0))):
         rel = _relpath(m.get("path", ""), repo_root)
         lineno = int(m.get("line", 0) or 0)
         # Prefer the engine's full matched text: a heredoc/multi-line literal carries
@@ -92,8 +105,9 @@ def scan_endpoints(matches: list, repo_root: str, vendors: list, *, max_files: i
             # Interpolated/variable host ("https://{$shop}/admin/api/2024-01/…"): the host is
             # a runtime value so extract_urls truncates and host classification is blind, but a
             # distinctive PATH signature still names the vendor + version. seen_known dedups by
-            # (techKey, loc), so a fully-classified host on the same line already wins — this
-            # only fires when the host branch found nothing for that vendor.
+            # (techKey, loc, operation, VERSION): a fully-classified host carrying the SAME
+            # version already wins, but an unversioned sibling (an OAuth literal, a doc link)
+            # never suppresses the signature's versioned add — that dropped retired calls.
             sig = classify_url.path_signature_match(line, vendors)
             if sig:
                 sv, sver, ssample = sig
@@ -175,9 +189,11 @@ def scan_endpoints(matches: list, repo_root: str, vendors: list, *, max_files: i
 
     # Deterministic output regardless of the engine's match order (which is NOT stable
     # run-to-run — a container double-run proved the endpoints list reordered between runs).
-    # Detection is order-INDEPENDENT (groups are keyed, attribution uses sets), so this only
-    # canonicalises presentation — but "byte-identical output" (CLAUDE.md principle 3)
-    # requires it. Sort the endpoints, each record's files (then cap), and the residue.
+    # Detection is order-independent BY CONSTRUCTION, not by luck: the walk above is sorted
+    # (kind, path, line) and the seen_known key carries version, so first-wins can only fire
+    # between records that are genuinely the same fact. This block canonicalises the
+    # PRESENTATION — "byte-identical output" (CLAUDE.md principle 3) requires it. Sort the
+    # endpoints, each record's files (then cap), and the residue.
     def _loc_key(loc):
         path, _, ln = str(loc).rpartition(":")
         return (path, int(ln) if ln.isdigit() else 0)
