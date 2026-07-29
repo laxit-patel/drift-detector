@@ -307,3 +307,18 @@ def test_path_signature_does_not_fire_on_unrelated_admin_paths(tmp_path):
     _write(tmp_path, "a.php", 'x\n$r = get("https://{$h}/admin/users/list");\n')
     eps = build_endpoints([_url("a.php", 2)], str(tmp_path), [_SHOPIFY])
     assert not [e for e in eps if e["techKey"] == "api:shopify"]
+
+
+def test_au_nz_marketplaces_are_classified_not_unknown():
+    """AU/NZ marketplaces catalogued for detection (channelwiz-api evidence). A URL literal on
+    each host must classify to the vendor, not fall through to Unknown."""
+    from agent.lib.vendors import load_vendors
+    from agent.lib import classify_url
+    vendors = load_vendors()
+    cases = {"api-integrations-sandbox.mydeal.com.au": "MyDeal",
+             "sellercenter-api-preprod.theiconic.com.au": "THE ICONIC",
+             "dev.themarket.co.nz": "TheMarket",
+             "nimda-marketplace.aws.kgn.io": "Kogan"}
+    for host, vendor in cases.items():
+        v = classify_url.classify_host(host, vendors)
+        assert v is not None and v.vendor == vendor, f"{host} -> {v and v.vendor}"

@@ -21,6 +21,16 @@
 - { vendor: WooCommerce,       techKey: api:woocommerce,         domains: [woocommerce.com] }
 - { vendor: Mirakl,            techKey: api:mirakl,              domains: [mirakl.net] }
 - { vendor: Rakuten,           techKey: api:rakuten,             domains: [rakuten.com, rms.rakuten.co.jp] }
+# AU/NZ marketplaces — DETECTION ONLY (host match; default version format). Evidence: seen as
+# live API hosts in channelwiz/channelwiz-api's marketplace controllers (sandbox/preprod/api
+# subdomains). These are UNAUDITED — no retirement list has been checked yet, so a scan will
+# name the integration but must NOT imply its versions are current. Retirements enter later,
+# each from a fetched source (never invent a date). Harvey Norman is used here too but its host
+# is fully config-driven (no URL literal), so it is not host-detectable — left honestly blind.
+- { vendor: MyDeal,            techKey: api:mydeal,              domains: [mydeal.com.au] }
+- { vendor: THE ICONIC,        techKey: api:theiconic,           domains: [theiconic.com.au] }
+- { vendor: TheMarket,         techKey: api:themarket,           domains: [themarket.co.nz] }
+- { vendor: Kogan,             techKey: api:kogan,               domains: [kgn.io] }
 
 # ── Payments ───────────────────────────────────────────────────────────────
 - { vendor: Stripe,            techKey: api:stripe,              domains: [stripe.com] }
