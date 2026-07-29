@@ -237,3 +237,28 @@ def test_a_non_group_url_falls_back_to_single_repo_clone(tmp_path):
     out = sr.resolve_sources([f"file://{tmp_path/'solo'}"], str(tmp_path / "s"),
                              expand_group=lambda url: None)
     assert len(out["projects"]) == 1 and out["projects"][0][2] == "remote"
+
+
+def test_group_and_explicit_member_resolve_once_not_twice(tmp_path):
+    """SHIPPED BUG (verify caught it): a fleet listing BOTH the `channelwiz` group AND
+    `channelwiz/channelwiz-api` (a member of it) resolved channelwiz-api twice — the group
+    yields `…/channelwiz-api.git`, the explicit entry `…/channelwiz-api`, which slug to
+    different clone dirs, so the abs-dir dedupe missed them. Result: the repo scanned twice
+    and drift.md rendered two identical findings rows. Dedupe by canonical git identity."""
+    import pathlib
+
+    def fake_clone(url, dest):
+        _make_repo(pathlib.Path(dest))
+        return (True, "")
+
+    def fake_expand(url):
+        if url.rstrip("/").endswith("/channelwiz"):
+            return [{"url": "https://git.x/channelwiz/channelwiz-api.git",
+                     "archived": False, "path": "channelwiz/channelwiz-api"}]
+        return None
+
+    out = sr.resolve_sources(
+        ["https://git.x/channelwiz", "https://git.x/channelwiz/channelwiz-api"],
+        str(tmp_path / "s"), clone=fake_clone, expand_group=fake_expand)
+    assert not out["errors"], out["errors"]
+    assert len(out["projects"]) == 1, out["projects"]     # one repo, not two

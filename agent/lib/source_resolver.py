@@ -27,7 +27,7 @@ import subprocess
 from pathlib import Path
 
 from agent.lib.repo_discovery import discover_repos, diagnose_root
-from agent.lib import gitlab
+from agent.lib import gitlab, scope_edges
 
 _URL_RE = re.compile(r"^(https?://|git@|ssh://|git://|file://)")
 _CODE_GLOBS = ("*.php", "*.js", "*.ts", "*.py", "*.rb", "*.go", "*.java", "*.cs")
@@ -101,9 +101,19 @@ def resolve_sources(roots: list, state_dir: str, *, clone=None, expand_group=Non
     sources_root = Path(state_dir) / "sources"
     projects: list = []
     errors: list = []
+    cloned_ids: set = set()
 
     def _clone_url(url: str) -> None:
         """Clone one repo URL into <state>/sources and add its projects (or an error)."""
+        # Dedupe by canonical git identity BEFORE cloning: a fleet may list a group AND a
+        # member of it, so the same repo arrives twice — once expanded as `…/repo.git`, once
+        # explicit as `…/repo`. Those slug to different dirs, so the abs-dir dedupe below can't
+        # catch them; without this they scan twice and drift.md renders duplicate rows.
+        iden = scope_edges.identity(url)
+        if iden:
+            if iden in cloned_ids:
+                return
+            cloned_ids.add(iden)
         dest = sources_root / slug(url)
         ok, msg = clone(url, str(dest))
         if not ok:
