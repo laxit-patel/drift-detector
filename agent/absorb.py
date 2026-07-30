@@ -117,10 +117,15 @@ def measure_against_repo(repo_abs: str, staged_idioms: list, claims: list, *, sc
         problems.append("claimed call-sites still unattributed after the change: "
                         + ", ".join(missing[:6]))
 
-    # no false endpoints: no vendor may appear that was not there before
+    # no false endpoints: no vendor may appear that was not there before — EXCEPT the vendor a
+    # path-constant instance is explicitly BOUND to. That family exists precisely because a
+    # config-injected host classifies nothing, so its bound vendor is new-by-design and already
+    # reviewed (it is named in the instance). Any OTHER new vendor is still a false endpoint.
+    bound_vendors = {i.get("vendor") for i in staged_idioms
+                     if i.get("family") == "path-constant" and i.get("vendor")}
     vendors_before = {e.get("vendor") for e in before["endpoints"] if e.get("vendor")}
     vendors_after = {e.get("vendor") for e in after["endpoints"] if e.get("vendor")}
-    invented = sorted(vendors_after - vendors_before)
+    invented = sorted(vendors_after - vendors_before - bound_vendors)
     if invented:
         problems.append(f"attributes endpoints to vendor(s) not previously present: {invented}"
                         " — a rule that invents calls is worse than the gap it closes")
@@ -135,10 +140,17 @@ def measure_against_repo(repo_abs: str, staged_idioms: list, claims: list, *, sc
         problems.append("attributes call-sites it did not claim: " + ", ".join(unclaimed[:6])
                         + " — every attributed site must be named and reviewed")
 
-    n_before = len(before["residue"].get("pathLiterals", []))
-    n_after = len(after["residue"].get("pathLiterals", []))
+    # residue must not grow: an idiom that "fixes" a gap by surfacing signals it cannot
+    # attribute has traded one blind spot for another. Count BOTH versioned path literals and
+    # path constants — a path-constant instance surfaces the latter, so they must be included
+    # or the guard is blind to its own family's under-attribution.
+    def _residue_n(res):
+        r = res["residue"]
+        return len(r.get("pathLiterals", [])) + len(r.get("pathConstants", []))
+    n_before = _residue_n(before)
+    n_after = _residue_n(after)
     if n_after > n_before:
-        problems.append(f"residue grew ({n_before} -> {n_after} unattributed path literals)")
+        problems.append(f"residue grew ({n_before} -> {n_after} unattributed path literals/constants)")
 
     return {"attributedBefore": len(attributed_before), "attributedAfter": len(attributed_after),
             "residueBefore": n_before, "residueAfter": n_after,

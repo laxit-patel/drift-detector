@@ -183,3 +183,45 @@ def test_absorb_check_measures_but_writes_nothing(tmp_path, monkeypatch):
     assert cli._cmd_absorb(args) == 0                        # a passing proposal
     assert shapes.load_attestations(str(state)) == {}       # NO attestation written
     assert not (overlay / "idioms.local.yaml").exists()     # NO overlay promotion
+
+
+# --- path-constant: a config-injected wrapper's BOUND vendor is the reviewed claim ----------
+
+def test_path_constant_bound_vendor_is_not_treated_as_invented():
+    """A path-constant instance introduces its bound vendor by design (a config-injected host
+    classified nothing before). That vendor is the REVIEWED binding, not an invented call —
+    the gate must allow it while every OTHER new-vendor stays forbidden."""
+    staged = [{"id": "catch-api-paths", "family": "path-constant", "repo": "akshit.tops/catchapi",
+               "vendor": "Catch", "pathRegex": r"^/api/", "evidence": "src/CatchApi/GetOrders.php:9"}]
+    scan = _scanner(
+        before={"endpoints": [], "residue": {"pathLiterals": [], "pathConstants": []}},
+        after={"endpoints": [_EP("Catch", ["src/CatchApi/GetOrders.php:9"])],
+               "residue": {"pathLiterals": [], "pathConstants": []}})
+    problems = absorb.verify_against_repo("/repo", staged, ["src/CatchApi/GetOrders.php:9"], scan=scan)
+    assert problems == []
+
+
+def test_path_constant_that_sweeps_unclaimed_sites_is_rejected():
+    """The guard against the bug: an over-broad pathRegex (^/ ) sweeps constants the reviewer
+    never named. Even for a bound vendor, an unclaimed site fails the gate."""
+    staged = [{"id": "catch-broad", "family": "path-constant", "repo": "akshit.tops/catchapi",
+               "vendor": "Catch", "pathRegex": r"^/", "evidence": "a.php:9"}]
+    scan = _scanner(
+        before={"endpoints": [], "residue": {"pathLiterals": [], "pathConstants": []}},
+        after={"endpoints": [_EP("Catch", ["a.php:9", "b.php:2"])],
+               "residue": {"pathLiterals": [], "pathConstants": []}})
+    problems = absorb.verify_against_repo("/repo", staged, ["a.php:9"], scan=scan)
+    assert any("did not claim" in p and "b.php:2" in p for p in problems)
+
+
+def test_path_constant_that_grows_pathconstant_residue_is_rejected():
+    """Surfacing a path constant the instance cannot attribute is a net-new blind spot —
+    residue.pathConstants counts toward the residue-must-shrink guard."""
+    staged = [{"id": "catch-api-paths", "family": "path-constant", "repo": "akshit.tops/catchapi",
+               "vendor": "Catch", "pathRegex": r"^/api/", "evidence": "a.php:9"}]
+    scan = _scanner(
+        before={"endpoints": [], "residue": {"pathLiterals": [], "pathConstants": []}},
+        after={"endpoints": [_EP("Catch", ["a.php:9"])],
+               "residue": {"pathLiterals": [], "pathConstants": [{"loc": "b.php:2"}]}})
+    assert any("residue grew" in p for p in
+               absorb.verify_against_repo("/repo", staged, ["a.php:9"], scan=scan))
