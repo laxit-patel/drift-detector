@@ -1327,6 +1327,160 @@ capability gap.
 
 ---
 
+## 15 · "AI-native" hosted mode — the gated loop as a managed, scheduled service
+
+The user's idea: a scheduled agent on Anthropic's managed infra, with the connectors it
+needs, running the whole thing — *"if we forget the deterministic parts, or maybe add
+this as another working mode… flexibility would be immense as intelligence is there."*
+The second half of that sentence is a real product direction. The first half would end
+the product. Both halves get a rigorous answer here.
+
+### 15.1 Why the deterministic core stays the source of truth — even in AI mode
+
+Four arguments, in ascending order of importance:
+
+1. **Verifiability.** "A green `verify` is the only claim you may make that the report
+   is correct" (CLAUDE.md) exists because "it looks right" shipped bugs. An AI-read
+   audit cannot be re-verified — there is no `verify` for a judgment call. Every
+   surface downstream (issues, MRs, SARIF, the dashboard) inherits its trustworthiness
+   from that one property.
+2. **The delta IS the product.** Drift detection's unit of value is *"what changed
+   since last week"* — fingerprints, first_seen/last_seen, new/resolved/persisting
+   (`findings_state`). That delta is only meaningful if the *reader* holds still. A
+   non-deterministic reader makes every diff ambiguous: is this finding NEW, or did
+   the model just read differently this run? That ambiguity is alert fatigue, and
+   alert fatigue is how scanners get muted.
+3. **The core of this domain has already been burned.** The invented eBay dates —
+   plausible, specific, wrong by days — came from a frontier model doing exactly the
+   free-reasoning this mode proposes, on exactly this domain. The gate wasn't built
+   despite AI; it was built *because of* what ungated AI did here.
+4. **The strategic one.** A fully-AI audit stops being "the honest, verifiable audit"
+   and becomes "another AI agent that reads repos" — a category with dozens of
+   entrants and zero moat. This tool's moat is precisely the part being proposed for
+   removal: the curated sunset catalog, the endpoint attribution machinery, the
+   verdicts, the gate, `verify`. **"Forget the deterministic parts" trades the moat
+   for flexibility the gated design already provides** — §14's loop gives the AI
+   arbitrary reading power *and* keeps the audit verifiable. There is no capability in
+   "fully AI" that the gated form lacks; there is only the discarded guarantee. (Plus
+   the mundane point: the deterministic scan is free at margin and byte-identical
+   weekly; whole-fleet AI reading is expensive, slow, and unrepeatable — you'd pay
+   more for a worse epistemic product.)
+
+**The boundary, stated sharply: AI is the front-end — read, understand, propose,
+narrate. The deterministic core is the back-end — gate, catalog, scan, verify. The
+back-end is the source of truth; the front-end is never allowed to be.**
+
+### 15.2 What the mode actually is
+
+A hosted, scheduled agent that *orchestrates* the existing loops, not one that
+replaces them:
+
+```
+Managed agent (scheduled, hosted)
+ ├─ runs the pinned drift-scan binary in its sandbox   → deterministic artifacts
+ │   (scan/audit/verify — the SAME zero-token pipeline; the agent invokes it,
+ │    never re-derives it)
+ ├─ reads what the scan flagged (UNKNOWN / residue / sdk-only), via its tools
+ │   → authors STAGED proposals (idioms, profiles)      [the §14 author, hosted]
+ ├─ funnels every proposal through `absorb --check`     [the gate, unchanged]
+ ├─ delivery step (separate credentials) opens MRs/issues; HUMAN merges catalog
+ └─ conversational surface: ask the auditor about the last run, drill into a
+     finding, request an ad-hoc probe — sessions persist; answers cite drift.json
+```
+
+Flexibility and verifiability stop being a trade-off: the model reads anything
+(complex projects, weird wrappers, multi-language messes) and *proposes*; the
+artifacts that constitute the audit are produced by the pinned binary and the gate.
+
+### 15.3 The spectrum, and what §15 adds over §14
+
+Deterministic-only (blind where rules end, but trusted) → **AI-proposes /
+gate-verifies** (§14) → fully-AI (flexible, unverifiable — rejected above). §15 sits
+exactly on the middle rung: **it is §14 plus the existing scan pipeline, re-hosted as
+a managed scheduled service.** Genuinely new versus §14 — and it's all delivery, not
+epistemics:
+
+- **Hosting/scheduling:** cron-scheduled deployments with per-firing run records,
+  pause/auto-pause, manual test runs, and webhook notifications replace GitHub
+  Actions' workflow plumbing (Managed Agents scheduled deployments — beta,
+  `managed-agents-2026-04-01`).
+- **Credential model:** vaults replace repo secrets — MCP OAuth credentials
+  auto-refresh; `environment_variable` credentials are substituted **at egress** so
+  the sandbox (and therefore the model, and therefore any prompt injection in scanned
+  code) never sees the token. This is §14's author/publisher separation upgraded from
+  convention to platform mechanism.
+- **An interactive surface:** the same agent that ran Tuesday's scan can be asked on
+  Thursday why channelwiz went STALE — sessions and memory persist. CI never gave us
+  a conversational auditor.
+- **Not new:** no new analysis capability, no new evidence class, no change to what
+  counts as a finding. Anyone who pitches §15 as "the AI does the audit now" has
+  misread it; it is the same audit with better hosting and a voice.
+
+### 15.4 A fully-AI *exploratory* surface — position: yes, but as a view, not a product
+
+Should there be a free-reasoning surface at all ("here's what looks risky —
+unverified")? **Yes — but it already has a name in this design: the quarantine,
+rendered.** The Tier-2 scout's observations were always specified as excluded from
+counts, deltas, and the audit. Rendering that quarantine as an explicitly-watermarked
+panel — *"Scout's notebook: unverified observations, not part of the audit"* — is
+honest, useful (it's the human's triage queue for what to feed the gate next), and
+cheap. What I'd refuse: a *separate fully-AI product surface* that schedules
+free-reasoning risk reports. It dilutes the trust brand into "which of your two
+answers do I believe?", competes in the commodity category (point 4 above), and every
+genuinely useful thing it finds belongs in the gate's intake anyway. One product, one
+trusted result, one clearly-second-class notebook. Never in issues, MRs, SARIF, or
+deltas; never adjacent to a green checkmark.
+
+### 15.5 Delivery grounding — what exists today (verified against the current API surface)
+
+- **Managed Agents (beta):** persisted agent configs + per-session sandboxes; the
+  loop runs on Anthropic's orchestration layer, tools execute in a **cloud container**
+  (with `limited` networking allow-lists) or a **self-hosted sandbox** (tool execution
+  inside your infra, outbound-only polling — the option if client code must not leave
+  the VPC).
+- **Scheduling:** first-class — `deployments.create` with cron + timezone,
+  `deployment_runs` as the audit trail, manual runs for testing, auto-pause on
+  non-recoverable errors, webhooks for run outcomes. The "runs weekly by itself"
+  requirement is productized, not aspirational.
+- **Connectors/auth, honestly:** MCP servers attach to the agent with vault-held
+  credentials. But our GitLab is self-hosted: `github_repository` resource mounts are
+  GitHub-only, so reaching `git.topsdemo.in` means git-over-HTTPS from the sandbox
+  with a vault `environment_variable` PAT under a `limited` egress allow-list — or a
+  self-hosted sandbox inside the network. Caveat that matters: env-var vault
+  credentials are **not supported in self-hosted sandboxes** (egress substitution is
+  Anthropic-side), so the in-VPC variant keeps tokens host-side via the custom-tool
+  pattern. Same privilege split as §14 either way: the proposer session holds no
+  delivery credential; delivery runs with its own scoped vault, and the catalog merge
+  stays human.
+- **What we'd still own:** the drift-ops state repo, the catalogs, the container
+  image the sandbox runs, and the gate. The platform hosts the agent; it does not
+  host the truth.
+
+### 15.6 Reconciliation and verdict
+
+- **§9 unchanged.** The hosted agent invokes the core as a pinned binary in its
+  sandbox — Python today, Rust when its triggers fire. AI-native is an orchestration/
+  delivery layer *on* the core, orthogonal to its language. If anything it mildly
+  reinforces single-binary packaging (a sandbox pulls one artifact).
+- **Not a fourth mode.** The DevOps reframe stands: there are two loops — SCAN
+  (deterministic, files findings) and LEARN (AI proposes, gate disposes). §15 is the
+  *hosted delivery form of both loops plus a conversational surface*, not a new
+  epistemic mode. "Hybrid" stays dead as a category; "AI-native" is a deployment
+  adjective, not an analysis one.
+- **Verdict: yes, build it — after §14, as its re-hosting.** Sequence: §14 proves
+  the gated-author loop on commodity CI first (cheapest iteration, same guardrails);
+  §15 re-hosts that proven loop when a trigger fires: **(a)** a customer wants
+  hands-off scheduled service / multi-tenant productization, **(b)** the GitHub-
+  Actions plumbing (secrets sprawl, no interactive surface, webhook gymnastics)
+  becomes the measured bottleneck, or **(c)** Managed Agents exits beta and the
+  org is ready to run production workloads on it. Roadmap order therefore:
+  **§14 (near-term) → §15 (product evolution, trigger-gated) → Mago extractor
+  (scale-gated, behind both).** And the standing rule travels with it: no auto-merge,
+  no unverified finding in the audit, no date without a fetched source — on any
+  infrastructure, however intelligent the front-end.
+
+---
+
 ## Appendix A — recon index (all verified this session)
 
 eBay: timotheus/ebaysdk-python (854★, dormant, 2 of 4 wrapped APIs dead) ·
