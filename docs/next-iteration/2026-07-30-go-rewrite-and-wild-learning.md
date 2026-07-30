@@ -963,6 +963,109 @@ where the scanner should stand.
 
 ---
 
+## 12 · Reassessment: per-language engines under the real weighting (~90% PHP)
+
+New fact placed into the equation by the user: **~90% of our integrations are PHP;
+maybe 10% JS/Python, and that later-stage.** The challenge: §11 framed Mago as "a
+second, co-equal engine that doubles the trust surface" — but under 90/10, a deep PHP
+engine is the *primary* engine where almost all the value is, and the generic engine is
+a thin fallback. Reassessed honestly below. **The verdict changes in architecture and
+holds in sequencing.**
+
+### 12.1 Concession one: "one generic engine" was never actually one engine
+
+Looking at our own code kills the uniformity mystique: the ast-grep ruleset is
+**already per-language dispatch**. Every rule is single-language
+(`{base}@{language}`, `vendor_rules.py:135-138`), node kinds are per-grammar
+(`AST_STRING_KINDS`, `:31-40`), egress sinks are hand-written per language
+(`EGRESS_SINKS`, `:77-127`), and `rule_kinds_by_language()` (`:192-206`) exists
+precisely because coverage differs by language. What is uniform is not the engine — it
+is the **match-record IR** (`{path, line, text, kind}` consumed by
+`endpoints.scan_endpoints`) and the shared classify→attribute→residue model downstream.
+So the user's proposed architecture — dispatch by file language, deep lane for PHP,
+generic lane for the rest, honest UNKNOWN for unrecognized — is not a departure from
+the design. It *is* the design, with one lane upgraded.
+
+### 12.2 Concession two: the seam dissolves most of §11.3's cost objection
+
+§11.3 priced "two engines" as two parsers, two match models, two rule dialects, plus a
+consistency obligation. Under the seam the user points at, that was overweighted:
+
+- If a Mago lane emits the **same IR kinds** (`url`, `path-literal`, `sink`,
+  `path-assembly`, `operation-marker` — plus one new kind, `resolved-literal`, for
+  const-evaluated values, carrying its own evidence label), then classification,
+  attribution, dedup, residue, verdicts, rendering, and verify are all **shared and
+  unchanged**. The trust surface is the IR contract, not 2× the pipeline.
+- Cross-engine inconsistency risk inverts into a **strength**: run *both* lanes over
+  PHP in CI and diff their rung-1 outputs (literal-finding must agree). Differential
+  testing between two independent parsers is a stronger silent-blindness guard than
+  either alone — the `encapsed_string` bug (9 lost call-sites) would have been caught
+  by exactly this.
+- What §11.3 got right and survives: **rule authoring stays double** for anything
+  expressed as engine patterns (absorbed idioms compile to ast-grep patterns,
+  `idioms.py:75-105`; the Mago lane needs equivalent matchers, and the absorb gate's
+  measure-against-repo must run per-lane), and a second pinned engine version enters
+  the determinism/provenance story. Real, bounded, and worth it *for the 90% language*
+  — not for eight.
+
+### 12.3 Concession three: asymmetric depth is what the honesty model was built for
+
+"Cannot see ≠ clean" already expresses per-language asymmetry today: PHP had
+sinks/assembly rules while seven languages returned `UNKNOWN/no-egress-signal`
+(`shapes.py`, `signalCoverage`), and the verdict machinery renders exactly that. PHP at
+rung 2 while JS/Python sit at rung 1 is not a principle violation — it is the same
+asymmetry, pointed the other way, with each language's residue stating what its lane
+could not resolve. §11 should not have implied depth-uniformity was itself a principle;
+the principle is that depth differences must be *visible*, and the machinery for that
+already exists.
+
+### 12.4 What does NOT change — the couplings, stated plainly
+
+1. **"Mago in the PHP scan path" ≈ "build the §9 Rust core."** Mago's value is
+   crate-level (AST + `mago-project` name resolution feeding our matcher directly).
+   Bolting it onto today's Python means shelling out to a CLI that has no
+   custom-pattern scan mode — you'd get Mago's lint findings, not our rules over
+   Mago's AST. There is no cheap Python+Mago integration; this rides the Rust-core
+   decision, full stop.
+2. **The empirical question is untouched by the weighting.** 90% PHP raises the
+   *stakes* of client-side rung-2 wins, not their *frequency*. The evidence so far
+   points the other way: amazonspapi's 272 call-sites fell to rung-1 + concat idioms;
+   channelwiz's misses were interpolated-host (runtime — no engine helps) and
+   wrapper-dependency edges (profiles); the one proven const-indirection case
+   (`AccountService::API_VERSION`) lives in *SDK* code, which the miner scans anyway.
+   **What would settle it:** residue/eval evidence from the fleet — a PHP repo where
+   rung-1 + idioms + SDK profiles still leave versioned egress unattributed *and*
+   inspection shows client-side constant indirection. The Mago-powered profile
+   extractor (§11.4 item 1) generates exactly this evidence as a side effect: it
+   quantifies how much const-indirection exists per package and where.
+3. **Mago maturity/API-stability caveats (§11.1) stand** — pin exact, bumps are
+   re-verification events, `mago@<version>` in provenance.
+
+### 12.5 Revised verdict
+
+- **Architecture (changed):** the target design for the Rust core (§9) is now
+  explicitly **engine lanes behind one IR** — Mago lane as the *primary* PHP front-end
+  (rung 2: name resolution + const-eval, emitting `resolved-literal` with provenance),
+  tree-sitter lane for the other languages, unknown-language → honest UNKNOWN, one
+  shared classify→attribute→residue pipeline, differential rung-1 testing between
+  lanes on PHP. §11.3's "two co-equal engines" framing is withdrawn; under 90/10, PHP
+  depth is where the product's recall lives, and the seam keeps it inside "simple
+  enough to trust" because the trusted thing is the IR contract plus shared
+  downstream, not two pipelines.
+- **Sequencing (held):** entry into the scan path is still gated, because the gate was
+  never about weighting — it's about evidence and coupling. Triggers, explicitly:
+  (a) the §9 Rust core is being built (coupling #1 — no Python+Mago bolt-on), AND
+  (b) fleet residue demonstrates client-side const-indirection misses that rung-1 +
+  idioms + profiles don't cover (coupling #2). Until both fire: Mago enters the LEARN
+  loop now (miner-side profile extraction), which both delivers value immediately and
+  produces the evidence to fire or retire trigger (b).
+- **Net effect on §9:** strengthened again. "Engine lanes with Mago primary for the
+  dominant language" is only buildable in Rust — which now makes the Rust core the
+  place where *both* the greenfield correctness argument (§9.2) and the deep-PHP
+  recall argument converge.
+
+---
+
 ## Appendix A — recon index (all verified this session)
 
 eBay: timotheus/ebaysdk-python (854★, dormant, 2 of 4 wrapped APIs dead) ·
