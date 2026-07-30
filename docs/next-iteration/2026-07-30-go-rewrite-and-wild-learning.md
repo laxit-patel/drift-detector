@@ -1481,6 +1481,119 @@ deltas; never adjacent to a green checkmark.
 
 ---
 
+## 16 · The reader router — empirically validated (live head-to-head, this session)
+
+Not a hypothesis. A real experiment was run this session: **integration detection
+only** (no CVE/EOL/packages), **20 in-house repos** (the marketplace wrappers + apps),
+both readers on the **same local clones**.
+
+| | Deterministic tool | AI reader (20 parallel Sonnet agents, one per repo; instructed: find third-party API integrations + versions + retired, cite real file:line, never invent) |
+|---|---|---|
+| Integrations | 196 normalized endpoint records | 285 prose mentions |
+| Retired flags | 28 — **every date sourced, verify-certified** | 37 — **its own unverified judgment** |
+| Repos seen into | **8 of 20** | **20 of 20** |
+| Cost | ≈ 0 tokens, reproducible byte-identically | **782k tokens**, unrepeatable |
+
+The AI read into **all 12 repos the tool found zero in** — the config-driven/SDK-only
+wrappers: magento_api (21), catchapi (16), themarket (14), **bunnings (13 — correctly
+identified the underlying Mirakl platform)**, mysaleapi (13), **myerapi (12 — inferred
+Myer runs on Marketplacer, a fact no host/path rule could ever yield)**, mydeal (11),
+neto (10), tradevine (8 — Tradevine + Trade Me), theiconic (6), harveynorman (4 — the
+repo `vendors.yaml`'s own comments call "honestly blind, config-driven host"),
+marketplace-api-base (1).
+
+**The honest reading, stated before anyone oversells it:** AI wins on **coverage**
+(20/20 vs 8/20); the tool wins on **trust** (verified, reproducible, ~zero cost).
+285-vs-196 overstates the AI — prose mentions are not normalized endpoint records, so
+*who saw into a repo at all* is the real metric, not raw counts. And its 37 "retired"
+flags are exactly the class of claim that produced the invented eBay dates. This is
+not "AI beats the tool." It is the empirical proof of the layered architecture: **AI
+is unbeatable at seeing into exotic code; the deterministic core is unbeatable at
+trusting the result.** The 782k tokens is a *one-time-per-wrapper* cost that, routed
+through the gate, becomes a reusable profile the deterministic tool then reproduces
+forever at zero marginal cost.
+
+### 16.1 The router: classify → auto-dispatch → merge
+
+The classifier already exists and already ran, implicitly, in this experiment: the
+**shape verdict** (`shapes.verdict` — KNOWN / UNKNOWN with reasons; residue grade;
+`sdk-only-no-callsite`; `no-egress-signal`). The router is the thin loop on top:
+
+```
+scan (deterministic, 0 tokens)
+  ├─ verdict KNOWN            → done; findings are the audit           (8/20 here)
+  └─ verdict needs-cognition  → dispatch to the AI reader              (12/20 here)
+        └─ reader output = PROPOSALS (profiles/idioms, evidence file:line)
+              └─ absorb gate → MR → human merge → catalog
+                    └─ NEXT scan reads the merged profile: the repo is now
+                       KNOWN, deterministically, at zero tokens, forever
+```
+
+The experiment was the router's inner loop run manually across all 20 — with one
+deliberate omission: the 12 readings were *not* gated, which is why they are 285
+mentions and 37 unverified flags instead of findings. The router's whole job is to
+close that last arc automatically.
+
+### 16.2 The unification — one AI mechanism, not a new reader
+
+Critical framing, and it must be honored everywhere this ships: **the "AI reader
+lane" is not a new mechanism. It is the absorb layer, auto-triggered.** There is
+exactly ONE way AI knowledge enters this system:
+
+> **absorb**: AI proposes → deterministic gate measures → human merges →
+> the deterministic scan inherits.
+
+One mechanism, authoring **three artifact types** — idiom instances, sunset entries,
+SDK profiles — reachable by **four entry points**: manual (`/drift-absorb`, a human
+driving), autonomous-CI (§14, flag-triggered), **routed (§16, verdict-dispatched — this
+section)**, and hosted (§15, the same loop on managed infra). The router adds *zero*
+new epistemics: it is auto-dispatch to the mechanism that already exists. Anyone
+diagramming this as "the deterministic engine AND the AI engine" has drawn it wrong —
+there is an engine, and there is an intake pipeline for teaching it.
+
+**The one real code task this implies:** `absorb` today gates idioms + sunsets
+(`agent/absorb.py`); the profile format + scan-side pipeline shipped separately this
+session (`agent/sdk_profiles.yaml`, loud-validated at load). Extend `absorb` to
+**author and gate profiles** as a first-class staged artifact (staging file, the
+evidence-per-version check enforced at the gate rather than only at load, and the
+§3.2 regeneration check where the extraction is mechanical). Small, closes the loop.
+
+### 16.3 What the gate converts, precisely
+
+The experiment's 285 mentions are worth nothing to the audit as-is — and worth a
+great deal one step later. The Mirakl and Marketplacer identifications show what
+cognition uniquely contributes: *platform* inferences that no host or path rule could
+produce, which become — through the gate — a `vendors.yaml` detection entry and a
+profile with evidence lines, i.e., **durable detection capability**, not a one-off
+report. The 782k tokens shows why it's *routed* (spend on the 12 exotic repos, not
+the 8 readable ones) and why the one-time-profile economics matter (never re-spend,
+never trust un-gated). The AI's 37 retired flags convert to at most the subset that
+survives `check_sunsets` — a date without a fetched vendor source stays out, exactly
+as it did when a human proposed one.
+
+### 16.4 What this validates — and the loop it prices
+
+- **§14 (autonomous absorption) is validated empirically:** the AI just demonstrated
+  it sees every blind spot the tool has (12/12), citing file:lines, in parallel, in
+  one session. The only missing piece between that demonstration and trusted findings
+  is the routing-through-the-gate that §14 builds. Build it with confidence.
+- **§15 (hosted) inherits the same validation** — same loop, better scheduling and
+  credential mechanics.
+- **The detectability loop gets a price tag** (the banked TECH_DEBT #3/#5, now with
+  numbers): the router's natural byproduct is a standing report — *"these N repos
+  required the AI reader this cycle (~X tokens); for each, here is the one-line code
+  change that makes it deterministically readable (hoist the version to a const the
+  scanner reads, expose the base URL as a literal); fix it and the cost drops to
+  zero; don't, and this is the recurring tax."* For in-house wrappers — which is what
+  all 12 exotic repos are — that's an MR the Maintainer stream can actually send.
+  Detection debt becomes a line item, and the router is its meter.
+
+**One-line summary for the report:** the deterministic tool saw 8 of 20 repos and
+every claim it made was certified; the AI saw 20 of 20 and none of its claims were;
+the product is the pipeline that turns the second column into the first.
+
+---
+
 ## Appendix A — recon index (all verified this session)
 
 eBay: timotheus/ebaysdk-python (854★, dormant, 2 of 4 wrapped APIs dead) ·
