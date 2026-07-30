@@ -1159,6 +1159,174 @@ ground. Final position across §§1, 8, 9, 11, 12, 13:
 
 ---
 
+## 14 · Autonomous absorption via the Claude Agent SDK, as a separate CI stage
+
+Decision under design: automate the human-driven `/drift-absorb` + SDK-profiling work
+as an **opt-in, separate CI stage** driven by the Claude Agent SDK — while the scan
+path stays deterministic and zero-token. Grounding facts, verified live today: the
+Agent SDK ships as `claude-agent-sdk` (Python) / `@anthropic-ai/claude-agent-sdk`
+(TypeScript), runs the full Claude Code harness headlessly in your own process
+(`query()`/`ClaudeSDKClient`), and exposes a real permission system — `allowed_tools` /
+`disallowed_tools` (deny rules hold **even in bypass mode**; a bare-name deny removes
+the tool from the model's context entirely), `permission_mode` including **`dontAsk`**
+("anything not pre-approved is denied; `canUseTool` is never called" — the documented
+pairing for a locked-down headless agent), path-scoped write rules (`Edit(path)`
+governs Write/NotebookEdit too), and `PreToolUse` hooks that run before every other
+check ([permissions docs](https://code.claude.com/docs/en/agent-sdk/permissions)).
+
+And the target artifact now exists on master: **SDK profiles shipped**
+(`9f64e1f`/`faafa7a` — `agent/sdk_profiles.yaml` + `agent/lib/sdk_profiles.py`). A
+wrapper's pinned versions, read from its own constants, become synthetic endpoints
+`attribution: sdk-profile`, evidenced at the const's `file:line`, dated by the normal
+lifecycle/sunset join (shopify-api → 4 pinned Shopify versions → retired findings,
+verify green). That is §3's design landed, in its repo-identity form — and it is
+*exactly* the artifact an autonomous author would produce: today a human opened
+`src/GraphQL.php:19` and wrote the YAML; the loader refuses any version without an
+`evidence` file:line ("a profile is a read fact, not a guess").
+
+### 14.1 Why this is safe now and was not before
+
+The reason unsupervised absorption was deferred is on the record in `absorb.py`'s own
+docstring: the first research pass reported GetCategorySpecifics as 2022-04-20 and
+AddDispute as 2023-01-31 — **both invented, both wrong by days**. The lesson was never
+"agents can't do this"; it was "an agent's output is a *proposal*, and nothing makes a
+proposal safe except a deterministic gate plus a human merge." That gate now exists and
+is battle-tested: `check_sunsets` (no source ⇒ refused; undated ⇒ must say
+`deprecated-no-date`), `measure_against_repo` (claims met, no invented vendors, no
+unclaimed attributions, residue must shrink), the loud profile validation in
+`sdk_profiles.load`, and the overlay/MR flow that keeps every catalog change a reviewed
+commit. This is the banked **P4 / Tier-2 scout** ("residue-triggered … proposals
+through a mechanical-verify-then-human-approve queue — never the sole source of a
+first-class finding") whose *precondition is now met*. Building it earlier would have
+been unsafe; not building it now leaves a proven gate idle while a human does
+mechanical reading.
+
+### 14.2 The architecture — four layers, each protecting one invariant
+
+```
+┌ 1 · SCAN (CI, weekly) — deterministic, zero tokens ─────────────────────────┐
+│  unchanged. Emits the TRIGGER FLAGS: shape verdict UNKNOWN / no-egress-     │
+│  signal, residue grade LOW, sdk-only-no-callsite, probe EDGES sdk deps.     │
+│  Invariant protected: byte-identical, replayable scan (principle 3).        │
+└──────────────────────────────────────────────────────────────────────────────┘
+┌ 2 · LEARN (separate workflow, opt-in, on-flag or monthly) ──────────────────┐
+│  Claude Agent SDK job (python, `query()`, headless). Reads the flagged      │
+│  repo + its wrapper sources; authors STAGED YAML only: idiom instances,     │
+│  sdk_profiles entries — every claim carrying a file:line it opened.         │
+│  Invariant protected: the author can only PROPOSE (see 14.5 guardrails).    │
+└──────────────────────────────────────────────────────────────────────────────┘
+┌ 3 · GATE (deterministic, zero tokens) — the hard firewall ──────────────────┐
+│  `drift-scan absorb --check` on the staged output: dates refused without    │
+│  sources; idioms re-scanned and measured against their claims; profiles     │
+│  refused without per-version evidence. The job loops the agent on problems  │
+│  (the measure delta is machine-readable) and hard-fails after N rounds.     │
+│  Invariant protected: never-invent-a-date / no-false-endpoints — enforced   │
+│  by code, not by trusting the author.                                       │
+└──────────────────────────────────────────────────────────────────────────────┘
+┌ 4 · DELIVERY — MR to drift-ops catalog/ overlay; HUMAN MERGES ──────────────┐
+│  No auto-merge, ever. The MR body carries the gate's measurement (before/   │
+│  after attribution, residue delta, evidence links). Invariant protected:    │
+│  the catalog remains reviewed data (principle 4); the next scheduled scan   │
+│  consumes only merged YAML — so authoring non-determinism is quarantined    │
+│  one layer above the deterministic artifact the scan reads (the Tier-3      │
+│  rule: learning lives between scans, in git-versioned artifacts).           │
+└──────────────────────────────────────────────────────────────────────────────┘
+```
+
+This sits beside the scan exactly like `drift-catalog-check` does — a third CI
+lane, not a change to the first one.
+
+### 14.3 The scope line, honestly drawn
+
+**Automatable — pure code-reading:** (a) idiom absorption for UNKNOWN/LOW-grade repos
+(the existing `/drift-absorb` promptfile is already the playbook; the SDK job is that
+promptfile with the human removed from the *driving* seat, not the *approving* one);
+(b) SDK-profile authoring (open the wrapper, read `$apiVersion = '2023-04'`, cite the
+line — the shopify-api profile proves a session of pure reading produces it).
+**Not automatable — credential work:** the freshness *portal* lane. The human IS the
+login; no SDK signs into a seller portal, and no credential should ever ride in an
+autonomous agent's environment. The *public* freshness lane (fetchable vendor pages)
+is automatable in principle and already banked as a parallel workflow (TECH_DEBT.md) —
+out of scope here; this section is absorption + profiling only.
+
+### 14.4 Claude vs. Mago for profile extraction — the crux, positioned
+
+§11/§13 assigned extraction to a future Mago-powered miner. The shipped profile
+mechanism plus the Agent SDK changes the *sequencing*, honestly weighed:
+
+| | Claude-SDK CI author | Mago-based extractor |
+|---|---|---|
+| Build cost | ~zero (promptfile → SDK job port) | Rust build, rides the §9 core timeline |
+| Wrapper-shape coverage | **Arbitrary** — the shopify-api case needed version knowledge from a default in `GraphQL.php` *and* per-namespace `ShopifyApi.php` constants; a model just reads, an engine must be taught where to look | Only shapes the const-eval reaches — but reaches them **identically every run** |
+| Marginal cost | Tokens per session (small at on-flag cadence; a wrapper read is a bounded session) | Zero |
+| Verification strength | Gate + human-opens-the-cited-line. The §3.2 "regenerate-and-diff" check **cannot be fully mechanical** — you can't deterministically regenerate a model's reading. This is the real cost, mitigated by evidence-links in the MR | **Regeneration is mechanical** — re-run, diff, done. Strictly stronger gate |
+| Staleness refresh | Re-run the author per wrapper release (tokens + review each time) | Free re-profiling on every corpus refresh |
+
+**Position: Claude-authored-gated profiles first; Mago industrializes later — and the
+two compose.** At today's scale (a handful of in-house wrappers, occasional refresh),
+building a const-eval engine to avoid a few bounded reading sessions is over-building;
+the SDK job ships in days and its output is identical in kind to the human-authored
+YAML already on master. The Mago extractor's trigger is now sharper than §11 had it:
+**when profile count or refresh cadence makes per-release re-authoring and re-review
+the bottleneck** (order ~20+ profiled packages, or routine quarterly re-profiling) —
+at which point Mago *regenerates the Claude-bootstrapped profiles deterministically*,
+upgrading the gate from evidence-review to mechanical regeneration. Every
+Claude-authored profile is also a labeled example that specifies the extractor. Net
+roadmap effect: **Mago moves down (further deferred), Agent-SDK absorption moves into
+the near-term plan.**
+
+### 14.5 Guardrails — concrete, from the SDK's actual controls
+
+1. **Separate stage, separate workflow file, opt-in** via a repo variable
+   (`DRIFT_LEARN=on|off`, default off), triggered by scan flags or monthly — never per
+   scan run (cost control), never in `scan.yml`'s job graph (path control).
+2. **Locked-down tool surface**: `permission_mode="dontAsk"` +
+   `allowed_tools=["Read","Glob","Grep","Edit(<staging-dir>/**)"]` — the documented
+   locked-down pairing; everything unlisted is *denied, not prompted*. Writes are
+   path-scoped to the staging directory only (an `Edit(path)` allow rule covers
+   Write too). `disallowed_tools=["WebSearch","WebFetch","Bash"]` for the profiling
+   job (it reads code, nothing else); the absorption job gets a scoped
+   `Bash(./bin/drift-scan absorb --check*)` allowance so it can iterate against the
+   gate, and a `PreToolUse` hook as the belt-and-braces log/deny on every call
+   (hooks run even in bypass — but we never run bypass).
+3. **The agent cannot deliver.** No `GITLAB_TOKEN` in its environment; it cannot push,
+   cannot open MRs, cannot touch `catalog/`. The surrounding *deterministic* job step
+   runs the final `absorb --check`, and only on green does the pipeline (which holds
+   the token, outside the agent process) commit the staged YAML to a branch and open
+   the MR. Privilege separation between author and publisher is the CI-security
+   answer to running an autonomous agent at all.
+4. **Untrusted input is assumed.** The agent reads third-party wrapper code — treat it
+   as hostile text (prompt-injection surface). The mitigations are structural, not
+   prompt-level: no secrets in env, no network tools, no delivery capability, output
+   confined to staged YAML that a deterministic gate and a human both inspect. A
+   poisoned suggestion still has to invent a source URL that survives `check_sunsets`
+   and a human reading the MR.
+5. **No auto-merge, ever** — stated as a standing rule alongside never-invent-a-date.
+   The day an "auto-merge on green gate" shortcut is proposed, the answer is in
+   `absorb.py`'s docstring: the gate catches the *mechanical* failure modes; the human
+   catches the ones nobody wrote a check for yet.
+6. **Determinism ledger**: the authoring stage is openly non-deterministic; what the
+   scan consumes is the merged, reviewed, git-versioned YAML. Reproducibility is a
+   property of the *scan given its inputs* — unchanged — and of the *gate given a
+   proposal* — unchanged. Only proposal *generation* varies, and it varies inside a
+   quarantine that already existed for human authors (humans aren't deterministic
+   either; the pipeline never depended on the author, only on the artifact).
+
+### 14.6 Verdict and triggers
+
+**Build it — near-term (promote to the phase plan alongside Phase 1).** Precondition
+(the gate) is met; the target artifact (sdk_profiles) shipped; the playbook exists as
+promptfiles (`commands/drift-absorb`); the SDK provides the exact confinement
+primitives the guardrails need; and the payoff is direct: every `sdk-only-no-callsite`
+wrapper and UNKNOWN-verdict repo currently waits on a human's reading time. Cadence:
+on-flag + monthly, `DRIFT_LEARN` opt-in, dry-run (MR-less, artifact-only) for the
+first cycle. Mago's extractor trigger is re-pointed at scale (~20+ profiles or routine
+re-profiling), with Claude-authored profiles as its bootstrap corpus and spec. The
+freshness portal lane stays human, permanently — that's a credential boundary, not a
+capability gap.
+
+---
+
 ## Appendix A — recon index (all verified this session)
 
 eBay: timotheus/ebaysdk-python (854★, dormant, 2 of 4 wrapped APIs dead) ·
