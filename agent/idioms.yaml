@@ -90,3 +90,35 @@
     base assembles $this->ENDPOINT . '/rest/' . $url, and each operation class pins
     $API_URL = "V1/orders/" etc. (also "all/V1/..." for store-scoped). No host literal
     (self-hosted per merchant), so repo-scoped + vendor-bound on the V1/ marker.
+
+- id: mysale-api-paths
+  family: path-constant
+  repo: shubhTops/mysaleapi
+  vendor: MySale
+  pathRegex: 'v1/'
+  evidence: "shubhTops/mysaleapi src/Mysale/GetProductList.php:12"
+  note: >-
+    MySale Marketplace. Base URL injected via init($config['base_url']); operations are
+    per-class $apiXxx constants ("v1/merchant-products", "v1/orders/new", …). No host
+    literal, so repo-scoped + vendor-bound on the v1/ marker.
+
+- id: marketplacer-myer-paths
+  family: path-constant
+  repo: shubhTops/myerapi
+  vendor: Marketplacer
+  pathRegex: 'api/v2/|api/auth'
+  evidence: "shubhTops/myerapi src/Myer/GetProductList.php:9"
+  note: >-
+    Marketplacer (Myer runs on it). Host injected via config['source_url']; operations are
+    "api/v2/client/adverts", "api/v2/taxons", "/api/auth/login". Repo-scoped + vendor-bound.
+
+- id: mirakl-bunnings-paths
+  family: path-constant
+  repo: akshit.tops/bunnings
+  vendor: Mirakl
+  pathRegex: '^/api/'
+  evidence: "akshit.tops/bunnings src/Bunnings/GetOrders.php:9"
+  note: >-
+    Mirakl (Bunnings Marketplace runs on it — doc comments cite *.mirakl.net). Host injected
+    via init($config); operations are "/api/offers", "/api/products/imports", "/api/orders".
+    Repo-scoped + vendor-bound.
