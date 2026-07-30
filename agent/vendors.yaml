@@ -20,6 +20,7 @@
 - { vendor: BigCommerce,       techKey: api:bigcommerce,         domains: [bigcommerce.com] }
 - { vendor: WooCommerce,       techKey: api:woocommerce,         domains: [woocommerce.com] }
 - { vendor: Mirakl,            techKey: api:mirakl,              domains: [mirakl.net] }
+- { vendor: Virtualstock,      techKey: api:virtualstock,        domains: [virtualstock.com] }  # Harvey Norman marketplace (Virtualstock 'The Edge')
 - { vendor: Rakuten,           techKey: api:rakuten,             domains: [rakuten.com, rms.rakuten.co.jp] }
 # AU/NZ marketplaces — DETECTION ONLY (host match; default version format). Evidence: seen as
 # live API hosts in channelwiz/channelwiz-api's marketplace controllers (sandbox/preprod/api
@@ -38,6 +39,7 @@
 - { vendor: MySale,            techKey: api:mysale,              domains: [mysalemarketplace.com] }
 - { vendor: Marketplacer,      techKey: api:marketplacer,        domains: [marketplacer.com] }
 - { vendor: Mirakl,            techKey: api:mirakl,              domains: [mirakl.net] }
+- { vendor: Virtualstock,      techKey: api:virtualstock,        domains: [virtualstock.com] }  # Harvey Norman marketplace (Virtualstock 'The Edge')
 
 # ── Payments ───────────────────────────────────────────────────────────────
 - { vendor: Stripe,            techKey: api:stripe,              domains: [stripe.com] }

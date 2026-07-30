@@ -122,3 +122,16 @@
     Mirakl (Bunnings Marketplace runs on it — doc comments cite *.mirakl.net). Host injected
     via init($config); operations are "/api/offers", "/api/products/imports", "/api/orders".
     Repo-scoped + vendor-bound.
+
+- id: virtualstock-harveynorman-paths
+  family: path-constant
+  repo: root/harveynorman
+  vendor: Virtualstock
+  pathRegex: 'format=json'
+  evidence: "root/harveynorman src/HarveyNorman/HarveyNormanOrder.php:13"
+  note: >-
+    Harvey Norman marketplace on Virtualstock 'The Edge'. Host injected at runtime; the
+    version prefix (API_VERSION '/api/v4', RESTAPI_VERSION '/restapi/v4') is prepended to
+    per-class URI consts ("/orders/?format=json", "/categories/?format=json", …) in
+    hitApi(self::API_VERSION . $path). The distinctive ?format=json suffix marks the
+    operation constants (a bare ^/ would strip to '/' and match every path fleet-wide).
