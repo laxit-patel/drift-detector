@@ -503,7 +503,10 @@ def _cmd_absorb(args) -> int:
             rules = os.path.join(td, "rules.yaml")
             write_ruleset(vendors, rules, idiom_instances=insts)
             res = run_scan(args.repo, rules, engine=engine)
-        return scan_endpoints(res["matches"], args.repo, vendors)
+        # pass the staged idioms + repo id so a path-constant instance (repo-scoped,
+        # vendor-bound) is actually exercised by the gate, not silently ignored
+        return scan_endpoints(res["matches"], args.repo, vendors,
+                              idioms=insts, repo_id=args.repo)
 
     m = absorb.measure_against_repo(args.repo, staged_idioms, claims, scan=scan)
 
