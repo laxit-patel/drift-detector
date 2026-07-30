@@ -750,6 +750,107 @@ top criterion, Go cannot finish first.
 
 ---
 
+## 10 · Analysis techniques — what we use, what we don't, and the capability ladder
+
+Prompted by the question: *"grep, regex, AST, tree-sitting — are we using all, or one?
+Doesn't code become AST only when it compiles? Could deeper static analysis crack cases
+like this?"* — with the case being:
+
+```php
+$storeResponse = Http::withHeaders([
+    'X-Shopify-Access-Token' => $accessToken,
+])->withOptions(['verify' => false])->get("https://{$shop}/admin/api/2024-01/shop.json");
+```
+
+### 10.1 Inventory: the core is a two-stage hybrid — tree-sitter-AST *discovery*, regex *classification*
+
+Not grep. Not compilation. Precisely:
+
+**Stage 1 — FIND, on the AST.** The pinned ast-grep binary parses every source file
+into a **tree-sitter AST** and matches rules by *node kind*:
+- One broad rule per language matches any string-literal node whose text contains
+  `https?://` (`agent/lib/vendor_rules.py:141`), over the empirically-verified container
+  kinds per grammar (`AST_STRING_KINDS`, `vendor_rules.py:31-40` — PHP's
+  `encapsed_string`, JS `template_string`, Go `interpreted_string_literal`, …; getting
+  `encapsed_string` wrong once cost 9 real call-sites, hence "verified, do not guess").
+- Plus per-vendor domain-literal rules, versioned path-literal rules
+  (`vendor_rules.py:148-150`), egress-sink call patterns per language
+  (`EGRESS_SINKS`, `vendor_rules.py:77-127` — `curl_exec($$$)`, `fetch($$$)`,
+  `requests.$M($$$)`…), and the absorbed URL-assembly idioms compiled from YAML into
+  ast-grep patterns like `$A->getHost() . $B` (`agent/lib/idioms.py:75-105`).
+- Matching by node kind is what makes this **comment-safe by construction**
+  (`vendor_rules.py:9`) — a URL in a comment is a different node kind. Grep can never
+  give you that; this is exactly why the tool is AST-first at discovery.
+
+**Stage 2 — CLASSIFY, with regex over the matched text.** Everything the AST stage
+surfaces is then interpreted lexically in Python: extract URLs
+(`classify_url.py:16`), host→vendor by registrable-domain suffix / boundary-aware
+fragment (`classify_url.py:85-99`), URL→version (`:102-105`), path→API family anchored
+on the version segment (`api_path_of`, `:157-191`), operation markers (`:146-154`),
+host-independent path signatures (`:108-123`), all joined into endpoint records in
+`agent/lib/endpoints.py:97-121`.
+
+So: **AST answers "is this a string/call, and where"; regex answers "what is it".**
+Each tool does the one job it's good at.
+
+**Deliberately NOT used — and on record as deliberate:** no dataflow, no constant
+propagation, no type inference, no call-graph, no symbolic execution. The 30 unresolved
+`curl_exec` sinks in ebayapi are the standing exhibit: linking a sink to the endpoint it
+calls needs dataflow, and the tool instead counts sinks as blindness only when nothing
+was attributed (`shapes.verdict`) — "multi-hop/dataflow resolution is cognition
+territory, not deterministic-rule territory" (open-items memory, #2). What the scanner
+can't trace lands in **residue**, at file:line, as the honest remainder — that's the
+design, not a gap in it.
+
+### 10.2 Concept correction: ASTs come from *parsing*, not *compiling*
+
+Kindly but plainly: code does **not** need to compile — or even be complete or correct —
+to have an AST. tree-sitter builds the tree straight from source text, error-tolerantly
+(it's an editor-tooling parser; it produces a tree for code with syntax errors in it).
+That is what ast-grep already does on every scan today: no interpreter, no compiler, no
+execution. What compilation *adds* on top of parsing is semantic analysis — name
+resolution, type checking — and then codegen. "Predict what the code would do without
+running it" is therefore not one thing but a **ladder** of increasingly expensive
+semantic analyses on top of the AST we already have. Runtime values (`$shop`'s actual
+contents) are a *third* axis that neither parsing nor compiling reaches — only execution
+does (the banked OTel/access-log signal, TECH_DEBT.md #1–2).
+
+### 10.3 The capability ladder, worked on the Shopify line
+
+| Rung | What it resolves on the example | Cost | Worth it here? |
+|---|---|---|---|
+| **1 · AST-find + regex-classify** *(today)* | The interpolation `{$shop}` truncates URL extraction, so host→vendor is blind. **But the path IS resolved today** — the host-independent `pathSignature` `/admin/api/([0-9]{4}-[0-9]{2})/` (`agent/vendors.yaml:19`, matched at `classify_url.py:108-123`, wired at `endpoints.py:105-114`) names it Shopify + version `2024-01` → joined to the computed lifecycle (`version_lifecycle.py:35`) → **retired 2025-01-16, at file:line**. This exact case shipped this month and fired on channelwiz's two retired Shopify calls. | Already paid | **The standing lesson: a cheaper signal beat deeper analysis.** The host was never needed — the path grammar was vendor-unique. Wild-mining (Tier S) exists to find more such signatures. |
+| **2 · Local constant propagation / intra-procedural dataflow** | Resolves `$shop` only if assigned a literal in the same function (`$shop = 'x.myshopify.com'; …`). In the real code it's a parameter/DB value — **still opaque**. Would genuinely help the split-literal shape (`$base = 'https://api.x.com'; … $base . $path`) — though the `url-append` idiom family (`idioms.py:44-48`) already covers the common assemble-then-append form without any dataflow. | Moderate: per-language scope/assignment semantics ×8 grammars; determinism survives | **Maybe, later, narrowly**: single-file, single-assignment constant folding only — and only if residue from a real fleet repo demonstrates the need (same trigger discipline as everything else). Not phase 1–2. |
+| **3 · Inter-procedural dataflow / taint / call-graph** | The `getCategoryFeatures` class: version lives in `AccountService::API_VERSION`, threads through a config array into a `UriResolver` 3 files away. Dataflow *could* trace it… | High: symbol resolution per language, framework dynamism (Laravel facades — `Http::` in the example resolves via a service container, which static call-graphs handle badly), soundness/timeout tradeoffs | **No — §3's SDK profiling is the designed alternative.** Don't trace *into* the dependency at the client; **scan the dependency once, offline**, and join by lockfile. Same knowledge, deterministic, gate-checkable, paid once per package instead of per scan. |
+| **4 · Type inference / type-aware analysis** | The TS intuition, honestly: types resolve **which** method/SDK is called (call resolution — `client.orders.get()` is SP-API's OrdersApi), which would sharpen SDK attribution. But `` `https://${shop}/…` `` has type `string`. **Types answer "what kind", never "which value"** — the host is a runtime value in every type system. So TS helps *some* (receiver/method identity), not the part that hurts (value of `shop`). And profiles (§3) already deliver the receiver-identity knowledge without embedding `tsc` in the scan. | High and per-language (tsc API for TS; PHP would need PHPStan-class machinery) | **Not in the scan path.** Possibly a *miner-side* tool later (typed call-resolution while building profiles from TS wrappers) — server-side, offline, gated. |
+| **5 · Symbolic execution / abstract interpretation** | Could in principle enumerate the *set* of hosts `$shop` may hold. Path explosion, solver dependencies, timeouts; results are "possibly one of…" — which the report can't render as fact without weakening the evidence bar. | Very high | **Out of scope, full stop.** The tool's contract is facts-at-file:line + honest residue, not probable facts. |
+
+### 10.4 What this means for the next iteration (and §9)
+
+- **Stay at rung 1, and get better at it** — more Tier-S-mined path signatures,
+  version grammars and operation vocabularies (§3.1) raise recall with zero new
+  analysis machinery. The Shopify case is the proof: signature > dataflow.
+- **Rung 3's problem is solved sideways, not climbed:** SDK profiling (§3) is
+  explicitly the cheap substitute for inter-procedural dataflow — the endpoint
+  knowledge physically lives in the dependency, so scan the dependency, don't build a
+  taint engine. This was already the doc's central mechanism; the ladder shows *why*
+  it's the right rung.
+- **Rung 2 is the only climb worth banking:** bounded intra-file constant folding,
+  trigger-gated on a real repo's residue proving the need. If built, it must stay
+  deterministic (pure AST-local, no heuristics) and its attributions get their own
+  evidence label, same as `inferred` and `sdk-profile`.
+- **The §9 language pick doesn't change the ladder** — the engine is factored out
+  either way. It changes the *ceiling*: if rung 2 is ever built, Rust is where the
+  ecosystem cooperates (tree-sitter native, ast-grep's own crates, typed exhaustive
+  node-kind handling); building per-language dataflow in Python would be the moment
+  the "port trigger" argument writes itself.
+- **Assertively:** cheap signals + honest residue beat a dataflow engine for this
+  product. A dataflow engine would spend a quarter to convert *some* residue into
+  findings while adding the first analysis stage whose failure modes are silent; the
+  residue conscience only works because every stage below it is simple enough to trust.
+
+---
+
 ## Appendix A — recon index (all verified this session)
 
 eBay: timotheus/ebaysdk-python (854★, dormant, 2 of 4 wrapped APIs dead) ·
