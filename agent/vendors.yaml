@@ -31,6 +31,8 @@
 - { vendor: THE ICONIC,        techKey: api:theiconic,           domains: [theiconic.com.au] }
 - { vendor: TheMarket,         techKey: api:themarket,           domains: [themarket.co.nz] }
 - { vendor: Kogan,             techKey: api:kogan,               domains: [kgn.io] }
+- { vendor: Tradevine,         techKey: api:tradevine,           domains: [api.tradevine.com] }
+- { vendor: Trade Me,          techKey: api:trademe,             domains: [api.trademe.co.nz] }
 
 # ── Payments ───────────────────────────────────────────────────────────────
 - { vendor: Stripe,            techKey: api:stripe,              domains: [stripe.com] }
