@@ -9,7 +9,7 @@ from agent.lib.vendor_rules import write_ruleset, rule_kinds_by_language
 from agent.lib import shapes
 from agent.lib.repo_scan import scan_repo
 from agent.lib.repo_discovery import discover_repos, diagnose_root
-from agent.lib import source_resolver
+from agent.lib import source_resolver, sdk_profiles
 from agent.lib.inv_rollups import build_rollups
 from agent.lib.inventory_diff import diff_inventories
 
@@ -156,6 +156,18 @@ def scan_folder(root, state_dir, now, *, engine=None, run=None, git=None, progre
         except Exception as exc:            # no single repo aborts the scan
             _p(f"{tag}  ⚠ error: {exc}")
             coverage["reposErrored"].append({"repo": name, "reason": str(exc)})
+
+    # SDK profiles: for a wrapper whose vendor+version live behind constants (the
+    # `sdk-only-no-callsite` blind spot), inject synthetic endpoints read from its OWN source
+    # (agent/sdk_profiles.yaml) so the audit dates them like any endpoint. Post-loop and never
+    # cached, so a profile edit takes effect on the next scan without a cache bump. Attribution
+    # `sdk-profile` + evidence at the const's file:line — a read fact, not a fabricated call-site.
+    _profiles = sdk_profiles.load()
+    if _profiles:
+        for r in repos:
+            extra = sdk_profiles.endpoints_for(r, _profiles)
+            if extra:
+                r["endpoints"] = list(r.get("endpoints", [])) + extra
 
     _p("aggregating inventory + drift delta …")
     coverage["rootsUnscannable"] = unscannable
