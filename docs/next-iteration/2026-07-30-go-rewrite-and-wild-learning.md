@@ -851,6 +851,118 @@ does (the banked OTel/access-log signal, TECH_DEBT.md #1–2).
 
 ---
 
+## 11 · Mago: a native-PHP analysis engine — leverage it, but not where you'd think
+
+The question: [Mago](https://github.com/carthage-software/mago) ("the oxidized PHP
+toolchain") is Rust — can we leverage it to analyze our PHP projects? Two readings; the
+load-bearing one is *Mago as the PHP engine inside our scanner*, in the Rust direction
+§9 recommends. Researched live today.
+
+### 11.1 What Mago actually is (verified 2026-07-30)
+
+Not just a CLI — a **workspace of reusable Rust crates** with the CLI on top,
+dual-licensed **MIT/Apache-2.0**, current release **v1.45.0**, actively shipped:
+
+- [`mago-syntax`](https://crates.io/crates/mago-syntax) — hand-written PHP **lexer,
+  parser, AST** ("correct, fast, memory-efficient"), no PHP runtime needed.
+- [`mago-project`](https://crates.io/crates/mago-project) — parses a whole project,
+  **resolves names**, collects semantic issues, merges module reflections into a
+  unified project reflection. This is real semantic analysis, not just parsing.
+- [`mago-codex`](https://crates.io/crates/mago-codex) — **PHP type-system
+  representation** + comparison logic for static analysis;
+  [`mago-type-syntax`](https://crates.io/crates/mago-type-syntax) parses docblock types.
+- [`mago-analyzer`](https://crates.io/crates/mago-analyzer) — the static analyzer
+  ("deep analysis … catch potential type errors"), plus linter/formatter crates and
+  even [`mago-wasm`](https://crates.io/crates/mago-wasm).
+
+Maturity, honestly: the toolchain is fast and real (sub-second on a 500-file Laravel
+project in the [PHP toolchain benchmarks](https://carthage-software.github.io/php-toolchain-benchmarks/)),
+but the *analyzer* is **not yet at PHPStan/Psalm parity** on type-level checks
+(community assessments through 2026, incl. the project's own
+[parity discussion #379](https://github.com/carthage-software/mago/discussions/379)),
+and — like ast-grep's crates — **no published API-stability contract for library
+consumers**: the crates exist to build the CLI and version in lockstep with it. Any
+dependency would be pinned `=1.45.x` and treated bumps-as-re-verification, exactly the
+posture CLAUDE.md already takes toward `ast-grep-*`.
+
+### 11.2 Where Mago lands on the §10 ladder — for PHP only
+
+- `mago-syntax` is **rung 1 with better ergonomics**: a PHP-native AST instead of a
+  generic tree-sitter grammar. Notably, this **retires the one engine caveat CLAUDE.md
+  recorded** (the napi route's "0.0.x PHP grammar" worry): in a Rust core, PHP — our
+  dominant fleet language — would get a first-class, hand-written parser.
+- `mago-project`'s name resolution + `mago-codex` reach into **rungs 2–3 for PHP**:
+  resolving a class-constant reference (`AccountService::API_VERSION`) to its literal
+  value is name resolution + constant evaluation — *static, deterministic, and exactly
+  the shape of the eval-proven miss* ("version only in SDK code, 3 files of
+  indirection"). This is the first tool surveyed that climbs past rung 1 without
+  building our own dataflow.
+- Against the two hard cases, though:
+  - **(a) The interpolated-host Shopify line: moot.** `$shop` is a runtime value; no
+    static analyzer — Mago, PHPStan, or a theorem prover — produces it. The shipped
+    `pathSignature` already resolves that case (§10.3 rung 1). Mago adds nothing here.
+  - **(b) The `getCategoryFeatures`-class case: Mago *could* help — but on the miner
+    side, not the scan side.** That indirection lives in *wrapper* code, and §3's SDK
+    profiling already scans wrappers offline. Where our rung-1 extraction can't follow
+    a wrapper's constants into its URL assembly, a Mago-powered extractor could —
+    improving **profile quality**, one package at a time, in the LEARN loop, behind
+    the regeneration gate. SDK profiling remains the cheaper win; Mago makes the
+    profiler smarter, it doesn't replace it.
+
+### 11.3 The two-engine question — the crux, answered
+
+Mago is **PHP-only**. Putting it in the scan path means two engines: a deep PHP engine
+plus ast-grep for the other seven languages — two parsers, two match models, two rule
+dialects (absorbed idioms compile to ast-grep patterns, `idioms.py:75-105`; a Mago path
+would need its own matcher), and a consistency obligation between their outputs. The
+fleet being PHP-heavy makes that tempting, and §10.4's own principle kills it anyway:
+**the residue conscience works because every stage below it is simple enough to
+trust.** A second engine in the deterministic scan path doubles the surface that has to
+be simple, for gains (rung-2 constant resolution at client call-sites) that the residue
+data has not yet shown we need — client-side misses are shape-C (SDK-mediated), which
+profiles solve, and interpolated-host, which no static engine solves.
+
+Determinism per se is not the blocker — Mago is a pure static analyzer, Rust, no
+runtime, byte-stable given pinned versions. The footguns are lifecycle ones: unstable
+crate API, and inference results that can legitimately change across versions — so
+anything Mago-derived that reaches a catalog must carry the Mago version in its
+provenance, and version bumps become re-verification events.
+
+### 11.4 Verdict
+
+**Leverage Mago — in the LEARN loop, not the scan path.**
+
+1. **Now/Phase-3 (optional, trigger-gated):** a Mago-based *profile extractor* in
+   `drift-wild` for PHP wrappers whose endpoint knowledge hides behind class
+   constants/config indirection our rung-1 scan can't extract. Trigger: a real wrapper
+   in the corpus whose profile is demonstrably incomplete (the regeneration check makes
+   incompleteness visible). Output is staged YAML through the same gate; provenance
+   records `mago@<version>`.
+2. **If the Rust core is ever built (§9 triggers):** adopt `mago-syntax` as the PHP
+   parser and keep tree-sitter/ast-grep semantics for the other seven — *inside one
+   engine binary*, where "two parsers" is an implementation detail behind one match
+   model, not two engines in the pipeline. This is also where the banked rung-2
+   constant-folding would be built on `mago-project`'s name resolution rather than
+   hand-rolled.
+3. **The tangential reading — Mago as a linter ON client PHP repos** — is not our
+   product, but it composes with banked idea #3 (the detectability linter,
+   TECH_DEBT.md): a suggested-refactor MR could recommend the client adopt Mago/PHPStan
+   themselves. Note it; don't build it.
+
+**Effect on §9:** strengthens the Rust pick, materially. Mago is a second
+domain-relevant, Rust-only ecosystem asset (after the ast-grep/tree-sitter crates) with
+**no Go, Kotlin, or Python equivalent of comparable depth** — for the language our
+fleet is actually written in. The greenfield argument gains a concrete exhibit: in
+Rust, our dominant-language analysis ceiling is `mago-project`'s semantic layer; in Go
+it's a generic grammar plus whatever we hand-roll.
+
+**Effect on §10:** none on the recommendation, and that's the point — "stay at rung 1
+in the scan path, enrich cheaply, solve rung 3 sideways via profiles" survives contact
+with a genuinely good deep-PHP engine. Mago changes *how far the miner can climb*, not
+where the scanner should stand.
+
+---
+
 ## Appendix A — recon index (all verified this session)
 
 eBay: timotheus/ebaysdk-python (854★, dormant, 2 of 4 wrapped APIs dead) ·
