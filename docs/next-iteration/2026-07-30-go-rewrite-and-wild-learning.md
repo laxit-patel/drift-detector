@@ -1066,6 +1066,99 @@ already exists.
 
 ---
 
+## 13 · The durable principle: language front-end lanes, weighting-independent
+
+The user's correction to §12: don't anchor on 90/10 — that was a snapshot of one org,
+not a constraint. The real claim is that **per-language depth beats a generic engine as
+an architecture**, PHP is merely the *first* lane because that's where this org lives
+today, and the tool may become a product — so the design must hold the door open for
+JS, Python, and whatever a customer brings. Correct instinct. Here is the crisp form.
+
+### 13.1 The principle, articulated: the Language Front-End Contract
+
+**A "lane" is any analyzer for language L that satisfies one contract: emit the shared
+match-record IR** — the kinds `endpoints.py` already consumes (`url`, `path-literal`,
+`sink`, `path-assembly`, `operation-marker`, plus `resolved-literal` for
+semantically-derived values) — **each match carrying an evidence label, and the lane
+declaring its rung** (§10 ladder: 1 = syntactic find, 2 = name/const resolution, …).
+Below that seam, everything is language-agnostic and shared: classification
+(`classify_url.py`), attribution/dedup/residue (`endpoints.py`), verdicts
+(`shapes.py`), rendering, `verify`. The generic tree-sitter/ast-grep lane is the
+**universal fallback** — any recognized language with no deep lane gets rung-1
+coverage; unrecognized files stay honest UNKNOWN, exactly as `shapes.signalCoverage`
+works today. This is not a new idea bolted on: the ruleset is already per-language
+dispatch (§12.1); the contract just *names the seam* and lets each lane be as deep as
+that language's best available tooling allows, **honestly reporting its own depth**.
+PHP→Mago is instance #1 by sequencing. The contract is the durable artifact.
+
+Two consequences worth making explicit:
+- The per-language **conformance suite** falls out for free: every lane must pass the
+  shared IR-contract tests plus rung-1 differential testing against the fallback lane
+  on the same files (§12.2) — that differential test *is* a lane's admission ticket.
+- "Depth" becomes a **declared, rendered property per language** — the coverage story
+  a product can actually sell ("PHP analyzed at rung 2; Python at rung 1; here is what
+  each could not see"), rather than a uniform claim that is quietly false per language.
+
+### 13.2 Is the open door real? The landscape, researched live (2026-07-30)
+
+| Language | Deepest *embeddable* front-end | Rust-native crate? | Rung reachable | License | Maturity / caveats | Non-embeddable alternative (shell-out from any core) |
+|---|---|---|---|---|---|---|
+| PHP | Mago (`mago-syntax`, `mago-project`, `mago-codex`) | **Yes** | 2–3 (name res., const eval; types emerging) | MIT/Apache-2.0 | §11.1 — real, v1.45, analyzer pre-parity, API unpinned | PHPStan/Psalm (need a PHP runtime) |
+| JS/TS | [oxc](https://docs.rs/oxc) (`oxc_parser` + [`oxc_semantic`](https://docs.rs/oxc_semantic/latest/oxc_semantic/) — scope binding + **symbol resolution** are explicitly the semantic crate's job) | **Yes** | 2 (symbols/scopes; **no type checking**) | MIT | Production-grade (powers oxlint); swc (Apache-2.0) and Biome crates are Rust alternatives at rung 1–2 | **tsc / tsgo for types** — TypeScript 7.0 (shipped 2026-07-08) is a **Go-native** compiler, 8–12× faster, but **no public compiler API until ≥7.1** ([typescript-go](https://github.com/microsoft/typescript-go)); today it's shell-out for everyone |
+| Python | [ruff](https://docs.astral.sh/)'s crates (`ruff_python_parser` + semantic model) | **Yes** | 1–2 | MIT | Battle-tested parser (powers ruff); **ty** (ex-red-knot) is Astral's Rust type checker — early, ambitious, and Astral was acquired by OpenAI 2026-03, a governance-churn caveat | pyright (Node), mypy (Python) |
+| Ruby | prism — the official Ruby parser ships a Rust crate | Yes (parser) | 1 | MIT | Parser only; no Rust semantic layer | Sorbet (C++), Steep (Ruby) |
+| Go | `go/ast` + `go/analysis` | No — **Go-native** | 2+ | BSD | First-class, but in Go | (itself) |
+| Java / C# | — | No | — | — | The deep tooling *is* javac/Error Prone and Roslyn — JVM/.NET processes | Shell-out from **any** core language |
+
+**Verdict on the convergence hypothesis: it holds exactly at the rungs this tool
+uses.** At rungs 1–2 — parse, scopes, symbols, constants; the rungs §10 put in or near
+the scan path — the best embeddable tooling for PHP (Mago), JS/TS (oxc), and Python
+(ruff) is Rust-native, MIT/Apache-licensed, crate-consumable. The convergence *breaks*
+at rung 4 (type checking): TypeScript's own future is a **Go** binary (tsgo) with no
+embedding API yet, Python's Rust checker (ty) is early, and Java/C# never converge on
+anything but themselves. But §10 already ruled rung 4 out of the scan path — types
+resolve *which method*, never *which value* — so the exceptions live precisely on the
+rung we don't build. Stated as strongly as the evidence allows: **a Rust core embeds
+best-in-class deep lanes for the three languages that matter to this tool's plausible
+customer base, as libraries; a Go, Python, or Kotlin core shells out to all three.**
+The one future counter-case: if a *miner-side* TS type-aware extractor ever matters,
+tsgo post-7.1 would favor Go tooling there — offline, gated, and irrelevant to the
+core.
+
+### 13.3 Product angle: design the contract, build lanes on demand
+
+What is **designed now** (cheap, durable): the IR contract with evidence labels and
+lane-rung declaration; the lane conformance suite (IR tests + rung-1 differential vs.
+fallback); per-language depth rendered in the coverage story. What is **built now**:
+nothing beyond §12's plan — the PHP/Mago lane rides the Rust-core triggers, with the
+miner-side Mago extractor first. What is **built later, each behind its own evidence**:
+the JS/TS lane on oxc when a JS-heavy repo or customer plus its residue proves the
+gap; the Python lane on ruff's crates likewise. No speculative all-language build —
+eight rung-1 lanes exist today via the fallback engine, and that is already an honest
+product claim. The product feature is not "deep everywhere"; it is **"exactly as deep
+as each language's lane, and honest about it"** — which no generic-engine competitor
+can say per-language.
+
+### 13.4 Reconciliation — the language thread, closed
+
+This section changes no recommendation; it **re-founds** them on weighting-independent
+ground. Final position across §§1, 8, 9, 11, 12, 13:
+
+1. **Real world, now:** Python scan core stays (refactor per §8.2); new platform layer
+   (`drift-wild`) in Rust (§9.3); Mago enters the LEARN loop as a profile extractor;
+   the Language Front-End Contract is designed into the IR now (this section).
+2. **Rust core, when its triggers fire (§1.3/§9.3):** built as **engine lanes behind
+   the one IR** — Mago lane for PHP first, oxc and ruff lanes on demand, tree-sitter
+   fallback for the rest, per-lane declared rungs, differential conformance — the
+   architecture justified by *depth-beats-generic* and *product-grade multi-language
+   honesty*, not by any one org's language mix.
+3. **The scan path never hosts** rung-4 type checking, symbolic execution, or any
+   engine that can't meet the IR contract deterministically.
+4. §9's greenfield pick gains its fourth and strongest exhibit: the deep-lane
+   ecosystem for PHP + JS/TS + Python is Rust-only at the rungs we need.
+
+---
+
 ## Appendix A — recon index (all verified this session)
 
 eBay: timotheus/ebaysdk-python (854★, dormant, 2 of 4 wrapped APIs dead) ·
