@@ -90,3 +90,15 @@ def test_astgrep_rule_ids_carry_language_and_metadata():
     assert any(d["id"].startswith("php-gethost-method@") for d in docs)   # from idioms.yaml
     sd = next(d for d in docs if d["id"] == "stripe-endpoint@php")
     assert sd["metadata"] == {"vendor": "Stripe", "techKey": "api:stripe", "kind": "endpoint"}
+
+
+def test_domainless_vendor_gets_no_endpoint_rule():
+    """A vendor with no domains (self-hosted, e.g. Magento — identified by a path-constant
+    idiom, not a host) must NOT get an endpoint rule: `"|".join([])` is the empty regex, which
+    matches EVERY string literal and would attribute the whole codebase to that vendor."""
+    from agent.lib.vendors import Vendor
+    docs = build_astgrep_ruleset([Vendor("Magento", "api:magento", (), "")])
+    assert not [d for d in docs if d["id"].startswith("magento-endpoint@")]
+    # a domained vendor is unaffected
+    docs2 = build_astgrep_ruleset([Vendor("Stripe", "api:stripe", ("stripe.com",), r"/(v\d+)")])
+    assert [d for d in docs2 if d["id"].startswith("stripe-endpoint@")]

@@ -438,3 +438,14 @@ def test_path_constant_ignored_when_no_idioms_passed(tmp_path):
     ms = [_pc("a.php", 9, 'protected $API_URL = "/api/orders";'), _sink("a.php", 1)]
     out = scan_endpoints(ms, str(tmp_path), [_CATCH])
     assert [e for e in out["endpoints"] if e["classified"]] == []
+
+
+def test_repo_in_scope_is_case_insensitive():
+    """scope_edges.identity() lowercases the path, so a mixed-case org (shubhTops/magento_api)
+    must still match its instance suffix. A shipped bug: Catch (akshit.tops, already lowercase)
+    worked, Magento (shubhTops) silently fell to residue."""
+    from agent.lib.endpoints import _repo_in_scope
+    assert _repo_in_scope("https://git.topsdemo.in/shubhTops/magento_api", "shubhTops/magento_api")
+    assert _repo_in_scope("git@git.topsdemo.in:shubhTops/magento_api.git", "shubhTops/magento_api")
+    # a different repo must NOT match
+    assert not _repo_in_scope("https://git.topsdemo.in/shubhTops/other_api", "shubhTops/magento_api")

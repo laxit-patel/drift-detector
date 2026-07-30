@@ -31,11 +31,15 @@ def _repo_in_scope(repo_id: str, suffix: str) -> bool:
     sdk_profiles._matches so a profile and an idiom scope the same repo the same way."""
     if not repo_id or not suffix:
         return False
+    # case-insensitive: scope_edges.identity() lowercases the path, so a mixed-case org
+    # (shubhTops/magento_api) must still match its instance suffix — a bug that let Magento
+    # fall silently to residue while Catch (already-lowercase akshit.tops) worked.
+    suf = suffix.lower()
     iden = scope_edges.identity(repo_id)
-    if iden and (iden == suffix or iden.endswith("/" + suffix)):
+    if iden and (iden == suf or iden.endswith("/" + suf)):
         return True
-    base = os.path.basename(str(repo_id).rstrip("/"))
-    dash = suffix.replace("/", "-")
+    base = os.path.basename(str(repo_id).rstrip("/")).lower()
+    dash = suf.replace("/", "-")
     return base == dash or base.startswith(dash + "-")
 
 

@@ -78,3 +78,15 @@
     ($config['host_name']); operations are per-class $API_URL constants
     ("/api/orders", "/api/offers", …) assembled in CatchApi::curlOption
     ($this->HOST_NAME . $url). No host literal, so repo-scoped + vendor-bound.
+
+- id: magento-api-paths
+  family: path-constant
+  repo: shubhTops/magento_api
+  vendor: Magento
+  pathRegex: 'V1/'
+  evidence: "shubhTops/magento_api src/Magento/GetOrders.php:9"
+  note: >-
+    Magento / Adobe Commerce REST. Host injected at runtime ($this->ENDPOINT);
+    base assembles $this->ENDPOINT . '/rest/' . $url, and each operation class pins
+    $API_URL = "V1/orders/" etc. (also "all/V1/..." for store-scoped). No host literal
+    (self-hosted per merchant), so repo-scoped + vendor-bound on the V1/ marker.

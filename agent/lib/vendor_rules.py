@@ -140,6 +140,11 @@ def build_astgrep_ruleset(vendors: list | None = None,
     for lang in langs:
         docs.append(_ast_literal_rule("url-literal", r"https?://", lang, {"kind": "url"}))
     for v in (vendors or []):
+        if not v.domains:
+            # A self-hosted vendor (Magento etc.) has no host to match — it is identified by a
+            # path-constant idiom, not a domain. Skipping avoids an EMPTY endpoint regex, which
+            # would match every string literal and attribute the whole codebase to that vendor.
+            continue
         rx = "|".join(re.escape(d) for d in v.domains)
         meta = {"vendor": v.vendor, "techKey": v.techKey, "kind": "endpoint"}
         for lang in langs:

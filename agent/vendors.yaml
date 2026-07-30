@@ -34,6 +34,7 @@
 - { vendor: Tradevine,         techKey: api:tradevine,           domains: [api.tradevine.com] }
 - { vendor: Trade Me,          techKey: api:trademe,             domains: [api.trademe.co.nz] }
 - { vendor: Catch,             techKey: api:catch,               domains: [catch.com.au] }
+- { vendor: Magento,           techKey: api:magento,             domains: [] }   # self-hosted; identified by the /rest/V1 path-constant idiom, not a host
 
 # ── Payments ───────────────────────────────────────────────────────────────
 - { vendor: Stripe,            techKey: api:stripe,              domains: [stripe.com] }
