@@ -514,6 +514,157 @@ existing behavior.
 
 ---
 
+## 8 · Language re-assessment — the code-management POV (requested debate)
+
+The user reframed: de-weight native-AST to one factor; the real concern is **managing a
+rapidly-growing, complex codebase** — design patterns over duct tape, clean tests, no
+runtime dep pile; Python "reads clanky and is dep-heavy"; Go compiles to a single fast
+binary; Rust "may struggle on larger codebases"; Java/Kotlin on the table. Debate was
+explicitly invited. Here it is, grounded in measurements taken today, not vibes.
+
+### 8.1 Is the current Python "duct-taped and spread out"? Measured: no.
+
+I re-audited the codebase specifically for this question:
+
+- **79 modules, and the size histogram is healthy.** Median lib module is 100–250 LOC
+  with one job each (`classify_url.py` 220, `endpoints.py` 213, `shapes.py` 237,
+  `ops_config.py` 217). Two outliers only: `agent/cli.py` (1,041 — subcommand dispatch
+  accreting) and `dashboard_render.py` (916 — inline templating). Those two are real
+  refactor targets. Two modules out of 79 is not duct tape; it's a backlog item.
+- **The discipline the user wants already exists, enforced by architecture not by
+  language:** pure functions with injected I/O everywhere it matters (`now` is a
+  parameter, never a clock; `absorb.measure_against_repo(scan=...)` injects the engine;
+  `catalog_sources.py` parsers are text-in/facts-out against committed fixtures); hard
+  data seams (`drift.json` is JSON-Schema'd; every catalog write goes through one gate);
+  layering that holds under grep — `agent/lib/` imports stdlib + `yaml` and nothing else
+  (verified: the only third-party import across the entire lib layer is PyYAML).
+- **It is already typed where it counts:** 76 of 79 modules use
+  `from __future__ import annotations`; 326 function signatures carry annotations.
+  Turning on `mypy --strict` is an afternoon-to-days job, not a migration.
+- **693 test functions in 84 files**, mirroring the module layout, each comment pinning
+  a shipped bug. That suite *is* the code-management asset — it's what makes any future
+  refactor (or port) safe.
+
+**Assertion:** "clanky" is a reader's reaction to dynamic typing, not a property of this
+codebase. This is unusually well-factored Python — better-factored than most Go services
+I could name, because the discipline came from the contracts and gates, not the
+compiler. A language does not give you architecture; this project already has one.
+
+### 8.2 The rewrite is not the maintainability lever. Refactor-in-place is.
+
+Head-to-head, honestly:
+
+| | **Refactor Python in place** | **Rewrite in Go/Rust/Kotlin** |
+|---|---|---|
+| Gets static safety | `mypy --strict` in CI (near-free given 8.1), `import-linter` contract for the layer boundary, `ruff` | Yes, natively |
+| Fixes the 2 real warts | Split `cli.py` into `agent/commands/*`; extract dashboard templates | Re-creates them in a new language (a 1,000-line `main.go` dispatch is just as easy to accrete) |
+| Cost | **~1–2 weeks** | 4–8+ weeks (CLAUDE.md's own estimate) |
+| Regression risk | ~zero — 693 tests keep jurisdiction the whole time | Re-derives every fixed bug; the tests must be *transliterated*, and their prose is the institutional memory |
+| Ships detection capability meanwhile | Yes (wild-learning proceeds) | No — it *is* the schedule |
+
+This is the classic never-rewrite-a-working-system trap, and the tell is the
+justification: "better code management." **Rewrites don't pay code-management debt;
+they transfer it** — you trade known, tested, documented complexity for unknown,
+untested complexity plus a re-verification bill. Complexity in this system is managed by
+the contracts (`drift-v1.schema.json`), the gate (`absorb.py`), the verify invariants,
+and the test suite. All four are language-independent, and all four would have to be
+rebuilt before a rewrite is even *safe*.
+
+**Verdict on point 2, plainly: refactor Python, don't rewrite.** The refactor package —
+mypy-strict gate, import-linter, split `cli.py`, extract templates — answers every named
+symptom ("loose," "spread out," refactoring fear) at ~5% of the rewrite's cost.
+
+### 8.3 The specific claims, pressure-tested against this project
+
+- **"Python is dep-heavy at runtime" — false here, and measurably so.** Runtime is
+  **stdlib + PyYAML, full stop** (`requirements-plugin.txt`: "PyYAML is the scanner's
+  ONLY third-party Python import — dropping semgrep took the install from ~386 MB to
+  ~90 MB"). `bin/drift-scan` self-bootstraps its venv; the container ships everything
+  sha-pinned. The dep-pile experience being remembered is the *semgrep era* — a problem
+  this project already identified and killed. What remains true: the host needs a Python
+  interpreter. The container removes even that, and it shipped.
+- **"Go: single binary, fast compiles at scale" — true properties, wrong ledger.**
+  Single-binary distribution is a *banked trigger condition* (CLAUDE.md Rust gate #1),
+  not a current requirement — no client has asked. And the binary isn't single anyway:
+  the ast-grep engine rides along (subprocess or `go:embed`), so "one file" is a
+  packaging nicety Python can also approximate (PyInstaller/uvx, banked). Compile speed:
+  at this project's realistic ceiling (~10k prod LOC now; call it 30–50k in five years),
+  *every* candidate language compiles in seconds. Optimizing language choice for
+  compile-times-at-monorepo-scale is optimizing for a scale this project will not reach.
+- **"Rust struggles on larger codebases" — not at any size this project will ever be.**
+  Rust's compile-time and cognitive costs bite at hundreds of kLOC with heavy generics.
+  A 10–50k LOC pipeline with exhaustive enums and one engine dependency is squarely in
+  Rust's sweet spot — incremental builds in seconds. The *real* Rust costs for this team
+  are hiring pool and iteration speed, and those are honest reasons to park it — but
+  "struggles at scale" is not the reason, at this scale.
+
+### 8.4 If a surface IS rewritten: the ranking, native-AST de-weighted
+
+Baseline to beat: **Python-refactored** (mypy-strict, import-linter, split CLI). It wins
+on cost and risk; it loses on compile-time refactoring safety and cold-start packaging.
+The candidates, scored on the user's own lens (design/patterns, test tooling,
+refactoring safety, readability at scale, build/distribution, ecosystem fit for *this*
+domain, hireability):
+
+1. **Go** — for the *new platform services* (`drift-wild`, `drift-fleet`). Boring on
+   purpose: one formatter, `go test`/`go vet` built in, trivial CI, first-class
+   single-binary deploys, excellent concurrency for forge-API fan-out. Honest downsides:
+   verbosity and `if err != nil` boilerplate; **no sum types** — this domain is built on
+   closed vocabularies (verdicts, idiom families, reason taxonomies) that Go renders as
+   stringly-typed constants with linter discipline, exactly where Rust/Kotlin are
+   stronger; the documented landmines (map order, `SetEscapeHTML`, RE2 no-lookbehind,
+   float notation) all live in the *core's* renderer/verify territory — which is a
+   reason to keep Go *out* of the core, not out of the platform layer.
+2. **Rust** — if the *scan core* is ever ported. On the user's own criteria — strong
+   types, refactoring safety, single deployable, long-term code management — Rust beats
+   Go *for the core*: exhaustive `match` over the closed vocabularies is the single best
+   type-system fit for this domain, and it happens to also link the engine natively
+   (de-weighted, but it's a free tiebreaker, and it's why the banked plan says Rust).
+   Downsides: smallest hiring pool, slowest iteration, borrow-checker tax on
+   contributors. **Note the irony: the user's stated criteria argue for Rust more than
+   for Go.** If "good code management sits right with Rust" — it does, at this scale.
+3. **Kotlin** — pleasant language, good test story (JUnit/Kotest), sealed classes cover
+   the closed-vocabulary need. But it **fails the user's own first filter**: the JVM is
+   precisely a "runtime that must be present to run." GraalVM native-image escapes that
+   at the cost of a gnarlier build than either Go or Rust. Domain ecosystem (tree-sitter
+   /AST tooling) thin. Choose only if the team is already JVM-native — it isn't.
+4. **Java** — everything Kotlin, minus expressiveness, plus boilerplate. No property
+   this project needs that Kotlin/Go don't have. Not a contender.
+
+### 8.5 Reconciliation — the code-management lens *reinforces* the split
+
+The prior verdict (§1.3) was: Go greenfield for new surfaces, Python core untouched,
+full port trigger-gated. The new lens strengthens it, because of where the *growth* is:
+
+- The "rapidly-growing" part of the next iteration is the **platform layer** — miner,
+  fleet, delivery, search. Build it in Go from day one and the growth the user worries
+  about happens *in* the statically-typed, single-binary codebase they want. No rewrite
+  needed to get there: it's greenfield.
+- The **core is not rapidly growing** — pipeline-module stability is literally the
+  banked port's trigger #3. A stable, gated, 693-test core is the best possible thing to
+  leave alone. Give it the 1–2 week refactor package (mypy-strict, import-linter, split
+  `cli.py`, extract dashboard templates) and the "clanky/loose" complaint is answered
+  in-place.
+- **If the port triggers ever fire, the core goes to Rust, not Go** — by the user's own
+  criteria (8.4 #2), plus the byte-diff-eval-first path already written. Parking Rust
+  today is right; *replacing* the Rust endgame with Go would be choosing the weaker
+  fit for the core to match the platform layer's language. Uniformity is not a
+  code-management virtue when the two halves have different shapes.
+
+**Where I'm telling the user their instinct is wrong, explicitly:** (1) this codebase is
+not duct-taped — measured, it's the opposite, and the two real warts are a two-week
+refactor; (2) "dep-heavy at runtime" is false for this tool by construction (PyYAML
+only, self-bootstrapping, containerized) — it's a memory of the semgrep era; (3) a
+rewrite does not buy code management — the contracts, gate, and tests are the code
+management, and a rewrite puts all three at risk; (4) Rust's large-codebase struggles
+don't exist at this project's scale, and their own criteria (types, single binary,
+refactoring safety) rank Rust *above* Go for the core. **Where their instinct is right:**
+static types genuinely improve refactoring safety (adopt mypy-strict now, and build all
+new code compiled); the new platform layer in Go is the correct call; and `cli.py`
+deserved the callout even though nobody named it specifically.
+
+---
+
 ## Appendix A — recon index (all verified this session)
 
 eBay: timotheus/ebaysdk-python (854★, dormant, 2 of 4 wrapped APIs dead) ·
