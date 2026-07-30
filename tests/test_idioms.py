@@ -31,7 +31,10 @@ def test_to_rules_compiles_path_constant_to_a_vendor_bound_literal_rule():
     # the rule matches the instance's path regex, and carries the bound vendor + kind so the
     # engine hands endpoints.py a match that already knows which vendor to attribute to
     assert php["metadata"] == {"kind": "path-constant", "vendor": "Catch"}
-    assert php["rule"]["any"][0]["regex"] == r"^/api/"
+    # the leading ^ is stripped for the ast-grep rule: the node text is quote-prefixed
+    # ("/api/orders"), so ^ would anchor before the quote. endpoints.py re-anchors on the
+    # unquoted content, so the instance's `^/api/` semantics are preserved.
+    assert php["rule"]["any"][0]["regex"] == r"/api/"
 
 
 def test_validate_requires_repo_vendor_and_pathregex():

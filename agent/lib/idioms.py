@@ -117,7 +117,12 @@ def to_rules(inst: dict, literal_rule, languages: list) -> list:
         # A string-literal rule matching the instance's path shape, carrying the BOUND vendor
         # in metadata (the engine passes `vendor` through, exactly as it does for the per-vendor
         # `endpoint` rules). endpoints.py then attributes the match — repo-scope + sink guarded.
+        # The ast-grep regex runs over the node text WITH its quotes ("/api/orders"), so a
+        # leading `^` would anchor before the quote and never match — strip it for the rule
+        # (a broad candidate surface); endpoints.py re-applies the FULL pathRegex to the
+        # unquoted content, so `^/api/` still means "the path starts with /api/".
         meta = {**kind, "vendor": inst["vendor"]}
+        rule_rx = inst["pathRegex"][1:] if inst["pathRegex"].startswith("^") else inst["pathRegex"]
         for lang in langs:
-            docs.append(literal_rule(rid, inst["pathRegex"], lang, meta))
+            docs.append(literal_rule(rid, rule_rx, lang, meta))
     return docs
