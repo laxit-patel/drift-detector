@@ -32,6 +32,14 @@ _FAMILY_DOCS = [
      "`marker`: a regex over string literals, OR `pattern`: an ast-grep pattern.",
      '{id: ebay-trading, family: operation-marker, language: php, marker: '
      '"X-EBAY-API-CALL-NAME", evidence: "rushikesh/ebayapi src/Ebay/X.php:72"}'),
+    ("path-constant",
+     "path constants in a config-injected wrapper (host injected at runtime, generic paths) — "
+     "repo-scoped and vendor-bound, since there is no host literal to infer the vendor from.",
+     "`repo`: the wrapper's project suffix; `vendor`: the bound vendor (must exist in "
+     "vendors.yaml); `pathRegex`: which string literals are operation paths.",
+     '{id: catch-api-paths, family: path-constant, repo: "akshit.tops/catchapi", '
+     'vendor: Catch, pathRegex: "^/api/", evidence: "akshit.tops/catchapi '
+     'src/CatchApi/GetOrders.php:9"}'),
 ]
 
 
