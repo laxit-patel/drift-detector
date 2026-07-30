@@ -15,6 +15,9 @@ One page. The verdicts and their triggers, distilled from
 | 5 | **Analysis stays at rung 1** (AST-find + regex-classify) and enriches cheaply (wild-mined path signatures, version grammars) | Cheap signals + honest residue beat a dataflow engine — the residue conscience only works because every stage below it is simple enough to trust |
 | 6 | **Engine = Front-End Contract** — per-language lanes behind one shared IR; generic tree-sitter is the universal rung-1 fallback; unknown files stay honest `UNKNOWN` | Not a new architecture — the ruleset already dispatches per-language; the contract *names the seam* so each lane is as deep as its language's best tooling allows, honestly reporting its rung |
 | 7 | **Deep lanes = Mago (PHP), oxc (JS/TS), ruff (Python)** — all Rust-native crates, at the rungs we use | The strongest Rust exhibit: a Rust core embeds all three as *libraries*; a Go/Python/Kotlin core shells out to all three. PHP→Mago is lane #1 by sequencing |
+| 8 | **SDK profiles — SHIPPED** (`agent/sdk_profiles.yaml` + `agent/lib/sdk_profiles.py`): read a wrapper's pinned version from its own constants → synthetic endpoints the audit dates, evidenced at the const `file:line` | The `sdk-only-no-callsite` wrappers hide vendor+version behind constants; no idiom reaches that, a profile does. First profile fired 4 retired-Shopify findings on `shopify-api`. Invents nothing (version is a read literal; date is the vendor rule) |
+| 9 | **Autonomous absorption via the Claude Agent SDK (§14) — build near-term** as an opt-in, SEPARATE CI stage | The banked P4 scout, safe now the gate exists: the agent holds no token, authors *staged YAML only*, `absorb --check` is the firewall, a **human merges — no auto-merge, ever**. Bootstraps the profiles Mago later industrializes |
+| 10 | **AI-native / hosted mode (§15) — build trigger-gated** as §14's gated loop re-hosted (Managed Agents scheduled deployment + MCP connectors) | A *delivery* evolution, not epistemic. **AI is the front-end (read/propose); the deterministic core is the back-end and the source of truth — never the front-end.** "AI-native" is a deployment adjective; SCAN + LEARN stay the only two loops |
 
 ## Triggers — when each future step fires (never on aesthetics)
 
@@ -22,6 +25,9 @@ One page. The verdicts and their triggers, distilled from
   → **Python retires when its full test suite is absorbed into Rust and passes byte-identically.** The tests are both the spec and the equivalence proof.
 - **Deep lane in the *scan path*** (Mago/oxc/ruff, not just the miner): the Rust core exists **AND** fleet residue proves client-side rung-2 misses actually occur (not just wrapper-side, which SDK profiling already covers). Lanes built **on demand**, never speculatively.
 - **BM25 / embeddings / SLM:** only on a *logged* retrieval failure or a proven need — the corpus is lexical (URLs, paths), so BM25 before embeddings, and nothing before it's earned.
+- **Autonomous SDK absorption (§14):** near-term, on commodity CI — proves the gated-author loop.
+- **AI-native hosted mode (§15):** a hands-off / multi-tenant customer, CI plumbing becoming the measured bottleneck, or Managed Agents GA.
+- **Mago extractor:** scale-gated behind §14 — ~20+ profiled packages or routine quarterly re-profiling, at which point it deterministically regenerates the Claude-bootstrapped profiles (each of which is its labeled example).
 
 ## Do NOW (cheap, weighting-independent)
 
