@@ -375,3 +375,66 @@ def test_au_nz_marketplaces_are_classified_not_unknown():
     for host, vendor in cases.items():
         v = classify_url.classify_host(host, vendors)
         assert v is not None and v.vendor == vendor, f"{host} -> {v and v.vendor}"
+
+
+# ── path-constant idiom: config-injected wrapper (host injected at runtime, generic paths) ──
+# The vendor is BOUND on the instance (no host literal to infer it), repo-scoped (generic
+# paths would mis-tag another marketplace), sink-guarded (must actually make HTTP calls).
+_CATCH = Vendor("Catch", "api:catch", ("catch.com.au",), DEFAULT_VERSION_REGEX)
+_CATCH_INST = {"id": "catch-api-paths", "family": "path-constant",
+               "repo": "akshit.tops/catchapi", "vendor": "Catch", "pathRegex": r"^/api/",
+               "evidence": "src/CatchApi/GetOrders.php:9"}
+_CATCH_REMOTE = "git@git.topsdemo.in:akshit.tops/catchapi.git"
+
+
+def _pc(path, line, text, vendor="Catch", check="catch-api-paths"):
+    return {"kind": "path-constant", "checkId": check, "vendor": vendor,
+            "path": path, "line": line, "text": text}
+
+
+def _sink(path, line):
+    return {"kind": "sink", "path": path, "line": line}
+
+
+def test_path_constant_attributes_operations_to_bound_vendor(tmp_path):
+    ms = [_pc("src/CatchApi/GetOrders.php", 9, 'protected $API_URL = "/api/orders";'),
+          _pc("src/CatchApi/GetProducts.php", 9, 'protected $API_URL = "/api/offers";'),
+          _sink("src/CatchApi/CatchApi.php", 298)]
+    out = scan_endpoints(ms, str(tmp_path), [_CATCH],
+                         idioms=[_CATCH_INST], repo_id=_CATCH_REMOTE)
+    eps = [e for e in out["endpoints"] if e["classified"]]
+    ops = {e["operation"]: e for e in eps}
+    assert set(ops) == {"/api/orders", "/api/offers"}
+    o = ops["/api/orders"]
+    assert o["vendor"] == "Catch" and o["attribution"] == "inferred"
+    assert o["files"] == ["src/CatchApi/GetOrders.php:9"]
+
+
+def test_path_constant_requires_an_egress_sink(tmp_path):
+    # same path constants, but the repo shows NO egress sink -> not attributed (could be
+    # anything). It lands in residue, not endpoints — the conscience stays honest.
+    ms = [_pc("src/CatchApi/GetOrders.php", 9, 'protected $API_URL = "/api/orders";')]
+    out = scan_endpoints(ms, str(tmp_path), [_CATCH],
+                         idioms=[_CATCH_INST], repo_id=_CATCH_REMOTE)
+    assert [e for e in out["endpoints"] if e["classified"]] == []
+    assert any(r["loc"] == "src/CatchApi/GetOrders.php:9"
+               for r in out["residue"].get("pathConstants", []))
+
+
+def test_path_constant_is_repo_scoped(tmp_path):
+    # the SAME Catch rule matching /api/... in a DIFFERENT repo must NOT attribute to Catch
+    # (bunnings also has /api/offers — it is Mirakl). Out of scope -> residue, never a finding.
+    ms = [_pc("src/Bunnings/GetProducts.php", 9, 'protected $API_URL = "/api/offers";'),
+          _sink("src/Bunnings/Bunnings.php", 25)]
+    out = scan_endpoints(ms, str(tmp_path), [_CATCH],
+                         idioms=[_CATCH_INST], repo_id="git@git.topsdemo.in:akshit.tops/bunnings.git")
+    assert [e for e in out["endpoints"] if e["classified"]] == []
+    assert any(r["loc"] == "src/Bunnings/GetProducts.php:9"
+               for r in out["residue"].get("pathConstants", []))
+
+
+def test_path_constant_ignored_when_no_idioms_passed(tmp_path):
+    # backward-compat: callers that don't pass idioms/repo_id are unaffected
+    ms = [_pc("a.php", 9, 'protected $API_URL = "/api/orders";'), _sink("a.php", 1)]
+    out = scan_endpoints(ms, str(tmp_path), [_CATCH])
+    assert [e for e in out["endpoints"] if e["classified"]] == []
