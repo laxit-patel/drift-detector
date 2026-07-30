@@ -665,6 +665,91 @@ deserved the callout even though nobody named it specifically.
 
 ---
 
+## 9 · Greenfield language pick (clean slate, decisive)
+
+Ground rules for this section, as requested: **no sunk cost** (pretend zero lines exist;
+no deadline pressure) and **no native-AST factor** (the engine is a solved,
+language-agnostic detail — it counts for and against nobody). One question: *for a
+project of this nature, starting fresh today, Python, Go, or Rust?*
+
+"This nature," restated as engineering requirements: deterministic byte-identical
+output as a hard principle; a domain made of **closed vocabularies** (verdicts, idiom
+families, attribution classes, reason taxonomies, owner streams — sum types, all of
+them); heavy text/regex/URL/path parsing over catalog data; errors-as-facts (a silent
+wrong answer is the worst possible outcome — worse than a crash); CLI/plugin
+distribution growing a cloud/fleet layer; small team.
+
+### 9.1 Head-to-head on the axes that matter here
+
+| Axis (weighted for THIS project) | Python | Go | Rust |
+|---|---|---|---|
+| **Closed vocabularies / exhaustiveness** (highest weight — the domain IS sum types) | `Enum` + mypy-strict `Literal` gets *partial* exhaustiveness; unchecked at runtime boundaries | **No sum types.** Verdicts become string constants; a new variant compiles fine while half the renderers silently ignore it — the version-less-dedup-key *class* of bug, invited at the language level | **The type system is shaped like this domain.** `enum` + exhaustive `match`: add a fourth verdict and every render/verify site *fails to compile* until it answers |
+| **Determinism footguns** | Dicts insertion-ordered since 3.7 (kind); float `repr` stable; `json` deterministic with `sort_keys` | Map iteration **deliberately randomized** (the classic footgun — bitten in this project's own probes); `SetEscapeHTML`; `%v` float notation | `HashMap` order is seeded/nondeterministic **but the fix is a visible type choice** (`BTreeMap`/`IndexMap`) reviewable in the signature; serde output deterministic by construction. (Greenfield note: the float-notation landmine mostly evaporates — it was a *cross-language byte-compat* problem with Python-emitted goldens; a clean slate only needs self-consistency) |
+| **Regex/text semantics** | `re` has lookbehind; string ergonomics best-in-class | RE2: no lookbehind/backrefs | `regex` crate: same RE2-family limits (`fancy-regex` opt-in); iterator/pattern-match text processing strong, more ceremony than Python |
+| **Error-handling model** ("never swallow silently") | Exceptions — easy to forget a handler; failures can propagate invisibly past the layer that should have recorded them | Errors as values, but **droppable**: `_ = err` and unchecked returns compile; linters, not the language, stand between you and a silent wrong answer | `Result` + `?` + `#[must_use]`: an unhandled failure is a compiler warning-or-error, and `thiserror` enums make failure taxonomies exhaustive too — the "cannot see ≠ clean" principle, expressed in types |
+| **Test tooling** | pytest — excellent; fixtures/parametrize mature | `go test` built in; golden-file testing manual but easy | `cargo test` built in; `insta` snapshot testing is **purpose-built for byte-identical golden output**; `proptest` for determinism properties (same inputs ⇒ same bytes) |
+| **Build & distribution** | Interpreter + venv or PyInstaller/container — workable, never elegant | Single static binary, trivial cross-compile — best-in-class | Single static binary (musl), cross-compile fine (cargo-zigbuild) — effectively ties Go |
+| **Concurrency (fleet/platform layer)** | asyncio — serviceable, footgunny | Goroutines — best ergonomics of the three | tokio + rayon — mature (reqwest/axum for forge APIs); more ceremony than Go, fully adequate at this scale |
+| **Iteration speed** | Fastest | Fast | **Slowest** — borrow checker + compile cycle; the honest cost |
+| **Small-team maintainability / hireability** | Largest pool; discipline must come from convention | Large pool; language enforces uniformity but not correctness | Smallest pool; language enforces the most; code reads as its own spec |
+
+Honest worst-downside per language, named: **Python** — no compiler-enforced
+exhaustiveness and a packaging story you fight forever; the tool's guarantees live
+entirely in tests and discipline. **Go** — the two things this project holds sacred
+(closed vocabularies, deterministic output) are exactly where Go is weakest: no sum
+types, and its most famous footguns (map randomization, escaping, float verbs) are
+*determinism* footguns. **Rust** — you pay in iteration speed and hiring pool, every
+week, forever.
+
+### 9.2 The pick: **Rust.** One language, whole system.
+
+With sunk cost and the engine both off the table, this stops being close. The decisive
+question is: *what does the language enforce, versus what must the team enforce by
+convention?* This project's entire identity is refusing trust-by-convention at the data
+layer (the gate refuses unsourced dates; verify refuses unproven projections). Choosing
+Go would reintroduce trust-by-convention at the *language* layer — stringly-typed
+verdicts policed by linters, droppable errors policed by review, deterministic output
+policed by remembering which footguns exist. Rust makes the compiler the absorb gate for
+code: a new verdict variant, a new idiom family, a new attribution class *cannot ship*
+half-handled. For a tool whose worst outcome is a silent wrong answer, that property
+outweighs every week of borrow-checker tax — and the borrow-checker tax is at its
+minimum here anyway, because the architecture is a pipeline of pure transforms over
+owned data (no shared mutable state, no gnarly lifetimes; this is the easy 80% of Rust).
+The stated premise "we have time" removes the one argument that historically beats
+correctness-by-construction: deadline pressure.
+
+And it's **one language, not a split**: the fleet/platform layer is I/O fan-out that
+tokio handles trivially, and its data (profiles, proposals, provenance) benefits from
+the same exhaustive types. A two-language split is justified *only* by sunk cost; on a
+clean slate it's pure overhead. Go would be the pick if this were a big-team,
+ship-fast, eventually-consistent network service — it is the correct boring choice for
+that nature. This is not that nature. Python would be the pick only under "prototype to
+find the design" — but the design is no longer unknown; the precursor found it.
+
+For the record, the user's likely lean (Go, for the platform feel) is the wrong
+greenfield call **for this domain**, and the reason is not taste: every principle in
+CLAUDE.md maps to a type-system feature Rust has and Go deliberately omits. Weight the
+axes any way you like; as long as "silent wrong answer is the worst outcome" stays the
+top criterion, Go cannot finish first.
+
+### 9.3 Greenfield vs. real world — the delta, stated plainly
+
+- **Greenfield:** Rust, whole system, one language (§9.2).
+- **Real world (sunk cost restored):** the delta is *only about the existing core.* The
+  proven Python core + 693 tests are an asset no greenfield logic erases — keep it,
+  refactor it (§8.2), port it to Rust only on the banked triggers, byte-diff-eval
+  first. **But the new platform layer is greenfield in the real world too — so the
+  greenfield logic applies to it directly.** This *revises* §1.3/§8.4: build
+  `drift-wild` (and later `drift-fleet`) in **Rust, not Go**, converging the whole
+  system on the language the banked core-port already names — a two-language *future*
+  (Python now, Rust growing) instead of a three-language one (Python + Go + eventual
+  Rust). Go remains the documented fallback on exactly one condition: the team decides
+  hiring/onboarding for the platform layer outweighs type-enforced correctness there —
+  a legitimate business call, but make it explicitly, not by defaulting to "platform
+  feel."
+
+---
+
 ## Appendix A — recon index (all verified this session)
 
 eBay: timotheus/ebaysdk-python (854★, dormant, 2 of 4 wrapped APIs dead) ·
