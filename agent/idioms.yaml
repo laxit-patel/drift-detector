@@ -66,3 +66,15 @@
   base: "$A->API_ENDPOINT"
   evidence: "rushikesh/ebayapi src/Ebay/src/Ebay_post_order_api.php:64"
   note: eBay Post-Order procedural client — $url = $this->API_ENDPOINT . "post-order/v2/...".
+
+- id: catch-api-paths
+  family: path-constant
+  repo: akshit.tops/catchapi
+  vendor: Catch
+  pathRegex: '^/api/'
+  evidence: "akshit.tops/catchapi src/CatchApi/GetOrders.php:9"
+  note: >-
+    Catch (catch.com.au) marketplace wrapper. Host injected at runtime
+    ($config['host_name']); operations are per-class $API_URL constants
+    ("/api/orders", "/api/offers", …) assembled in CatchApi::curlOption
+    ($this->HOST_NAME . $url). No host literal, so repo-scoped + vendor-bound.

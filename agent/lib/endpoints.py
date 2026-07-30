@@ -7,11 +7,36 @@ Known vendors carry their `vendor`/`techKey`; un-catalogued external hosts are s
 """
 from __future__ import annotations
 
+import os
+import re
 from pathlib import Path
 
-from agent.lib import classify_url
+from agent.lib import classify_url, scope_edges
 
 UNKNOWN = "Unknown"
+
+_STRING_LIT = re.compile(r"""['"]([^'"]*)['"]""")
+
+
+def _string_literal_of(text: str) -> str:
+    """The first quoted string in a matched line — the path a path-constant rule caught."""
+    m = _STRING_LIT.search(text or "")
+    return m.group(1) if m else ""
+
+
+def _repo_in_scope(repo_id: str, suffix: str) -> bool:
+    """Is the repo being scanned the one an instance is bound to? Matches host-independently on
+    the git identity's path suffix (a fleet clone's remote_url), with the clone-folder name
+    (`{org}-{repo}-{hash}`) as the fallback for a locally-scanned checkout — mirrors
+    sdk_profiles._matches so a profile and an idiom scope the same repo the same way."""
+    if not repo_id or not suffix:
+        return False
+    iden = scope_edges.identity(repo_id)
+    if iden and (iden == suffix or iden.endswith("/" + suffix)):
+        return True
+    base = os.path.basename(str(repo_id).rstrip("/"))
+    dash = suffix.replace("/", "-")
+    return base == dash or base.startswith(dash + "-")
 
 
 def _read_line(repo_root: str, path: str, line: int, cache: dict) -> str:
@@ -38,8 +63,10 @@ def _relpath(path: str, repo_root: str) -> str:
         return path
 
 
-def scan_endpoints(matches: list, repo_root: str, vendors: list, *, max_files: int = 20) -> dict:
+def scan_endpoints(matches: list, repo_root: str, vendors: list, *, max_files: int = 20,
+                   idioms: list | None = None, repo_id: str | None = None) -> dict:
     by_tk = {v.techKey: v for v in vendors}
+    by_name = {v.vendor: v for v in vendors}
     line_cache: dict = {}
     groups: dict = {}
     seen_known: set = set()
@@ -164,8 +191,43 @@ def scan_endpoints(matches: list, repo_root: str, vendors: list, *, max_files: i
                     path, rel, lineno, inferred=True)
                 attributed_locs.add(f"{rel}:{lineno}")
 
+    # --- path-constant idiom: operations of a config-injected wrapper ---
+    # A config-injected host classifies nothing, so — unlike the concat/operation-marker
+    # blocks — the vendor is NOT inferred from the repo's classified set. It is the reviewed
+    # BINDING on the instance (carried in the match's `vendor` metadata). Two guards keep it
+    # honest: the instance's `repo` scope must match THIS repo (its paths are generic, e.g.
+    # /api/orders, and would mis-tag a different marketplace), and the repo must show an egress
+    # sink (it actually makes HTTP calls). Everything else lands in residue below.
+    pc_by_id = {i["id"]: i for i in (idioms or []) if i.get("family") == "path-constant"}
+    has_sink = any(m.get("kind") == "sink" for m in matches)
+    attributed_pc: set = set()
+    if pc_by_id:
+        for m in matches:
+            if m.get("kind") != "path-constant":
+                continue
+            inst = pc_by_id.get(m.get("checkId"))
+            if inst is None:
+                continue
+            rel = _relpath(m.get("path", ""), repo_root)
+            lineno = int(m.get("line", 0) or 0)
+            if inst.get("requiresSink", True) and not has_sink:
+                continue
+            if not _repo_in_scope(repo_id or repo_root, inst.get("repo", "")):
+                continue
+            path = _string_literal_of(m.get("text") or
+                                      _read_line(repo_root, rel, lineno, line_cache))
+            if not path or not re.search(inst["pathRegex"], path):
+                continue
+            v = by_name.get(m.get("vendor") or inst.get("vendor"))
+            if v is None:
+                continue
+            host = v.domains[0] if v.domains else f"sdk:{inst['repo']}"
+            add(v.vendor, v.techKey, host, None, path, rel, lineno,
+                operation=path, inferred=True)
+            attributed_pc.add(f"{rel}:{lineno}")
+
     # --- residue: what we could NOT attribute (the conscience) ---
-    residue_paths, residue_sinks, residue_ops = [], [], []
+    residue_paths, residue_sinks, residue_ops, residue_pc = [], [], [], []
     for m in matches:
         rel = _relpath(m.get("path", ""), repo_root)
         lineno = int(m.get("line", 0) or 0)
@@ -186,6 +248,13 @@ def scan_endpoints(matches: list, repo_root: str, vendors: list, *, max_files: i
                                            _read_line(repo_root, rel, lineno, line_cache))
             if op:
                 residue_ops.append({"operation": op, "loc": loc})
+        elif kind == "path-constant" and loc not in attributed_pc:
+            # out of scope, no sink, or an unbound vendor: a path constant we saw but did not
+            # attribute. Recorded so the gate can require it SHRINK, and so coverage stays honest.
+            path = _string_literal_of(m.get("text") or
+                                      _read_line(repo_root, rel, lineno, line_cache))
+            if path:
+                residue_pc.append({"sample": path, "loc": loc})
 
     # Deterministic output regardless of the engine's match order (which is NOT stable
     # run-to-run — a container double-run proved the endpoints list reordered between runs).
@@ -202,11 +271,11 @@ def scan_endpoints(matches: list, repo_root: str, vendors: list, *, max_files: i
     endpoints = sorted(groups.values(), key=lambda r: (
         r.get("vendor") or "", r.get("domain") or "", str(r.get("version") or ""),
         r.get("apiPath") or "", str(r.get("operation") or ""), r.get("example") or ""))
-    for lst in (residue_paths, residue_sinks, residue_ops):
+    for lst in (residue_paths, residue_sinks, residue_ops, residue_pc):
         lst.sort(key=lambda x: _loc_key(x["loc"]))
     return {"endpoints": endpoints,
             "residue": {"pathLiterals": residue_paths, "sinks": residue_sinks,
-                        "operations": residue_ops}}
+                        "operations": residue_ops, "pathConstants": residue_pc}}
 
 
 def build_endpoints(matches: list, repo_root: str, vendors: list, *, max_files: int = 20) -> list:

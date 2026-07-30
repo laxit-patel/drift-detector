@@ -20,11 +20,11 @@ from agent.lib import catalog_overlay
 _DEFAULT = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
                         "idioms.yaml")
 
-FAMILIES = frozenset({"url-assembly", "url-append", "operation-marker"})
+FAMILIES = frozenset({"url-assembly", "url-append", "operation-marker", "path-constant"})
 
 # family -> the rule kind its matches carry, i.e. how endpoints.py will read them
 KIND_BY_FAMILY = {"url-assembly": "path-assembly", "url-append": "path-assembly",
-                  "operation-marker": "operation-marker"}
+                  "operation-marker": "operation-marker", "path-constant": "path-constant"}
 
 
 class IdiomError(ValueError):
@@ -52,6 +52,17 @@ def _validate(inst: dict, where: str) -> None:
     if fam == "operation-marker" and not (inst.get("marker") or inst.get("pattern")):
         raise IdiomError(f"{where}: operation-marker needs `marker` (a regex over string "
                          "literals) or `pattern` (an ast-grep pattern)")
+    if fam == "path-constant":
+        # Repo-scoped + vendor-bound: a config-injected wrapper has no host literal, so the
+        # vendor cannot be inferred from the repo — it must be NAMED (and reviewed), and the
+        # instance must say which repo it applies to (the paths — `/api/orders` — are generic
+        # and would mis-tag a different marketplace otherwise). pathRegex says which string
+        # literals in that repo are operation paths.
+        for req in ("repo", "vendor", "pathRegex"):
+            if not inst.get(req):
+                raise IdiomError(f"{where}: path-constant needs `{req}` — it is repo-scoped "
+                                 "(generic paths would mis-tag another vendor) and vendor-bound "
+                                 "(no host literal to infer the vendor from)")
 
 
 def load_idioms(path: str | None = None) -> list:
@@ -102,4 +113,16 @@ def to_rules(inst: dict, literal_rule, languages: list) -> list:
             else:
                 docs.append({"id": f"{rid}@{lang}", "language": lang, "metadata": dict(kind),
                              "rule": {"pattern": inst["pattern"]}})
+    elif fam == "path-constant":
+        # A string-literal rule matching the instance's path shape, carrying the BOUND vendor
+        # in metadata (the engine passes `vendor` through, exactly as it does for the per-vendor
+        # `endpoint` rules). endpoints.py then attributes the match — repo-scope + sink guarded.
+        # The ast-grep regex runs over the node text WITH its quotes ("/api/orders"), so a
+        # leading `^` would anchor before the quote and never match — strip it for the rule
+        # (a broad candidate surface); endpoints.py re-applies the FULL pathRegex to the
+        # unquoted content, so `^/api/` still means "the path starts with /api/".
+        meta = {**kind, "vendor": inst["vendor"]}
+        rule_rx = inst["pathRegex"][1:] if inst["pathRegex"].startswith("^") else inst["pathRegex"]
+        for lang in langs:
+            docs.append(literal_rule(rid, rule_rx, lang, meta))
     return docs

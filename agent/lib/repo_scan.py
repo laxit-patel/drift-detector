@@ -11,7 +11,7 @@ from agent.lib import lockfile, private_sources
 
 
 def scan_repo(repo_abs, repo_name, repo_id, vendors, rules_path, *,
-              engine, run, git=_default_git):
+              engine, run, git=_default_git, idiom_instances=None):
     meta = git_meta(repo_abs, run=git)
     meta.update({"id": repo_id, "path": repo_name, "provenance": {"engine": "ast-grep"}})
 
@@ -19,7 +19,11 @@ def scan_repo(repo_abs, repo_name, repo_id, vendors, rules_path, *,
     partitioned = partition_records(records)
 
     scan = run_scan(repo_abs, rules_path, engine=engine, run=run)
-    scanned_eps = scan_endpoints(scan["matches"], repo_abs, vendors)
+    # a path-constant idiom is repo-scoped: pass the repo's git identity (its remote, or the
+    # local checkout path as a fallback) so a wrapper's constants attribute only in ITS repo.
+    scanned_eps = scan_endpoints(scan["matches"], repo_abs, vendors,
+                                 idioms=idiom_instances,
+                                 repo_id=meta.get("remote_url") or repo_abs)
     endpoints = [e for e in scanned_eps["endpoints"] if e.get("domain")]
 
     record = to_superset_repo(meta, partitioned, endpoints)

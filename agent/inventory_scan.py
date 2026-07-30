@@ -9,7 +9,7 @@ from agent.lib.vendor_rules import write_ruleset, rule_kinds_by_language
 from agent.lib import shapes
 from agent.lib.repo_scan import scan_repo
 from agent.lib.repo_discovery import discover_repos, diagnose_root
-from agent.lib import source_resolver, sdk_profiles
+from agent.lib import source_resolver, sdk_profiles, idioms as idioms_mod
 from agent.lib.inv_rollups import build_rollups
 from agent.lib.inventory_diff import diff_inventories
 
@@ -113,7 +113,10 @@ def scan_folder(root, state_dir, now, *, engine=None, run=None, git=None, progre
     os.makedirs(state_dir, exist_ok=True)
     vendors = load_vendors()
     rules_path = os.path.join(state_dir, "rules.generated.yaml")
-    write_ruleset(vendors, rules_path)
+    # load idioms ONCE and hand the SAME instances to both the ruleset (which surfaces the
+    # matches) and scan_repo (which reads a path-constant match's repo scope + bound vendor).
+    idiom_instances = idioms_mod.load_idioms()
+    write_ruleset(vendors, rules_path, idiom_instances=idiom_instances)
 
     _p("resolving sources under " + ", ".join(str(r) for r in roots) + " …")
     # A checkout, a plain folder, or a git/GitLab URL (cloned into <state>/sources/) all
@@ -146,7 +149,8 @@ def scan_folder(root, state_dir, now, *, engine=None, run=None, git=None, progre
                 continue
             _p(f"{tag}  scan: git · manifests · AST endpoints")
             record, note = scan_repo(abs_, name, i + 1, vendors, rules_path,
-                                     engine=engine, run=run, git=git)
+                                     engine=engine, run=run, git=git,
+                                     idiom_instances=idiom_instances)
             record["sourceKind"] = source_kind.get(abs_, "local-git")
             record["shape"] = _shape_of(abs_, name, record, rule_kinds, attestations)
             repos.append(record)
