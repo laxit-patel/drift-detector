@@ -63,3 +63,17 @@ def test_synthetic_endpoint_feeds_the_audit_lifecycle_join_into_retired_findings
 def test_shipped_profile_file_loads_and_is_valid():
     profs = sdk_profiles.load()              # the real agent/sdk_profiles.yaml
     assert any(p["repo"] == "akshit.tops/shopify-api" for p in profs)
+
+
+def test_matches_is_case_insensitive_for_mixed_case_orgs():
+    """scope_edges.identity() lowercases the path, so a mixed-case org (shubhTops/foo-sdk) must
+    still match its profile repo. Same latent bug fixed in endpoints._repo_in_scope — the one
+    shipped profile (akshit.tops, already lowercase) had masked it."""
+    from agent.lib.sdk_profiles import _matches
+    rec = {"remote_url": "https://git.topsdemo.in/shubhTops/foo-sdk.git", "path": "x"}
+    assert _matches(rec, "shubhTops/foo-sdk")
+    # a different repo must NOT match
+    assert not _matches({"remote_url": "https://git.topsdemo.in/shubhTops/bar-sdk.git"},
+                        "shubhTops/foo-sdk")
+    # local-checkout fallback (clone folder {org}-{repo}-{hash}) also case-insensitive
+    assert _matches({"path": "shubhTops-foo-sdk"}, "shubhTops/foo-sdk")

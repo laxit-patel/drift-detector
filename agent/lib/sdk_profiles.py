@@ -48,11 +48,15 @@ def _matches(repo_record: dict, profile_repo: str) -> bool:
     """Does this scanned repo IS the profiled dependency? Match host-independently on the git
     identity's path suffix (a fleet clone's remote_url carries the real project path), with the
     clone-folder name as a fallback for a locally-scanned checkout."""
+    # case-insensitive: scope_edges.identity() lowercases the path, so a mixed-case org
+    # (shubhTops/foo-sdk) must still match its profile repo — the same bug fixed in
+    # endpoints._repo_in_scope, masked here only because the one shipped profile is lowercase.
+    suf = profile_repo.lower()
     iden = scope_edges.identity(repo_record.get("remote_url") or "")
-    if iden and (iden == profile_repo or iden.endswith("/" + profile_repo)):
+    if iden and (iden == suf or iden.endswith("/" + suf)):
         return True
-    path = str(repo_record.get("path") or "")
-    return path == profile_repo or path.endswith(profile_repo.replace("/", "-"))
+    path = str(repo_record.get("path") or "").lower()
+    return path == suf or path.endswith(suf.replace("/", "-"))
 
 
 def endpoints_for(repo_record: dict, profiles: list) -> list:
