@@ -632,3 +632,24 @@ def test_dark_is_the_default_theme():
     assert "color-scheme:dark" in html                          # CSS default resolves dark
     js = html.split("<script>")[-1]
     assert 'modes=["auto","light","dark"], ti=2' in js          # JS default index = dark
+
+
+def test_permalink_self_hosted_gitlab_via_config_not_env(monkeypatch):
+    """The self-hosted GitLab host comes from the drift.yml fleet (cfg['host']), threaded as
+    gitlab_hosts — no CI env var needed. Env stays a fallback/override."""
+    from agent.lib.dashboard_render import _permalink
+    monkeypatch.delenv("DRIFT_GITLAB_HOSTS", raising=False)
+    assert _permalink("https://git.topsdemo.in/rushikesh/ebayapi", "SHA", "src/x.php:39",
+                      gitlab_hosts={"git.topsdemo.in"}) == \
+        "https://git.topsdemo.in/rushikesh/ebayapi/-/blob/SHA/src/x.php#L39"
+
+
+def test_build_payload_threads_config_gitlab_host_into_hrefs(monkeypatch):
+    from agent.lib.dashboard_render import build_payload
+    monkeypatch.delenv("DRIFT_GITLAB_HOSTS", raising=False)
+    inv = {"repos": [{"path": "r", "remote_url": "https://git.topsdemo.in/g/r", "head_sha": "S",
+                      "endpoints": []}]}
+    audit = {"actions": [{"repo": "r", "kind": "sunset", "files": ["src/x.php:5"], "vendor": "V"}]}
+    proj = build_payload(inv, audit, gitlab_hosts={"git.topsdemo.in"})
+    hrefs = [f["href"] for a in proj["actions"] for f in a["files"]]
+    assert hrefs == ["https://git.topsdemo.in/g/r/-/blob/S/src/x.php#L5"]

@@ -74,13 +74,18 @@ def _cmd_audit(args) -> int:
 def _cmd_run(args) -> int:
     from agent.run import run_pipeline
     roots = args.root
+    gitlab_hosts = frozenset()
     if getattr(args, "config", None):
         from agent.lib import ops_config
         try:
-            roots = args.root or ops_config.load(args.config)["fleet"]   # flag overrides config
+            cfg = ops_config.load(args.config)
         except (OSError, ops_config.ConfigError) as exc:
             print(f"run: bad --config — {exc}", file=sys.stderr)
             return 2
+        roots = args.root or cfg["fleet"]                # flag overrides config
+        # the fleet's shared host IS the permalink host — so call-site links resolve to the
+        # SAME GitLab the repos were cloned from, configured in drift.yml, not a CI env var
+        gitlab_hosts = frozenset({cfg["host"]})
     if not roots:
         print("run: no repos to scan — pass --root or a --config with a fleet", file=sys.stderr)
         return 2
@@ -93,7 +98,8 @@ def _cmd_run(args) -> int:
             print(f"⚙ {msg}", file=sys.stderr, flush=True)
     try:
         out = run_pipeline(roots, args.state, args.now,
-                           pull=getattr(args, "pull", False), progress=progress)
+                           pull=getattr(args, "pull", False), progress=progress,
+                           gitlab_hosts=gitlab_hosts)
     except RuntimeError as exc:
         print(f"run failed: {exc}", file=sys.stderr)
         return 2

@@ -45,7 +45,7 @@ def _pull_repos(roots, pull_run):
 
 def run_pipeline(roots, state_dir, now, *, pull=False,
                  engine=None, run=None, git=None, http=None, progress=None,
-                 pull_run=None) -> dict:
+                 pull_run=None, gitlab_hosts=frozenset()) -> dict:
     roots = [roots] if isinstance(roots, (str, os.PathLike)) else list(roots)
     os.makedirs(state_dir, exist_ok=True)
     if pull:
@@ -63,7 +63,7 @@ def run_pipeline(roots, state_dir, now, *, pull=False,
     #   drift.md       the primary, agent-readable view (a verified projection)
     #   dashboard.html a self-contained viewer (embeds the same payload, offline/CDN-free)
     #   chart.html     an ONLINE chart view — same embedded payload, Chart.js from a CDN
-    payload = build_payload(doc, audit, diff=scan["diff"])
+    payload = build_payload(doc, audit, diff=scan["diff"], gitlab_hosts=gitlab_hosts)
     _write_json(os.path.join(state_dir, "drift.json"), payload)
     _write(os.path.join(state_dir, "drift.md"), render_markdown(payload, now))
     _write(os.path.join(state_dir, "dashboard.html"),

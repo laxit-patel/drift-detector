@@ -64,10 +64,11 @@ def _repo_label(remote_url, fallback: str) -> str:
     return m.group(1) if m else fallback
 
 
-def _permalink(remote_url, head_sha, loc) -> str | None:
+def _permalink(remote_url, head_sha, loc, gitlab_hosts=frozenset()) -> str | None:
     """Build a GitHub/GitLab blob permalink pinned to head_sha, or None (plain text).
-    A self-hosted GitLab host isn't guessable from the URL — it's allow-listed via
-    $DRIFT_GITLAB_HOSTS. Unknown host -> None (never a guessed/broken link)."""
+    A self-hosted GitLab host isn't guessable from the URL — it's allow-listed. The list comes
+    from the drift.yml fleet (its shared host, threaded in as `gitlab_hosts`), plus
+    $DRIFT_GITLAB_HOSTS as a fallback/override. Unknown host -> None (never a guessed link)."""
     if not remote_url or not head_sha or not loc:
         return None
     path, _, line = str(loc).rpartition(":")
@@ -80,12 +81,12 @@ def _permalink(remote_url, head_sha, loc) -> str | None:
     anchor = f"#L{line}" if line else ""
     if host == "github.com":
         return f"https://github.com/{owner_repo}/blob/{head_sha}/{path}{anchor}"
-    if host == "gitlab.com" or "gitlab" in host or host in _gitlab_hosts():
+    if host == "gitlab.com" or "gitlab" in host or host in (set(gitlab_hosts) | _gitlab_hosts()):
         return f"https://{host}/{owner_repo}/-/blob/{head_sha}/{path}{anchor}"
     return None
 
 
-def _build_projection(inventory: dict, audit: dict) -> dict:
+def _build_projection(inventory: dict, audit: dict, gitlab_hosts=frozenset()) -> dict:
     repo_meta = {r.get("path"): {"remote_url": r.get("remote_url"), "head_sha": r.get("head_sha")}
                  for r in inventory.get("repos", [])}
     actions = [_project_action(a) for a in _actions_of(audit)]
@@ -94,7 +95,8 @@ def _build_projection(inventory: dict, audit: dict) -> dict:
         # display by the clean project path (chetan/amazonspapi), not the internal clone slug
         # (chetan-amazonspapi-f5043548). `repo` stays the stable identity for fingerprints.
         a["repoLabel"] = _repo_label(rm.get("remote_url"), a["repo"])
-        a["files"] = [{"loc": loc, "href": _permalink(rm.get("remote_url"), rm.get("head_sha"), loc)}
+        a["files"] = [{"loc": loc,
+                       "href": _permalink(rm.get("remote_url"), rm.get("head_sha"), loc, gitlab_hosts)}
                       for loc in a["files"]]
     endpoints = _endpoints_of(inventory)
     cov = inventory.get("coverage") or {}
@@ -189,7 +191,8 @@ def _blob(projection: dict) -> str:
     return raw.replace("<", "\\u003c")
 
 
-def build_payload(inventory: dict, audit: dict, *, diff: dict | None = None) -> dict:
+def build_payload(inventory: dict, audit: dict, *, diff: dict | None = None,
+                  gitlab_hosts=frozenset()) -> dict:
     """The dashboard's DATA — everything the page displays, before any HTML exists.
 
     This is the contract. `drift.json` is this dict and the page embeds this same
@@ -198,7 +201,7 @@ def build_payload(inventory: dict, audit: dict, *, diff: dict | None = None) -> 
     reading `Sunsets 1` over twelve findings, then twelve rows all labelled "eBay" —
     both passed their unit tests because the tests ran a layer below the artifact.
     """
-    projection = _build_projection(inventory, audit)
+    projection = _build_projection(inventory, audit, gitlab_hosts)
     if diff is not None:                 # the inventory drift DRIFT.md used to carry
         projection["inventoryDrift"] = diff
     return projection
@@ -221,9 +224,10 @@ def build_bundle(inventory: dict, audit: dict, now: str) -> dict:
             "sarif": _sarif.build_sarif(audit)}
 
 
-def render_dashboard(inventory: dict, audit: dict, now: str, *, diff: dict | None = None) -> str:
+def render_dashboard(inventory: dict, audit: dict, now: str, *, diff: dict | None = None,
+                     gitlab_hosts=frozenset()) -> str:
     """The cockpit: the drift report + the SBOM (CycloneDX/SPDX) + SARIF, one self-contained file."""
-    payload = build_payload(inventory, audit, diff=diff)
+    payload = build_payload(inventory, audit, diff=diff, gitlab_hosts=gitlab_hosts)
     return render_payload(payload, now, bundle=build_bundle(inventory, audit, now))
 
 
@@ -599,14 +603,15 @@ _CLIENT_JS = r"""
     if(a.files && a.files.length){
       h+='<div class="usedat"><b>Used at:</b>';
       a.files.forEach(function(f){
-        if(f.href){
+        var link = esc(f.loc);
+        if(f.href){                                 // a live permalink -> open the code in a NEW tab
           var u=safeUrl(f.href);
-          h+='<div class="callsite">'+(u? '<a href="'+escA(u)+'" rel="noopener">'+esc(f.loc)+'</a>'
-                                        : esc(f.loc))+'</div>';
-        } else {
-          h+='<div class="callsite">'+esc(f.loc)
-            +' <button class="copy-loc" data-loc="'+escA(f.loc)+'">copy</button></div>';
+          if(u) link='<a href="'+escA(u)+'" target="_blank" rel="noopener">'+esc(f.loc)+'</a>';
         }
+        // the copy button stays ALONGSIDE the link — a link jumps to the code, copy grabs
+        // the path:line for a ticket/commit message
+        h+='<div class="callsite">'+link
+          +' <button class="copy-loc" data-loc="'+escA(f.loc)+'">copy</button></div>';
       });
       h+='</div>';
     }
@@ -614,7 +619,7 @@ _CLIENT_JS = r"""
       return '<li>'+esc(c.id)+' — '+esc(c.title)+'</li>'; }).join("")+'</ul>'; }
     if(a.sources && a.sources.length){ h+='<div>'+a.sources.map(function(u){
       var s = safeUrl(u);
-      return s ? '<a href="'+escA(s)+'" rel="noopener">source ↗</a>' : esc(u); }).join(" · ")+'</div>'; }
+      return s ? '<a href="'+escA(s)+'" target="_blank" rel="noopener">source ↗</a>' : esc(u); }).join(" · ")+'</div>'; }
     return h;
   }
   function renderEndpoints(list){
