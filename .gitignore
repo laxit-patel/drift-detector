@@ -18,3 +18,6 @@ docs/results/
 
 # MCP server venv
 .venv-mcp/
+
+# agent worktrees / local scratch (never publish)
+.claude/
