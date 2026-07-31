@@ -226,7 +226,9 @@ def scan_endpoints(matches: list, repo_root: str, vendors: list, *, max_files: i
             if v is None:
                 continue
             host = v.domains[0] if v.domains else f"sdk:{inst['repo']}"
-            add(v.vendor, v.techKey, host, None, path, rel, lineno,
+            # optional `version`: a wrapper pinned to a specific (often DEPRECATED) API version
+            # — e.g. BigCommerce's /api/v2 constants — so a version-scoped sunset can flag it.
+            add(v.vendor, v.techKey, host, inst.get("version"), path, rel, lineno,
                 operation=path, inferred=True)
             attributed_pc.add(f"{rel}:{lineno}")
 

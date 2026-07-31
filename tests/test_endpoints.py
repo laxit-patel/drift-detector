@@ -449,3 +449,18 @@ def test_repo_in_scope_is_case_insensitive():
     assert _repo_in_scope("git@git.topsdemo.in:shubhTops/magento_api.git", "shubhTops/magento_api")
     # a different repo must NOT match
     assert not _repo_in_scope("https://git.topsdemo.in/shubhTops/other_api", "shubhTops/magento_api")
+
+
+def test_path_constant_can_pin_a_version(tmp_path):
+    """An optional `version` on the instance stamps the attributed endpoints — so a wrapper that
+    uses a DEPRECATED API version (BigCommerce v2 constants) attributes at version=v2, and a
+    version-scoped sunset can then flag it. Without it, path-constants are version-less."""
+    inst = {"id": "bc-v2", "family": "path-constant", "repo": "jilesh/bigcommerce-api",
+            "vendor": "Catch", "pathRegex": r"/v2", "version": "v2", "evidence": "x:1"}
+    ms = [_pc("src/Root/Client.php", 54, "private static $path_prefix = '/api/v2';",
+              check="bc-v2"),
+          _sink("src/Root/Client.php", 90)]
+    out = scan_endpoints(ms, str(tmp_path), [_CATCH],
+                         idioms=[inst], repo_id="git@x:jilesh/bigcommerce-api.git")
+    eps = [e for e in out["endpoints"] if e["classified"]]
+    assert eps and eps[0]["version"] == "v2"

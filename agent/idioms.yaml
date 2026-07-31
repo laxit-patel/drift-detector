@@ -135,3 +135,15 @@
     per-class URI consts ("/orders/?format=json", "/categories/?format=json", …) in
     hitApi(self::API_VERSION . $path). The distinctive ?format=json suffix marks the
     operation constants (a bare ^/ would strip to '/' and match every path fleet-wide).
+
+- id: bigcommerce-v2-jilesh
+  family: path-constant
+  repo: jilesh/bigcommerce-api
+  vendor: BigCommerce
+  pathRegex: '/v2'
+  version: v2
+  evidence: "jilesh/bigcommerce-api src/Root/Client.php:54"
+  note: >-
+    Legacy BigCommerce V2 client — $path_prefix '/api/v2' + $stores_prefix '/stores/%s/v2'
+    (Root/Client.php:54,66), alongside a V3 migration in src/BigCommerce/V3. Pins version=v2 so
+    the deprecated-no-date V2 sunset flags exactly the v2 call-sites.

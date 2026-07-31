@@ -331,3 +331,12 @@
     MyDeal (mydeal.com.au, Woolworths Group) marketplace closed 2025-09-30 (announced
     2025-06-27; consolidated into BIG W Market — mydeal.com.au now redirects to BigW). Trade
     press sourced (Inside Retail / Mi3); seller API help domain is DNS-dead.
+# BigCommerce V2 Catalog REST API — DEPRECATED with no removal date announced (migrate to V3).
+- vendor: BigCommerce
+  version: v2
+  status: deprecated-no-date
+  replacement: v3
+  source: https://developer.bigcommerce.com/docs/store-operations/catalog/migration
+  note: >-
+    "All V2 Catalog REST APIs are deprecated" (official migration guide); BigCommerce recommends
+    V3, no fixed sunset date announced. Flags /api/v2 usage — migrate to the V3 catalog API.
