@@ -305,3 +305,21 @@
   note: Trading API. Deprecated 2026-07-02, decommissioned 2026-09-21. First live
     catch of the monthly catalog-check stage (flagged by the 2026-07-29 run); feed
     re-fetched and the item re-read at absorb time, same session.
+
+# ── Platform shutdowns (whole-marketplace retirements) — an integration to a dead platform is
+# 100% broken, not "deprecated someday". First parties are GONE, so these are trade-press
+# sourced (flagged below); a shutdown is the one case where the vendor page can't be the cite.
+- vendor: Catch
+  version: "*"
+  retires: "2025-04-30"
+  source: https://ia.acs.org.au/article/2025/catch-com-au-to-close-down.html
+  note: >-
+    Catch (catch.com.au, Wesfarmers) ceased operating 2025-04-30 — entire marketplace shut
+    down; ran on Mirakl. Trade-press sourced (ACS/SmartCompany) — first-party site is gone.
+- vendor: MySale
+  version: "*"
+  retires: "2026-01-27"
+  source: https://powerretail.com.au/breaking-ozsale-announces-closure/
+  note: >-
+    MySale/OZSale closed all sites + operations 2026-01-27 (NZSale earlier, 2025-11-23). The
+    API domain is DNS-dead. Trade-press sourced (PowerRetail/Medcart) — first party is gone.
