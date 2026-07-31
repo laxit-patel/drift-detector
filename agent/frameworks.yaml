@@ -9,6 +9,12 @@ composer:
   - yiisoft/yii2
   - codeigniter4/framework
   - laminas/laminas-mvc
+  # Magento / Adobe Commerce install packages — so a Magento STORE repo's version is treated as
+  # a framework and joined to endoflife.date/magento (see eol.PRODUCT_MAP). A wrapper that only
+  # CALLS Magento never requires these, so this stays inert on integration-client repos.
+  - magento/product-community-edition
+  - magento/product-enterprise-edition
+  - magento/magento2-base
 npm:
   - react
   - next

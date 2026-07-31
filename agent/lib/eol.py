@@ -14,6 +14,13 @@ PRODUCT_MAP = {
     "node": "nodejs", "php": "php", "python": "python",
     "laravel/framework": "laravel", "next": "nextjs", "vue": "vue",
     "django": "django", "symfony/framework-bundle": "symfony",
+    # Magento / Adobe Commerce software EOL (endoflife.date/magento tracks 2.4.4..2.4.9).
+    # NOTE: this is the SERVER's version — it only surfaces when a Magento INSTALL is scanned
+    # (its composer.json requires the package). A wrapper that merely CALLS Magento's REST API
+    # never pins this, so it does not fire on integration-client repos.
+    "magento/product-community-edition": "magento",
+    "magento/product-enterprise-edition": "magento",
+    "magento/magento2-base": "magento",
 }
 
 _REVIEW_WINDOW = timedelta(days=183)   # "EOL within ~6 months" -> REVIEW (per the original design)

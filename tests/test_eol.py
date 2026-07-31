@@ -46,3 +46,29 @@ def test_node_matches_major_from_full_version():
 def test_untracked_product_returns_none():
     assert eol.check("react", "19.0.0", "2026-07-14", http=_http({})) is None
     assert eol.check("php", None, "2026-07-14", http=_http({"php": _PHP})) is None
+
+
+_MAGENTO = [
+    {"cycle": "2.4.7", "eol": "2027-05-31", "latest": "2.4.7-p3"},
+    {"cycle": "2.4.6", "eol": "2026-08-11", "latest": "2.4.6-p8"},
+    {"cycle": "2.4.4", "eol": "2025-04-12", "latest": "2.4.4-p13"},
+]
+
+
+def test_magento_package_maps_to_endoflife_slug():
+    assert eol.product_slug("magento/product-community-edition") == "magento"
+    assert eol.product_slug("magento/product-enterprise-edition") == "magento"
+
+
+def test_magento_244_is_eol():
+    # a Magento STORE repo (composer requires magento/product-community-edition 2.4.4) -> EOL
+    r = eol.check("magento/product-community-edition", "2.4.4", "2026-07-31",
+                  http=_http({"magento": _MAGENTO}))
+    assert r["slug"] == "magento" and r["status"] == "DEPRECATED" and r["eol_date"] == "2025-04-12"
+    assert r["source_url"] == "https://endoflife.date/magento"
+
+
+def test_magento_is_classified_as_a_framework():
+    from agent.lib.frameworks import is_framework
+    assert is_framework("composer", "magento/product-community-edition")
+    assert is_framework("composer", "magento/product-enterprise-edition")
