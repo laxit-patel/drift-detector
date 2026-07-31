@@ -323,3 +323,11 @@
   note: >-
     MySale/OZSale closed all sites + operations 2026-01-27 (NZSale earlier, 2025-11-23). The
     API domain is DNS-dead. Trade-press sourced (PowerRetail/Medcart) — first party is gone.
+- vendor: MyDeal
+  version: "*"
+  retires: "2025-09-30"
+  source: https://insideretail.com.au/sectors/woolworths-to-close-mydeal-online-marketplace-in-digital-business-refocus-202506
+  note: >-
+    MyDeal (mydeal.com.au, Woolworths Group) marketplace closed 2025-09-30 (announced
+    2025-06-27; consolidated into BIG W Market — mydeal.com.au now redirects to BigW). Trade
+    press sourced (Inside Retail / Mi3); seller API help domain is DNS-dead.
