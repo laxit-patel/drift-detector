@@ -16,17 +16,19 @@ fleet:
   - https://git.x/g/a
   - https://git.x/g/b
 delivery:
-  mode: live
+  mode: dry-run
   dev_as_issues: true
   devops_project: root/ops
 """
 
 
 def test_valid_config_loads_and_derives_the_host(tmp_path):
+    # a valid v1 config (v1 can't carry an assignee, so a WRITE mode on v1 is rejected — see
+    # test_v1_create_mode_without_assignee_is_rejected; dry-run is the valid v1 shape).
     cfg = ops_config.load(_write(tmp_path, _GOOD))
     assert cfg["fleet"] == ["https://git.x/g/a", "https://git.x/g/b"]
     assert cfg["host"] == "git.x"                              # derived from the fleet URLs
-    assert cfg["delivery"] == {"mode": "live", "dev_as_issues": True,
+    assert cfg["delivery"] == {"mode": "dry-run", "dev_as_issues": True,
                                "devops_project": "root/ops", "devopsAssignee": None,
                                "developerFallbackAssignee": None, "shape_stream": False,
                                "freshness_stream": False}
@@ -222,4 +224,16 @@ fleet: [https://git.x/g/r]
 delivery:
   mode: create
   devops_project: g/ops
+"""))
+
+
+def test_live_write_mode_also_requires_devops_assignee(tmp_path):
+    # both write modes (create AND the legacy 'live') file issues, so both must require the
+    # assignee — 'live' must not bypass the guard 'create' enforces.
+    with pytest.raises(ops_config.ConfigError, match="devops.assignee"):
+        ops_config.load(_write(tmp_path, """
+fleet: [https://git.x/g/r]
+delivery:
+  mode: live
+  devops: { project: g/ops }
 """))

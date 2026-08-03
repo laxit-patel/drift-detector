@@ -174,9 +174,9 @@ def _load_delivery(path: str, raw: dict) -> dict:
         devops_assignee = None
         developer_fallback = None
 
-    if mode == "create" and not devops_assignee:
+    if mode in ("create", "live") and not devops_assignee:
         raise ConfigError(f"{path}: delivery.devops.assignee is required when delivery.mode "
-                          "is 'create' (every DevOps issue is assigned to it)")
+                          "files issues (create/live) — every DevOps issue is assigned to it")
     # the two maintainer streams, both off by default and opted into independently:
     # shape_stream files an absorption flag per UNKNOWN repo (opt in once the fleet is stable,
     # so early scans don't flag every not-yet-modeled repo); freshness_stream files THE
