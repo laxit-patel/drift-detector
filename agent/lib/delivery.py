@@ -371,7 +371,7 @@ def build_plan(payload: dict, repo_meta: dict, existing: dict, devops_project: s
     if dev_as_issues:
         for repo, acts in by_repo.items():
             project = (repo_meta.get(repo) or {}).get("project") or repo
-            fp = repo_fingerprint(project)          # same key the body marker uses
+            fp = repo_fingerprint(project, "developer")          # same key the body marker uses
             live_fps.add(fp)
             title = f"[drift] API migrations for {project}"
             issue_plan.append(_issue_op(fp, title, migrations_md(project, acts, links),

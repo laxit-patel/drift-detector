@@ -117,6 +117,36 @@ def test_dev_as_issues_files_the_developer_stream_as_issues_not_mrs():
     assert delivery.repo_fingerprint("g/ebayapi", "developer") in dev_issue["body"]   # keyed on project path
 
 
+def test_dev_as_issues_is_idempotent_across_reruns():
+    """REGRESSION (task 2): build_plan's dev_as_issues branch was computing the OLD unnamespaced
+    fingerprint while migrations_md embeds the NEW namespaced marker, breaking idempotency.
+    Proof: run 1 creates a developer issue; run 2 with that same body must skip (not close + create).
+    Before fix: creates + closes (duplicate every re-scan). After fix: skip (idempotent)."""
+    a = _sunset()                                           # one developer action
+
+    # RUN 1: no existing issues -> creates
+    plan1 = delivery.build_plan(_payload([a]), _META, {"issues": [], "mrs": {}},
+                                "root/drift-detector", dev_as_issues=True)
+    assert len(plan1["issues"]) == 1
+    dev_issue_1 = plan1["issues"][0]
+    assert dev_issue_1["op"] == "create"
+    captured_body = dev_issue_1["body"]
+
+    # RUN 2: same payload, but now the issue exists with the captured body
+    existing = {"issues": [{"iid": 1, "state": "opened",
+                           "description": captured_body,
+                           "title": dev_issue_1["title"]}], "mrs": {}}
+    plan2 = delivery.build_plan(_payload([a]), _META, existing,
+                                "root/drift-detector", dev_as_issues=True)
+
+    # Must be idempotent: skip the issue, don't close it
+    assert len(plan2["issues"]) == 1
+    assert plan2["issues"][0]["op"] == "skip" and plan2["issues"][0]["iid"] == 1
+    # Ensure there's no close op for this fingerprint
+    closes = [i for i in plan2["issues"] if i["op"] == "close"]
+    assert len(closes) == 0, f"Bug: re-run is closing the developer issue instead of skipping it"
+
+
 def test_issue_and_mr_bodies_link_back_to_the_run_and_report():
     """Provenance ('what stemmed it'): every issue/MR footer links the scan run + report."""
     links = {"run": "https://gh/run/1", "report": "https://git.x/root/ops"}
