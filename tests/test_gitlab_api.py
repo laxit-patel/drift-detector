@@ -46,3 +46,38 @@ def test_set_file_put_when_it_exists_post_when_not():
     gl.set_file("g/r", ".drift/M.md", branch="b", content="c", message="m", exists=True)
     gl.set_file("g/r", ".drift/M.md", branch="b", content="c", message="m", exists=False)
     assert f.calls[0][0] == "PUT" and f.calls[1][0] == "POST"
+
+
+def _fake(routes):
+    calls = []
+    def fetch(url, *, method="GET", token=None, body=None):
+        calls.append((method, url, body))
+        for frag, resp in routes.items():
+            if frag in url:
+                return resp
+        return (200, [], "")
+    fetch.calls = calls
+    return fetch, calls
+
+
+def test_members_lists_inherited_members():
+    fetch, _ = _fake({"/members/all": (200, [{"id": 5, "username": "ann", "access_level": 50},
+                                             {"id": 6, "username": "bo", "access_level": 40}], "")})
+    gl = GitLab("git.x", "t", fetch=fetch)
+    assert gl.members("g/r") == [{"id": 5, "username": "ann", "access_level": 50},
+                                 {"id": 6, "username": "bo", "access_level": 40}]
+
+
+def test_user_id_resolves_username():
+    fetch, _ = _fake({"/users?username=ann": (200, [{"id": 5, "username": "ann"}], "")})
+    assert GitLab("git.x", "t", fetch=fetch).user_id("ann") == 5
+    fetch2, _ = _fake({"/users?username=ghost": (200, [], "")})
+    assert GitLab("git.x", "t", fetch=fetch2).user_id("ghost") is None
+
+
+def test_create_issue_sends_assignee_ids():
+    fetch, calls = _fake({"/issues": (201, {"iid": 1}, "")})
+    GitLab("git.x", "t", fetch=fetch).create_issue("g/r", title="T", description="B",
+                                                    labels="drift-detector", assignee_ids=[5])
+    method, url, body = calls[-1]
+    assert method == "POST" and body.get("assignee_ids") == [5]
