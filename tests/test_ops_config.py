@@ -213,3 +213,13 @@ delivery:
   mode: create
   developer: { target: issues }
 """))
+
+
+def test_v1_create_mode_without_assignee_is_rejected(tmp_path):
+    with pytest.raises(ops_config.ConfigError, match="devops.assignee"):
+        ops_config.load(_write(tmp_path, """
+fleet: [https://git.x/g/r]
+delivery:
+  mode: create
+  devops_project: g/ops
+"""))
