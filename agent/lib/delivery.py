@@ -43,8 +43,20 @@ def action_fingerprint(a: dict) -> str:
     return hashlib.sha256(raw.encode()).hexdigest()[:16]
 
 
-def repo_fingerprint(repo: str) -> str:
-    return hashlib.sha256(f"repo|{repo}".encode()).hexdigest()[:16]
+def resolve_owner(members: list, fallback_id):
+    """The repo owner to assign a Developer issue to: highest GitLab access_level (Owner=50 >
+    Maintainer=40), ties broken by lowest id (deterministic), else the config fallback, else None
+    (unassigned). Pure — the members list is fetched by the caller."""
+    eligible = [m for m in members if (m.get("access_level") or 0) >= 40]   # Maintainer+
+    if eligible:
+        best = min(eligible, key=lambda m: (-(m.get("access_level") or 0), m.get("id", 1 << 62)))
+        return best.get("id")
+    return fallback_id
+
+
+def repo_fingerprint(repo: str, stream: str = "") -> str:
+    raw = f"repo|{stream}|{repo}" if stream else f"repo|{repo}"
+    return hashlib.sha256(raw.encode()).hexdigest()[:16]
 
 
 def shape_fingerprint(repo: str) -> str:
@@ -183,7 +195,7 @@ def shape_issue_body(shape: dict, display: str | None = None,
 
 # --------------------------------------------------------------- MR content (Developer)
 def migrations_md(repo: str, actions: list, links: dict | None = None) -> str:
-    fp = repo_fingerprint(repo)
+    fp = repo_fingerprint(repo, "developer")
     out = ["# API migrations — Drift Detector", "",
            "Retiring vendor APIs / end-of-life frameworks this repo calls. Do the migration "
            "on this branch; this checklist is regenerated each scan.", "", marker(fp), ""]
@@ -195,6 +207,28 @@ def migrations_md(repo: str, actions: list, links: dict | None = None) -> str:
         sites = _sites_md(a)
         if sites:
             out += ["", "Call-sites:", *sites]
+        if a.get("sources"):
+            out.append("Source(s): " + ", ".join(a["sources"]))
+        out.append("")
+    out.append(_footer(links))
+    return "\n".join(out)
+
+
+def devops_repo_body(repo: str, actions: list, links: dict | None = None) -> str:
+    """Per-repo DevOps issue body: bundles package vulnerabilities and runtime EOL findings,
+    idempotent via marker. Mirrors migrations_md but for DevOps stream."""
+    fp = repo_fingerprint(repo, "devops")
+    out = ["# Platform upkeep — Drift Detector", "",
+           "Package vulnerabilities and runtime end-of-life for this repo. Bump the "
+           "manifest/lockfile or base image; this list is regenerated each scan.", "",
+           marker(fp), ""]
+    for a in actions:
+        out.append(f"## {_label_of(a)} — {a.get('status')}"
+                   + (f" · retires {a['date']}" if a.get("date") else ""))
+        if a.get("recommendation"):
+            out.append(a["recommendation"])
+        if a.get("cves"):
+            out += ["", "CVEs: " + ", ".join(str(c.get("id")) for c in a["cves"])]
         if a.get("sources"):
             out.append("Source(s): " + ", ".join(a["sources"]))
         out.append("")

@@ -114,7 +114,7 @@ def test_dev_as_issues_files_the_developer_stream_as_issues_not_mrs():
     assert all(i["project"] == "root/drift-detector" for i in plan["issues"])
     # idempotent: the per-repo issue carries the repo marker
     dev_issue = next(i for i in plan["issues"] if "migrations" in i["title"])
-    assert delivery.repo_fingerprint("g/ebayapi") in dev_issue["body"]   # keyed on project path
+    assert delivery.repo_fingerprint("g/ebayapi", "developer") in dev_issue["body"]   # keyed on project path
 
 
 def test_issue_and_mr_bodies_link_back_to_the_run_and_report():
@@ -143,7 +143,7 @@ def test_issue_and_mr_bodies_carry_a_discovery_marker():
     a = _cve()
     assert delivery.action_fingerprint(a) in "".join(delivery.markers_in(delivery.issue_body(a)))
     md = delivery.migrations_md("ebayapi", [_sunset()])
-    assert delivery.repo_fingerprint("ebayapi") in "".join(delivery.markers_in(md))
+    assert delivery.repo_fingerprint("ebayapi", "developer") in "".join(delivery.markers_in(md))
 
 
 # --------------------------------------------------------------- execute (fake GitLab)
@@ -387,3 +387,31 @@ def test_maintainer_streams_carry_the_shared_audience_tag():
     assert _issue_labels("shape") == "drift-detector,drift:maintainer,drift:shape"
     assert _issue_labels("freshness") == "drift-detector,drift:maintainer,drift:freshness"
     assert _issue_labels(None) == "drift-detector,drift:devops"        # DevOps default, no maintainer tag
+
+
+# --------------------------------------------------------------- pure helpers (new)
+def test_resolve_owner_prefers_owner_then_maintainer_then_fallback():
+    members = [{"id": 6, "username": "bo", "access_level": 40},   # Maintainer
+               {"id": 5, "username": "ann", "access_level": 50}]  # Owner
+    assert delivery.resolve_owner(members, 99) == 5                        # Owner (50) wins
+    assert delivery.resolve_owner([{"id": 6, "access_level": 40}], 99) == 6   # Maintainer (40)
+    assert delivery.resolve_owner([{"id": 7, "access_level": 30}], 99) == 99  # Developer -> fallback
+    assert delivery.resolve_owner([], None) is None                       # nothing -> unassigned
+
+
+def test_resolve_owner_is_deterministic_across_equal_access():
+    members = [{"id": 8, "access_level": 50}, {"id": 3, "access_level": 50}]
+    assert delivery.resolve_owner(members, None) == 3                      # lowest id among equal Owners
+
+
+def test_repo_fingerprint_namespaced_by_stream_and_backcompat():
+    assert delivery.repo_fingerprint("g/r") == delivery.repo_fingerprint("g/r", "")   # back-compat
+    assert delivery.repo_fingerprint("g/r", "devops") != delivery.repo_fingerprint("g/r", "developer")
+
+
+def test_devops_repo_body_bundles_actions_with_marker():
+    acts = [{"kind": "eol", "ref": "php", "status": "DEPRECATED", "recommendation": "upgrade php"},
+            {"kind": "cve", "ref": "guzzle", "status": "DEPRECATED"}]
+    body = delivery.devops_repo_body("g/r", acts)
+    assert "php" in body and "guzzle" in body
+    assert delivery.marker(delivery.repo_fingerprint("g/r", "devops")) in body                  # idempotency marker present
