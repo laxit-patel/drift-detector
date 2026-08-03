@@ -120,7 +120,7 @@ def test_still_no_skill_dir():
 
 
 def test_drift_detector_offers_probabilistic_cross_check():
-    md = open("commands/drift-detector.md", encoding="utf-8").read()
+    md = (_ROOT / "commands" / "drift-detector.md").read_text(encoding="utf-8")
     assert "probabilistic" in md.lower()                       # the opt-in step exists
     assert "AI · unverified" in md                             # the trust label is carried
     assert "drift-scan probabilistic" in md or "$SCAN probabilistic" in md  # wires the subcommand
