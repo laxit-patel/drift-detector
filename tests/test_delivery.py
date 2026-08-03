@@ -333,7 +333,8 @@ def test_cli_reads_host_project_and_mode_from_config(tmp_path, monkeypatch, caps
     assert FakeGL.host == "git.x"                    # host derived from the fleet in config
     assert "delivery mode: dry-run" in out and "dry run" in out
     assert "g/ebayapi" in out                        # developer issue filed IN the repo, not devops_project
-    assert "draft MRs: nothing" in out               # findings are always issues now, never MRs
+    assert "Developer issues" in out                 # grouped under the developer stream header
+    assert "draft MR" not in out                     # findings are always issues now, never MRs
 
 
 def test_cli_config_mode_off_skips_delivery(tmp_path, capsys):
