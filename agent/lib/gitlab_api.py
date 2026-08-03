@@ -82,15 +82,27 @@ class GitLab:
         status, data, _ = self._call("GET", f"/projects/{_enc(path_or_id)}")
         return data if status == 200 else None
 
+    def members(self, project_id) -> list:
+        """List a project's members, including inherited (group) members."""
+        return self._paged(f"/projects/{_enc(str(project_id))}/members/all")
+
+    def user_id(self, username: str) -> int | None:
+        """Resolve a username to a user ID, or None if not found."""
+        if not username:
+            return None
+        status, res, _ = self._call("GET", f"/users?username={_enc(username)}")
+        return res[0]["id"] if status == 200 and isinstance(res, list) and res else None
+
     # --- issues ---
     def list_issues(self, project_id, *, labels: str) -> list:
         return self._paged(f"/projects/{_enc(project_id)}/issues",
                             params={"labels": labels, "state": "all"})
 
-    def create_issue(self, project_id, *, title, description, labels) -> dict:
-        status, data, _ = self._call("POST", f"/projects/{_enc(project_id)}/issues",
-                                     body={"title": title, "description": description,
-                                           "labels": labels})
+    def create_issue(self, project_id, *, title, description, labels, assignee_ids=None) -> dict:
+        body = {"title": title, "description": description, "labels": labels}
+        if assignee_ids:
+            body["assignee_ids"] = assignee_ids
+        status, data, _ = self._call("POST", f"/projects/{_enc(project_id)}/issues", body=body)
         if status not in (200, 201):
             raise GitLabError(f"create issue -> {status}: {data}")
         return data

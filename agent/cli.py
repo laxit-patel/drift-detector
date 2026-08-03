@@ -809,12 +809,13 @@ def _cmd_config_preflight(args) -> int:
 
 
 def _cmd_deliver(args) -> int:
-    """Project the verified findings into GitLab: DevOps issues + Developer draft MRs.
+    """Project the verified findings into GitLab: per-repo DevOps + Developer issues, assigned.
 
     Runs AFTER `verify` (delivery is a projection of the verified payload — only verified
     data leaves the machine). --dry-run prints the plan and writes nothing. Idempotent: a
-    re-scan updates issues/MRs in place, never duplicates. Exit 0 ok, 4 nothing to deliver,
-    3 something was unroutable (a developer finding with no known GitLab project).
+    re-scan updates issues in place, never duplicates. Exit 0 ok, 4 nothing to deliver,
+    3 if any issue failed to file (see `done["failed"]`) — a delivery that couldn't reach
+    every repo is not a clean one.
     """
     import json as _json
     import os as _os
@@ -869,27 +870,50 @@ def _cmd_deliver(args) -> int:
     token = (_os.environ.get(deliver_var) if deliver_var else None) \
         or _os.environ.get("GITLAB_TOKEN") or _os.environ.get("DRIFT_GIT_TOKEN")
     gl = gitlab_api.GitLab(host, token)
+
+    # assignees: the DevOps account (config-wide) + each repo's resolved owner (Maintainer+
+    # access, else the config fallback) — resolved BEFORE build_plan regardless of
+    # --dry-run so the printed plan shows real threading, never a stub.
+    devops_assignee = dev_fallback = None
+    if getattr(args, "config", None):
+        devops_assignee = cfg["delivery"].get("devopsAssignee")
+        dev_fallback = cfg["delivery"].get("developerFallbackAssignee")
+    devops_id = gl.user_id(devops_assignee) if devops_assignee else None
+    fallback_id = gl.user_id(dev_fallback) if dev_fallback else None
+    dev_owner = {}
+    for repo, meta in repo_meta.items():
+        try:
+            dev_owner[repo] = delivery.resolve_owner(gl.members(meta["project"]), fallback_id)
+        except Exception:
+            dev_owner[repo] = fallback_id            # owner lookup failed -> fallback, never crash
+    assignees = {"devops": devops_id, "developer": dev_owner}
+
     dev_projects = sorted({m["project"] for m in repo_meta.values()})
     existing = delivery.fetch_existing(gl, devops_project, dev_projects)
     links = {"run": getattr(args, "run_url", None), "report": getattr(args, "report_url", None)}
     plan = delivery.build_plan(payload, repo_meta, existing, devops_project,
                                dev_as_issues=dev_as_issues, links=links,
-                               shape_stream=shape_stream, freshness_stream=freshness_stream)
+                               shape_stream=shape_stream, freshness_stream=freshness_stream,
+                               assignees=assignees)
 
     print(f"delivery mode: {mode}")
     print(delivery.plan_summary(plan))
     print()
     print(delivery.plan_detail(plan))
-    unroutable = [m for m in plan["mrs"] if m["op"] == "unroutable"]
 
     if mode == "dry-run":
         print("\n(dry run — nothing written)")
-        return 3 if unroutable else 0
+        return 0
 
     done = delivery.execute_plan(gl, plan)
     print(f"\n✓ delivered: {done['created']} created · {done['updated']} updated · "
-          f"{done['closed']} closed" + (f" · {done['unroutable']} UNROUTABLE" if done['unroutable'] else ""))
-    return 3 if unroutable else 0
+          f"{done['closed']} closed")
+    if done["failed"]:
+        print(f"✗ {len(done['failed'])} issue(s) failed to file:", file=sys.stderr)
+        for project, reason in done["failed"]:
+            print(f"    {project}: {reason}", file=sys.stderr)
+        return 3
+    return 0
 
 
 def _cmd_notify(args) -> int:
