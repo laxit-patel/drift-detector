@@ -41,25 +41,30 @@ def test_project_path_from_remote():
 
 
 # --------------------------------------------------------------- the plan (pure)
-def test_new_findings_create_an_issue_and_a_draft_mr():
+def test_new_findings_create_one_devops_and_one_developer_issue_in_repo():
+    """The new model: each audience gets ONE comprehensive issue per repo, filed IN that
+    repo's own project (not a central devops_project) — no MRs are ever planned."""
     plan = delivery.build_plan(_payload([_cve(), _sunset()]), _META,
                                {"issues": [], "mrs": {}}, "root/drift-detector")
-    assert [i["op"] for i in plan["issues"]] == ["create"]
-    assert plan["issues"][0]["project"] == "root/drift-detector"
-    assert [m["op"] for m in plan["mrs"]] == ["create"]
-    assert plan["mrs"][0]["project"] == "g/ebayapi"
-    assert plan["mrs"][0]["title"].startswith("Draft:")          # a DRAFT mr
-    assert delivery.MIGRATIONS_PATH in plan["mrs"][0]["file_path"]
+    assert plan["mrs"] == []                                          # the draft-MR path is retired
+    devops = [i for i in plan["issues"] if i.get("stream") == "devops"]
+    dev = [i for i in plan["issues"] if i.get("stream") == "developer"]
+    assert len(devops) == 1 and devops[0]["op"] == "create"
+    assert devops[0]["project"] == "root/web"                         # in the repo, not central
+    assert len(dev) == 1 and dev[0]["op"] == "create"
+    assert dev[0]["project"] == "g/ebayapi"                           # in the repo, not central
+    assert dev[0]["title"] == "[drift] API migrations for g/ebayapi"
 
 
 def test_existing_issue_with_same_body_is_skipped_not_duplicated():
     a = _cve()
-    body = delivery.issue_body(a, "root/web")            # the planner displays by project path
-    fp = delivery.action_fingerprint(a)
+    project = _META["web"]["project"]
+    body = delivery.devops_repo_body(project, [a])           # the per-repo DevOps body
     existing = {"issues": [{"iid": 7, "state": "opened", "description": body,
-                            "title": delivery.issue_title(a)}], "mrs": {}}
+                            "title": f"[drift] platform upkeep for {project}"}], "mrs": {}}
     plan = delivery.build_plan(_payload([a]), _META, existing, "root/drift-detector")
-    assert plan["issues"][0]["op"] == "skip" and plan["issues"][0]["iid"] == 7
+    devops = [i for i in plan["issues"] if i.get("stream") == "devops"]
+    assert devops[0]["op"] == "skip" and devops[0]["iid"] == 7
 
 
 def test_crlf_only_difference_skips_not_updates():
@@ -67,28 +72,37 @@ def test_crlf_only_difference_skips_not_updates():
     the description with CRLF, so the raw compare always looked changed and rewrote the issue
     (noise) every run. Normalised compare must treat CRLF/trailing-space as identical → skip."""
     a = _cve()
-    body = delivery.issue_body(a, "root/web")
+    project = _META["web"]["project"]
+    body = delivery.devops_repo_body(project, [a])
     gitlab_returned = body.replace("\n", "\r\n") + "   \r\n"   # CRLF + trailing whitespace
     existing = {"issues": [{"iid": 7, "state": "opened", "description": gitlab_returned,
-                            "title": delivery.issue_title(a)}], "mrs": {}}
+                            "title": f"[drift] platform upkeep for {project}"}], "mrs": {}}
     plan = delivery.build_plan(_payload([a]), _META, existing, "root/drift-detector")
-    assert plan["issues"][0]["op"] == "skip"
+    devops = [i for i in plan["issues"] if i.get("stream") == "devops"]
+    assert devops[0]["op"] == "skip"
 
 
 def test_changed_finding_updates_the_same_issue():
     a = _cve()
-    stale = {"issues": [{"iid": 7, "state": "opened", "description": delivery.marker(
-        delivery.action_fingerprint(a)) + "\nOLD BODY", "title": "old"}], "mrs": {}}
+    project = _META["web"]["project"]
+    fp = delivery.repo_fingerprint(project, "devops")
+    stale = {"issues": [{"iid": 7, "state": "opened",
+                         "description": delivery.marker(fp) + "\nOLD BODY", "title": "old"}],
+             "mrs": {}}
     plan = delivery.build_plan(_payload([a]), _META, stale, "root/drift-detector")
-    assert plan["issues"][0]["op"] == "update" and plan["issues"][0]["iid"] == 7
+    devops = [i for i in plan["issues"] if i.get("stream") == "devops"]
+    assert devops[0]["op"] == "update" and devops[0]["iid"] == 7
 
 
 def test_closed_issue_for_a_still_present_finding_is_reopened():
     a = _cve()
-    existing = {"issues": [{"iid": 7, "state": "closed", "description": delivery.marker(
-        delivery.action_fingerprint(a)), "title": "t"}], "mrs": {}}
+    project = _META["web"]["project"]
+    fp = delivery.repo_fingerprint(project, "devops")
+    existing = {"issues": [{"iid": 7, "state": "closed", "description": delivery.marker(fp),
+                            "title": "t"}], "mrs": {}}
     plan = delivery.build_plan(_payload([a]), _META, existing, "root/drift-detector")
-    assert plan["issues"][0]["op"] == "update" and plan["issues"][0]["reopen"] is True
+    devops = [i for i in plan["issues"] if i.get("stream") == "devops"]
+    assert devops[0]["op"] == "update" and devops[0]["reopen"] is True
 
 
 def test_resolved_finding_closes_its_issue():
@@ -102,19 +116,21 @@ def test_resolved_finding_closes_its_issue():
     assert next(i for i in plan["issues"] if i["op"] == "close")["iid"] == 9
 
 
-def test_dev_as_issues_files_the_developer_stream_as_issues_not_mrs():
-    """The Reporter-friendly fallback: developer findings become one issue per repo in the
-    devops project, and no MRs are attempted."""
-    plan = delivery.build_plan(_payload([_cve(), _sunset()]), _META,
-                               {"issues": [], "mrs": {}}, "root/drift-detector",
-                               dev_as_issues=True)
-    assert plan["mrs"] == []                                  # no MRs attempted
-    titles = [i["title"] for i in plan["issues"]]
-    assert any("API migrations for g/ebayapi" in t for t in titles)   # one per repo
-    assert all(i["project"] == "root/drift-detector" for i in plan["issues"])
-    # idempotent: the per-repo issue carries the repo marker
-    dev_issue = next(i for i in plan["issues"] if "migrations" in i["title"])
-    assert delivery.repo_fingerprint("g/ebayapi", "developer") in dev_issue["body"]   # keyed on project path
+def test_developer_stream_is_always_issues_never_mrs():
+    """The draft-MR path is retired: developer findings are always ONE issue per repo, filed
+    IN that repo (not a central devops project). `dev_as_issues` is accepted for back-compat
+    but no longer forks behavior — passing it (or not) makes no difference."""
+    for kwargs in ({}, {"dev_as_issues": True}, {"dev_as_issues": False}):
+        plan = delivery.build_plan(_payload([_cve(), _sunset()]), _META,
+                                   {"issues": [], "mrs": {}}, "root/drift-detector", **kwargs)
+        assert plan["mrs"] == []                                  # no MRs, ever
+        dev_issues = [i for i in plan["issues"] if i.get("stream") == "developer"]
+        assert len(dev_issues) == 1                               # one per repo
+        dev_issue = dev_issues[0]
+        assert dev_issue["title"] == "[drift] API migrations for g/ebayapi"
+        assert dev_issue["project"] == "g/ebayapi"                # in the repo, not central
+        # idempotent: the per-repo issue carries the repo+audience marker
+        assert delivery.repo_fingerprint("g/ebayapi", "developer") in dev_issue["body"]
 
 
 def test_dev_as_issues_is_idempotent_across_reruns():
@@ -156,17 +172,24 @@ def test_issue_and_mr_bodies_link_back_to_the_run_and_report():
     assert "[scan run](https://gh/run/1)" in mr and "Draft, filed by Drift Detector" in mr
 
 
-def test_developer_finding_with_no_known_project_is_unroutable_not_silent():
+def test_developer_finding_with_no_known_project_falls_back_to_repo_name():
+    """No more MR 'unroutable' path — the developer branch now always files an in-repo issue;
+    lacking repo_meta it falls back to the raw repo identifier as the project, so a finding is
+    never silently dropped."""
     plan = delivery.build_plan(_payload([_sunset(repo="mystery")]), {},  # no repo_meta
                                {"issues": [], "mrs": {}}, "root/drift-detector")
-    assert plan["mrs"][0]["op"] == "unroutable" and plan["mrs"][0]["repo"] == "mystery"
+    dev = [i for i in plan["issues"] if i.get("stream") == "developer"]
+    assert len(dev) == 1 and dev[0]["project"] == "mystery"
+    assert plan["mrs"] == []
 
 
-def test_existing_mr_on_the_drift_branch_updates_not_duplicates():
+def test_no_mrs_are_ever_planned_for_findings_even_with_a_pending_mr():
+    """The draft-MR path is retired: even if a legacy MR already exists on the drift/migrations
+    branch, build_plan never plans against it — plan["mrs"] stays empty."""
     existing = {"issues": [], "mrs": {"g/ebayapi": [
         {"iid": 4, "source_branch": delivery.MR_BRANCH, "state": "opened"}]}}
     plan = delivery.build_plan(_payload([_sunset()]), _META, existing, "root/drift-detector")
-    assert plan["mrs"][0]["op"] == "update" and plan["mrs"][0]["iid"] == 4
+    assert plan["mrs"] == []
 
 
 def test_issue_and_mr_bodies_carry_a_discovery_marker():
@@ -214,17 +237,17 @@ class _FakeGL:
         self.calls.append(("update_mr", p, iid))
 
 
-def test_execute_creates_issue_branch_file_and_draft_mr():
+def test_execute_creates_devops_and_developer_issues_no_mrs():
+    """The draft-MR path is retired: execute_plan on the new two-per-repo plan files only
+    issues — no branch, file, or MR is ever created."""
     plan = delivery.build_plan(_payload([_cve(), _sunset()]), _META,
                                {"issues": [], "mrs": {}}, "root/drift-detector")
     gl = _FakeGL()
     done = delivery.execute_plan(gl, plan)
     kinds = [c[0] for c in gl.calls]
-    assert "create_issue" in kinds
-    assert kinds.count("create_branch") == 1 and kinds.count("set_file") == 1
-    mr = next(c for c in gl.calls if c[0] == "create_mr")
-    assert mr[1] == "g/ebayapi" and mr[2].startswith("Draft:") and mr[3] == delivery.MR_BRANCH
-    assert done["created"] == 2                       # one issue + one MR
+    assert kinds.count("create_issue") == 2           # one DevOps + one Developer issue
+    assert "create_branch" not in kinds and "set_file" not in kinds and "create_mr" not in kinds
+    assert done["created"] == 2
 
 
 def test_cli_dry_run_produces_a_plan_and_writes_nothing(tmp_path, monkeypatch, capsys):
@@ -246,7 +269,9 @@ def test_cli_dry_run_produces_a_plan_and_writes_nothing(tmp_path, monkeypatch, c
                    "--devops-project", "root/drift-detector", "--dry-run"])
     out = capsys.readouterr().out
     assert rc == 0
-    assert "create" in out and "root/drift-detector" in out and "Draft" in out
+    assert "create" in out
+    assert "root/web" in out                          # DevOps issue filed IN the repo
+    assert "g/ebayapi" in out                          # Developer issue filed IN the repo
     assert "dry run" in out
 
 
@@ -272,8 +297,8 @@ def test_cli_reads_host_project_and_mode_from_config(tmp_path, monkeypatch, caps
     assert rc == 0
     assert FakeGL.host == "git.x"                    # host derived from the fleet in config
     assert "delivery mode: dry-run" in out and "dry run" in out
-    assert "root/ops" in out                         # devops_project from config
-    assert "draft MRs: nothing" in out               # dev_as_issues from config -> issue, no MR
+    assert "g/ebayapi" in out                        # developer issue filed IN the repo, not devops_project
+    assert "draft MRs: nothing" in out               # findings are always issues now, never MRs
 
 
 def test_cli_config_mode_off_skips_delivery(tmp_path, capsys):
@@ -410,6 +435,51 @@ def test_freshness_work_order_closes_itself_when_nothing_is_due():
     assert len(closes) == 1 and closes[0]["iid"] == 7   # all CURRENT -> work-order closes
 
 
+# --------------------------------------------------------- assignees (per-repo, in-repo issues)
+def test_devops_is_one_issue_per_repo_in_repo_assigned():
+    payload = _payload([
+        {"owner": "devops", "repo": "r1", "kind": "eol", "ref": "php", "status": "DEPRECATED"},
+        {"owner": "devops", "repo": "r1", "kind": "cve", "ref": "guzzle", "status": "DEPRECATED"}])
+    repo_meta = {"r1": {"project": "g/r1"}}
+    plan = delivery.build_plan(payload, repo_meta, {"issues": {}, "mrs": {}}, "g/ops",
+                               dev_as_issues=True, assignees={"devops": 5, "developer": {}})
+    devops_issues = [i for i in plan["issues"] if i.get("stream") == "devops"]
+    assert len(devops_issues) == 1                      # ONE per repo, not per action
+    it = devops_issues[0]
+    assert it["project"] == "g/r1" and it["assignee"] == 5    # in-repo + assigned to DevOps acct
+    assert "php" in it["body"] and "guzzle" in it["body"]     # comprehensive
+
+
+def test_developer_issue_in_repo_assigned_to_owner_no_mrs():
+    payload = _payload([{"owner": "developer", "repo": "r1", "kind": "sunset", "ref": "Catch",
+                         "status": "DEPRECATED"}])
+    repo_meta = {"r1": {"project": "g/r1"}}
+    plan = delivery.build_plan(payload, repo_meta, {"issues": {}, "mrs": {}}, "g/ops",
+                               dev_as_issues=True, assignees={"devops": 5, "developer": {"r1": 7}})
+    dev = [i for i in plan["issues"] if i.get("stream") == "developer"]
+    assert len(dev) == 1 and dev[0]["project"] == "g/r1" and dev[0]["assignee"] == 7
+    assert plan["mrs"] == []                            # no finding MRs
+
+
+def test_devops_and_developer_for_one_repo_have_distinct_fingerprints():
+    payload = _payload([
+        {"owner": "devops", "repo": "r1", "kind": "cve", "ref": "guzzle", "status": "DEPRECATED"},
+        {"owner": "developer", "repo": "r1", "kind": "sunset", "ref": "Catch", "status": "DEPRECATED"}])
+    plan = delivery.build_plan(payload, {"r1": {"project": "g/r1"}}, {"issues": {}, "mrs": {}}, "g/ops",
+                               dev_as_issues=True, assignees={"devops": 5, "developer": {"r1": 7}})
+    fps = {i["fp"] for i in plan["issues"] if i.get("stream") in ("devops", "developer")}
+    assert len(fps) == 2                                # no collision between the two audiences
+
+
+def test_assignee_defaults_to_none_when_no_assignees_given():
+    """assignees is optional — omitting it entirely must not raise, and each op carries an
+    explicit assignee=None rather than the key being missing."""
+    plan = delivery.build_plan(_payload([_cve(), _sunset()]), _META,
+                               {"issues": [], "mrs": {}}, "root/drift-detector")
+    for it in plan["issues"]:
+        assert it["assignee"] is None
+
+
 def test_maintainer_streams_carry_the_shared_audience_tag():
     """Absorption (shape) and freshness both go to the maintainer, so both carry drift:maintainer
     AND their own stream tag; the DevOps finding stream stays separate."""
@@ -417,6 +487,11 @@ def test_maintainer_streams_carry_the_shared_audience_tag():
     assert _issue_labels("shape") == "drift-detector,drift:maintainer,drift:shape"
     assert _issue_labels("freshness") == "drift-detector,drift:maintainer,drift:freshness"
     assert _issue_labels(None) == "drift-detector,drift:devops"        # DevOps default, no maintainer tag
+
+
+def test_developer_stream_carries_its_own_label_not_maintainer():
+    from agent.lib.delivery import _issue_labels
+    assert _issue_labels("developer") == "drift-detector,drift:developer"
 
 
 # --------------------------------------------------------------- pure helpers (new)

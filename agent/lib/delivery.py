@@ -1,18 +1,21 @@
-"""Turn drift.json findings into GitLab issues (DevOps stream) and draft MRs (Developer
-stream), idempotently.
+"""Turn drift.json findings into GitLab issues, idempotently, per repo, per audience.
 
 The delivery is a PROJECTION of the verified payload, so it only ever runs after a green
-`verify`. Two streams (agent/lib/owners.py):
-  • DevOps actions (packages + runtime EOL) -> one ISSUE each, in a configured project
-    (for now the drift-ops repo; the central DevOps repo once it's assigned).
-  • Developer actions (vendor API sunsets + framework EOL) -> one DRAFT MERGE REQUEST per
-    scanned repo, on a `drift/migrations` branch carrying a `.drift/MIGRATIONS.md` checklist
-    (which gives the MR a diff and the developer a place to do the actual migration).
+`verify`. Two audiences (agent/lib/owners.py), each flagged repo gets ONE comprehensive
+issue per audience, filed IN that repo's own project (not a central one), assigned:
+  • DevOps actions (packages + runtime EOL) -> one issue per repo, assigned to the
+    configured DevOps account.
+  • Developer actions (vendor API sunsets + framework EOL) -> one issue per repo, assigned
+    to the resolved repo owner (`resolve_owner`).
+The draft-merge-request path is retired — `plan["mrs"]` is always `[]` for findings (the
+`mr_*` helpers and `execute_plan`'s MR loop remain only for any pre-existing MRs already in
+flight; nothing new is ever planned there).
 
 Idempotency is the whole game — a re-scan must UPDATE, never duplicate. Issues carry a hidden
-marker `<!-- drift-detector:<fp> -->` and a `drift-detector` label; MRs are keyed by their
-stable `drift/migrations` source branch. `build_plan` is PURE (payload + what already exists
--> the create/update/close plan), so it is testable without any network.
+marker `<!-- drift-detector:<fp> -->` (namespaced per repo+audience via `repo_fingerprint`)
+and a `drift-detector` label plus an audience label (`drift:devops` / `drift:developer`).
+`build_plan` is PURE (payload + what already exists -> the create/update/close plan), so it
+is testable without any network.
 """
 from __future__ import annotations
 
@@ -21,7 +24,7 @@ import re
 
 LABEL = "drift-detector"
 DEVOPS_LABEL = "drift:devops"
-DEV_LABEL = "drift:developer"
+DEVELOPER_LABEL = "drift:developer"
 # MAINTAINER audience (tool/catalog upkeep) — carried ALONGSIDE a stream label so all
 # maintainer work filters as one queue, while shape vs freshness stay distinguishable.
 MAINTAINER_LABEL = "drift:maintainer"
@@ -263,29 +266,33 @@ def _norm(s: str) -> str:
                      str(s or "").replace("\r\n", "\n").split("\n")).strip()
 
 
-def _issue_op(fp: str, title: str, body: str, by_fp: dict, project: str) -> dict:
+def _issue_op(fp: str, title: str, body: str, by_fp: dict, project: str, *,
+             assignee=None) -> dict:
     """create / update / skip / reopen an issue by its marker fingerprint."""
     iss = by_fp.get(fp)
     if iss is None:
-        return {"op": "create", "fp": fp, "project": project, "title": title, "body": body}
+        return {"op": "create", "fp": fp, "project": project, "title": title, "body": body,
+                "assignee": assignee}
     changed = (_norm(iss.get("description")) != _norm(body)) or (iss.get("state") == "closed")
     return {"op": "update" if changed else "skip", "fp": fp, "project": project,
-            "iid": iss.get("iid"), "title": title, "body": body,
+            "iid": iss.get("iid"), "title": title, "body": body, "assignee": assignee,
             "reopen": iss.get("state") == "closed"}
 
 
 # ----------------------------------------------------------------------- the planner (pure)
 def build_plan(payload: dict, repo_meta: dict, existing: dict, devops_project: str,
                *, dev_as_issues: bool = False, links: dict | None = None,
-               shape_stream: bool = False, freshness_stream: bool = False) -> dict:
+               shape_stream: bool = False, freshness_stream: bool = False,
+               assignees: dict | None = None) -> dict:
     """Compute the create/update/close plan. PURE: no I/O.
 
     `repo_meta`   : {repo -> {"project": "group/repo"}} for the scanned repos.
-    `existing`    : {"issues": [issue dicts from devops_project],
+    `existing`    : {"issues": [issue dicts, from wherever they were fetched],
                      "mrs": {project -> [mr dicts]}} already on GitLab.
-    `dev_as_issues`: file the Developer stream as ISSUES (one per repo, in devops_project)
-                     instead of draft MRs — the Reporter-friendly fallback when we lack
-                     Developer access on the scanned repos.
+    `assignees`   : {"devops": id|None, "developer": {repo: id|None}} — pre-resolved GitLab
+                    user ids (`resolve_owner`, `gl.user_id`), threaded straight onto each op.
+    `dev_as_issues`: accepted for back-compat, otherwise IGNORED — findings are always filed
+                    as in-repo issues now (the draft-MR path is retired; see module docstring).
     `shape_stream`: also file a MAINTAINER-facing "absorption needed" issue (one per repo) for
                     every UNKNOWN shape in the payload — the repo has integration calls the
                     scanner could not read. Repo-keyed, updates in place, and closes itself via
@@ -294,9 +301,10 @@ def build_plan(payload: dict, repo_meta: dict, existing: dict, devops_project: s
                     the whole catalog) while any DETECTED vendor is STALE/unaudited and off the
                     auto lane — the drift:freshness label's producer. Constant-keyed, updates
                     in place, closes itself via `_finish` when the due-list empties.
-    Returns {"issues": [...], "mrs": [...]} where each item has an `op`
-    (create|update|close|skip) and the rendered content.
+    Returns {"issues": [...], "mrs": []} where each item has an `op`
+    (create|update|close|skip) and the rendered content. `mrs` is always empty for findings.
     """
+    assignees = assignees or {"devops": None, "developer": {}}
     actions = payload.get("actions", [])
     devops = [a for a in actions if a.get("owner") == "devops"]
     developer = [a for a in actions if a.get("owner") == "developer"]
@@ -308,13 +316,19 @@ def build_plan(payload: dict, repo_meta: dict, existing: dict, devops_project: s
             by_fp[fp] = iss
     issue_plan, live_fps = [], set()
 
-    # ---- issues (DevOps: one per action) ----
+    # ---- DevOps: ONE comprehensive issue per repo, IN the repo, assigned to the DevOps account ----
+    devops_by_repo = {}
     for a in devops:
-        fp = action_fingerprint(a)
+        devops_by_repo.setdefault(a.get("repo"), []).append(a)
+    for repo, acts in devops_by_repo.items():
+        project = (repo_meta.get(repo) or {}).get("project") or repo
+        fp = repo_fingerprint(project, "devops")
         live_fps.add(fp)
-        display = (repo_meta.get(a.get("repo")) or {}).get("project") or a.get("repo")
-        issue_plan.append(_issue_op(fp, issue_title(a), issue_body(a, display, links),
-                                    by_fp, devops_project))
+        op = _issue_op(fp, f"[drift] platform upkeep for {project}",
+                       devops_repo_body(project, acts, links), by_fp, project,
+                       assignee=assignees.get("devops"))
+        op["stream"] = "devops"
+        issue_plan.append(op)
 
     # ---- absorption flags (maintainer: one per UNKNOWN shape) ----
     # Placed before the dev branch so it lands in issue_plan + live_fps for BOTH return paths;
@@ -362,44 +376,21 @@ def build_plan(payload: dict, repo_meta: dict, existing: dict, devops_project: s
             op["stream"] = "freshness"      # so execute_plan labels it drift:freshness
             issue_plan.append(op)
 
-    # ---- Developer stream: one per scanned repo, as a draft MR OR (fallback) an issue ----
-    by_repo = {}
+    # ---- Developer: ONE comprehensive issue per repo, IN the repo, assigned to the repo owner ----
+    dev_by_repo = {}
     for a in developer:
-        by_repo.setdefault(a.get("repo"), []).append(a)
-    mr_plan = []
+        dev_by_repo.setdefault(a.get("repo"), []).append(a)
+    for repo, acts in dev_by_repo.items():
+        project = (repo_meta.get(repo) or {}).get("project") or repo
+        fp = repo_fingerprint(project, "developer")
+        live_fps.add(fp)
+        op = _issue_op(fp, f"[drift] API migrations for {project}",
+                       migrations_md(project, acts, links), by_fp, project,
+                       assignee=(assignees.get("developer") or {}).get(repo))
+        op["stream"] = "developer"
+        issue_plan.append(op)
 
-    if dev_as_issues:
-        for repo, acts in by_repo.items():
-            project = (repo_meta.get(repo) or {}).get("project") or repo
-            fp = repo_fingerprint(project, "developer")          # same key the body marker uses
-            live_fps.add(fp)
-            title = f"[drift] API migrations for {project}"
-            issue_plan.append(_issue_op(fp, title, migrations_md(project, acts, links),
-                                        by_fp, devops_project))
-        return _finish(issue_plan, mr_plan, by_fp, live_fps, devops_project)
-
-    for repo, acts in by_repo.items():
-        meta = repo_meta.get(repo) or {}
-        project = meta.get("project")
-        if not project:
-            mr_plan.append({"op": "unroutable", "repo": repo, "count": len(acts)})
-            continue
-        mrs = existing.get("mrs", {}).get(project, [])
-        mine = next((m for m in mrs if m.get("source_branch") == MR_BRANCH), None)
-        # display by the clean project path, not the internal clone slug (chetan/amazonspapi,
-        # not chetan-amazonspapi-f5043548)
-        item = {"repo": repo, "project": project, "branch": MR_BRANCH,
-                "title": mr_title(project), "description": mr_description(project, acts, links),
-                "file_path": MIGRATIONS_PATH, "file_content": migrations_md(project, acts, links),
-                "count": len(acts)}
-        if mine is None:
-            item["op"] = "create"
-        else:
-            item["op"] = "update"
-            item["iid"] = mine.get("iid")
-        mr_plan.append(item)
-
-    return _finish(issue_plan, mr_plan, by_fp, live_fps, devops_project)
+    return _finish(issue_plan, [], by_fp, live_fps, devops_project)
 
 
 def _finish(issue_plan, mr_plan, by_fp, live_fps, devops_project) -> dict:
@@ -456,6 +447,8 @@ def _issue_labels(stream: str) -> str:
         return f"{LABEL},{MAINTAINER_LABEL},{SHAPE_LABEL}"
     if stream == "freshness":
         return f"{LABEL},{MAINTAINER_LABEL},{FRESHNESS_LABEL}"
+    if stream == "developer":
+        return f"{LABEL},{DEVELOPER_LABEL}"
     return f"{LABEL},{DEVOPS_LABEL}"
 
 
@@ -493,7 +486,7 @@ def execute_plan(gl, plan: dict) -> dict:
         if it["op"] == "create":
             gl.create_mr(project, source_branch=branch, target_branch=default,
                          title=it["title"], description=it["description"],
-                         labels=f"{LABEL},{DEV_LABEL}")
+                         labels=f"{LABEL},{DEVELOPER_LABEL}")
             done["created"] += 1
         else:
             gl.update_mr(project, it["iid"], description=it["description"], title=it["title"])
