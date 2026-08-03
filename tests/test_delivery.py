@@ -713,3 +713,35 @@ def test_cli_deliver_nonzero_exit_when_an_issue_fails_to_file(tmp_path, monkeypa
 
     assert rc == 3
     assert "g/r1" in err
+
+
+# ── hygiene: dry-run output grouped by audience/stream; no dead MR fetch ──────────────
+def test_plan_detail_groups_issues_by_stream_not_all_under_devops():
+    plan = {"issues": [
+        {"op": "create", "project": "g/r1", "title": "platform upkeep for g/r1", "stream": "devops"},
+        {"op": "create", "project": "g/r1", "title": "API migrations for g/r1", "stream": "developer"},
+    ], "mrs": []}
+    out = delivery.plan_detail(plan)
+    assert "DevOps issues" in out and "Developer issues" in out
+    # the developer line must sit under the Developer header, not the DevOps one
+    dev_hdr = out.index("Developer issues")
+    assert out.index("API migrations for g/r1") > dev_hdr
+    assert out.index("platform upkeep for g/r1") < dev_hdr        # devops line is above it
+    assert "draft MR" not in out                                  # dead MR section gone
+
+
+def test_plan_summary_breaks_down_by_stream():
+    plan = {"issues": [{"op": "create", "stream": "devops"},
+                       {"op": "skip", "stream": "developer"}], "mrs": []}
+    s = delivery.plan_summary(plan)
+    assert "devops" in s and "developer" in s
+
+
+def test_fetch_existing_does_not_fetch_dead_mrs():
+    class _GL:
+        def __init__(self): self.mr_calls = 0
+        def list_issues(self, p, *, labels): return []
+        def list_mrs(self, p, *, labels): self.mr_calls += 1; return []
+    gl = _GL()
+    got = delivery.fetch_existing(gl, "g/ops", ["g/r1", "g/r2"])
+    assert got["mrs"] == {} and gl.mr_calls == 0                  # no wasted list_mrs I/O

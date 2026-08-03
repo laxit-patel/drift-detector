@@ -404,32 +404,51 @@ def _finish(issue_plan, mr_plan, by_fp, live_fps, devops_project) -> dict:
     return {"issues": issue_plan, "mrs": mr_plan}
 
 
+# The dry-run views group issues by the SAME audience/stream split delivery uses, so a reader
+# sees the two per-repo streams (and the maintainer streams) distinctly. A close op carries no
+# stream (it's a resolved finding dropping out) → shown under "closing".
+_STREAM_HEAD = {"devops": "DevOps issues", "developer": "Developer issues",
+                "shape": "Maintainer · absorption", "freshness": "Maintainer · catalog freshness",
+                "closing": "Closing (resolved)"}
+_STREAM_ORDER = ("devops", "developer", "shape", "freshness", "closing")
+
+
+def _by_stream(issues: list) -> dict:
+    out: dict = {}
+    for it in issues:
+        out.setdefault(it.get("stream") or "closing", []).append(it)
+    return out
+
+
 def plan_summary(plan: dict) -> str:
     def tally(items):
         c = {}
         for it in items:
             c[it["op"]] = c.get(it["op"], 0) + 1
         return ", ".join(f"{v} {k}" for k, v in sorted(c.items())) or "nothing"
-    return (f"issues: {tally(plan['issues'])}\n"
-            f"draft MRs: {tally(plan['mrs'])}")
+    grouped = _by_stream(plan["issues"])
+    lines = [f"issues: {tally(plan['issues'])}"]
+    for s in _STREAM_ORDER:
+        if grouped.get(s):
+            lines.append(f"  {s}: {tally(grouped[s])}")
+    return "\n".join(lines)
 
 
 def plan_detail(plan: dict) -> str:
-    """A human-readable, line-per-item view for --dry-run."""
-    lines = ["── DevOps issues " + "─" * 40]
-    for it in plan["issues"]:
-        loc = f"#{it['iid']}" if it.get("iid") else "new"
-        lines.append(f"  {it['op']:7} [{loc}] {it.get('title', '')}  → {it['project']}")
-    lines.append("── Developer draft MRs " + "─" * 34)
-    for it in plan["mrs"]:
-        if it["op"] == "unroutable":
-            lines.append(f"  UNROUTABLE  {it['repo']} ({it['count']} finding(s)) — "
-                         f"no GitLab project known for this repo")
+    """A human-readable, line-per-item view for --dry-run, grouped by audience/stream."""
+    grouped = _by_stream(plan["issues"])
+    lines = []
+    for s in _STREAM_ORDER:
+        items = grouped.get(s)
+        if not items:
             continue
-        loc = f"!{it['iid']}" if it.get("iid") else "new"
-        lines.append(f"  {it['op']:7} [{loc}] {it['title']}  "
-                     f"({it['count']} finding(s), branch {it['branch']})")
-    return "\n".join(lines)
+        head = _STREAM_HEAD[s]
+        lines.append(f"── {head} " + "─" * max(4, 44 - len(head)))
+        for it in items:
+            loc = f"#{it['iid']}" if it.get("iid") else "new"
+            who = f"  @{it['assignee']}" if it.get("assignee") else ""
+            lines.append(f"  {it['op']:7} [{loc}] {it.get('title', '')}  → {it['project']}{who}")
+    return "\n".join(lines) or "(nothing to deliver)"
 
 
 # ------------------------------------------------------------------------------- I/O
@@ -445,7 +464,9 @@ def fetch_existing(gl, devops_project: str, dev_projects: list) -> dict:
     issues = list(gl.list_issues(devops_project, labels=LABEL))
     for p in dev_projects:
         issues += gl.list_issues(p, labels=LABEL)
-    return {"issues": issues, "mrs": {p: gl.list_mrs(p, labels=LABEL) for p in dev_projects}}
+    # findings no longer produce MRs, and nothing reads existing["mrs"] — so don't spend a
+    # list_mrs call per repo every run. (Legacy in-flight drift/migrations MRs are swept by hand.)
+    return {"issues": issues, "mrs": {}}
 
 
 def _issue_labels(stream: str) -> str:
