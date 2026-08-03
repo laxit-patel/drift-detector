@@ -116,6 +116,41 @@ def test_resolved_finding_closes_its_issue():
     assert next(i for i in plan["issues"] if i["op"] == "close")["iid"] == 9
 
 
+def test_stale_in_repo_issue_closes_at_its_own_project():
+    """DEFECT: _finish was hardcoding devops_project for all closes. When a repo's issue
+    moved to its own project (Task 3), closing a stale in-repo finding would target
+    devops_project with an iid that lives in a different project — wrong close or error.
+    Proof: a stale developer issue for repo r_old with project_id="g/web" must close at
+    "g/web", not at devops_project "g/ops"."""
+    # Payload has actions for r_new only -> r_old's issue is stale
+    payload = _payload([_sunset(repo="r_new")])
+
+    # Existing issue for r_old:
+    # - has a developer fingerprint marker (so it's tracked)
+    # - iid=42, state=opened (not yet closed)
+    # - project_id="g/web" (the repo's own project after Task 3)
+    r_old_fp = delivery.repo_fingerprint("g/ebayapi", "developer")
+    existing = {"issues": [
+        {"iid": 42, "state": "opened",
+         "description": delivery.marker(r_old_fp),
+         "title": "[drift] API migrations for g/ebayapi",
+         "project_id": "g/web"}  # issue lives in its own project
+    ], "mrs": {}}
+
+    plan = delivery.build_plan(payload, _META, existing, "g/ops",
+                               assignees={"devops": None, "developer": {}})
+
+    # Find the close op for the stale r_old issue
+    closes = [i for i in plan["issues"] if i["op"] == "close" and i["iid"] == 42]
+    assert len(closes) == 1, "Must have one close op for the stale issue"
+
+    # BEFORE FIX: ["project"] would be "g/ops" (devops_project hardcoded)
+    # AFTER FIX: ["project"] must be "g/web" (the issue's own project)
+    assert closes[0]["project"] == "g/web", (
+        f"Stale issue must close at its own project 'g/web', not devops_project 'g/ops'"
+    )
+
+
 def test_developer_stream_is_always_issues_never_mrs():
     """The draft-MR path is retired: developer findings are always ONE issue per repo, filed
     IN that repo (not a central devops project). `dev_as_issues` is accepted for back-compat

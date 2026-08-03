@@ -398,7 +398,8 @@ def _finish(issue_plan, mr_plan, by_fp, live_fps, devops_project) -> dict:
     finding must not leave a stale open issue (the human 'cannot see = clean' trap)."""
     for fp, iss in by_fp.items():
         if fp not in live_fps and iss.get("state") != "closed":
-            issue_plan.append({"op": "close", "fp": fp, "project": devops_project,
+            issue_plan.append({"op": "close", "fp": fp,
+                               "project": iss.get("project_id") or devops_project,
                                "iid": iss.get("iid"), "title": iss.get("title")})
     return {"issues": issue_plan, "mrs": mr_plan}
 
