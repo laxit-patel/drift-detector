@@ -44,3 +44,12 @@ def test_probabilistic_needs_a_prior_scan(tmp_path):
     rc = cli.main(["probabilistic", "--state", str(tmp_path),
                    "--ai-results", str(ai), "--now", "2026-07-31"])
     assert rc == 2                                          # no drift.json -> refused
+
+
+def test_probabilistic_refuses_corrupt_drift_json(tmp_path):
+    (tmp_path / "drift.json").write_text("not json")
+    ai = tmp_path / "ai.json"; ai.write_text('{"meta":{},"repos":[]}')
+    rc = cli.main(["probabilistic", "--state", str(tmp_path),
+                   "--ai-results", str(ai), "--now", "2026-07-31"])
+    assert rc == 2                                          # corrupt drift.json -> refused, no traceback
+    assert not (tmp_path / "probabilistic.html").exists()

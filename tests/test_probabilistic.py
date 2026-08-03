@@ -48,6 +48,30 @@ def test_unclassified_certified_endpoints_are_ignored():
     assert out["tallies"]["toolOnly"] == 0
 
 
+def test_both_blind_repo_surfaces_as_not_cross_checked_via_scanned_repos():
+    # blindrepo has NO classified certified endpoint (a deterministic blind-spot) AND is absent
+    # from ai_results["repos"] (the AI also failed to read it). Without the authoritative
+    # scanned_repos list it would vanish from reposScanned/notCrossChecked/byRepo entirely —
+    # "cannot see" must never present as "clean".
+    certified = [{"repo": "r1", "vendor": "eBay", "classified": True, "files": ["a.php:1"]}]
+    ai = _ai([{"repo": "r1", "summary": "s", "integrations": [
+        {"vendor": "eBay", "endpoint": "x", "file": "a.php", "line": "1", "retired": "no"}]}])
+    out = compare(ai, certified, scanned_repos=["blindrepo", "r1"])
+    assert out["tallies"]["reposScanned"] == 2
+    assert "blindrepo" in out["notCrossChecked"]
+
+
+def test_compare_without_scanned_repos_is_unchanged():
+    # existing behavior (no scanned_repos arg) must be identical to before this change.
+    certified = [{"repo": "r1", "vendor": "eBay", "classified": True, "files": ["a.php:1"]},
+                 {"repo": "r2", "vendor": "Shopify", "classified": True, "files": ["c.php:3"]}]
+    ai = _ai([{"repo": "r1", "summary": "s", "integrations": [
+        {"vendor": "eBay", "endpoint": "x", "file": "a.php", "line": "1", "retired": "no"}]}])
+    out = compare(ai, certified)
+    assert out["tallies"]["reposScanned"] == 2 and out["tallies"]["reposReadByAI"] == 1
+    assert out["notCrossChecked"] == ["r2"]
+
+
 def test_compare_is_deterministic():
     certified = [{"repo": "r1", "vendor": "eBay", "classified": True, "files": ["a.php:1"]}]
     ai = _ai([{"repo": "r1", "summary": "s", "integrations": [

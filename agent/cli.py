@@ -405,8 +405,8 @@ def _cmd_probabilistic(args) -> int:
     try:
         with open(drift_path, encoding="utf-8") as fh:
             drift = json.load(fh)
-    except OSError:
-        print(f"probabilistic: no drift.json in {args.state} — run a deterministic scan first",
+    except (OSError, json.JSONDecodeError):
+        print(f"probabilistic: no/unreadable drift.json in {args.state} — run a scan first",
               file=sys.stderr)
         return 2
     try:
@@ -424,7 +424,9 @@ def _cmd_probabilistic(args) -> int:
             print("probabilistic: --ai-results malformed — every repos[] entry needs a \"repo\" key",
                   file=sys.stderr)
             return 2
-    cmp = compare(ai, drift.get("endpoints", []))
+    cmp = compare(ai, drift.get("endpoints", []),
+                  scanned_repos=[g.get("repo") for g in drift.get("coverageGrades", [])
+                                 if g.get("repo")])
     meta = {"reposRead": (ai.get("meta") or {}).get("reposRead", cmp["tallies"]["reposReadByAI"]),
             "tokens": (ai.get("meta") or {}).get("tokens", 0), "now": args.now}
     out = os.path.join(args.state, "probabilistic.html")
