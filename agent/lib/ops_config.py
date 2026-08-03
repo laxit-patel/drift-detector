@@ -42,7 +42,7 @@ import re
 
 import yaml
 
-_MODES = {"dry-run", "live", "off"}
+_MODES = {"dry-run", "live", "off", "create"}
 _TARGETS = {"issues", "mrs"}
 _TOP = {"version", "fleet", "delivery", "auth", "notify", "probe"}
 _DELIVERY_V1 = {"mode", "dev_as_issues", "devops_project"}
@@ -52,7 +52,7 @@ _DELIVERY_COMMON = {"shape_stream", "freshness_stream"}
 _DELIVERY = _DELIVERY_V1 | _DELIVERY_V2 | _DELIVERY_COMMON
 _AUTH = {"clone", "persist", "deliver"}
 _NOTIFY = {"gchat"}
-_STREAM = {"target", "project"}
+_STREAM = {"target", "project", "assignee", "fallbackAssignee"}
 
 # a value under `auth:`/`notify:` must be an env-var NAME, not a secret. This catches the most
 # common and most dangerous mistake — pasting the actual PAT into the reviewed, git-tracked
@@ -92,7 +92,8 @@ def _stream(where: str, block, *, default_target: str) -> dict:
     target = block.get("target", default_target)
     if target not in _TARGETS:
         raise ConfigError(f"{where}.target must be one of {sorted(_TARGETS)}, got {target!r}")
-    return {"target": target, "project": block.get("project")}
+    return {"target": target, "project": block.get("project"), "assignee": block.get("assignee"),
+            "fallbackAssignee": block.get("fallbackAssignee")}
 
 
 def _load_auth(path: str, raw: dict) -> dict:
@@ -165,23 +166,31 @@ def _load_delivery(path: str, raw: dict) -> dict:
                             default_target="issues")
         dev_as_issues = developer["target"] == "issues"
         devops_project = devops["project"]
+        devops_assignee = devops["assignee"]
+        developer_fallback = developer["fallbackAssignee"]
+        if mode == "create" and not devops_assignee:
+            raise ConfigError(f"{path}: delivery.devops.assignee is required when delivery.mode "
+                              "is 'create' (every DevOps issue is assigned to it)")
     else:                                # v1 form (or nothing → defaults)
         dev_as_issues = bool(d.get("dev_as_issues", True))   # default: issues (Reporter-friendly)
         devops_project = d.get("devops_project")
+        devops_assignee = None
+        developer_fallback = None
     # the two maintainer streams, both off by default and opted into independently:
     # shape_stream files an absorption flag per UNKNOWN repo (opt in once the fleet is stable,
     # so early scans don't flag every not-yet-modeled repo); freshness_stream files THE
     # catalog-freshness work-order while any detected vendor is STALE/unaudited off the auto
     # lane (opt in once someone owns the maintainer queue — an issue nobody triages is noise).
     return {"mode": mode, "dev_as_issues": dev_as_issues, "devops_project": devops_project,
+            "devopsAssignee": devops_assignee, "developerFallbackAssignee": developer_fallback,
             "shape_stream": bool(d.get("shape_stream", False)),
             "freshness_stream": bool(d.get("freshness_stream", False))}
 
 
 def load(path: str) -> dict:
     """Parse + validate drift.yml. Returns
-        {fleet, host, delivery:{mode,dev_as_issues,devops_project}, auth:{clone,persist,deliver},
-         notify:{gchat}, probe:{accept:[{gap,reason}]}}.
+        {fleet, host, delivery:{mode,dev_as_issues,devops_project,devopsAssignee,developerFallbackAssignee},
+         auth:{clone,persist,deliver}, notify:{gchat}, probe:{accept:[{gap,reason}]}}.
     Raises ConfigError on anything malformed — an unknown key is an error, not ignored, so a
     typo can't silently disable delivery or drop a repo. `auth`/`notify` values are env-var
     NAMES; a pasted secret is refused."""

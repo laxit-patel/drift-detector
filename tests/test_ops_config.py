@@ -27,7 +27,8 @@ def test_valid_config_loads_and_derives_the_host(tmp_path):
     assert cfg["fleet"] == ["https://git.x/g/a", "https://git.x/g/b"]
     assert cfg["host"] == "git.x"                              # derived from the fleet URLs
     assert cfg["delivery"] == {"mode": "live", "dev_as_issues": True,
-                               "devops_project": "root/ops", "shape_stream": False,
+                               "devops_project": "root/ops", "devopsAssignee": None,
+                               "developerFallbackAssignee": None, "shape_stream": False,
                                "freshness_stream": False}
 
 
@@ -36,7 +37,8 @@ def test_delivery_defaults_when_omitted(tmp_path):
     # deployment may not have, so the safe default routes developer findings to issues too.
     cfg = ops_config.load(_write(tmp_path, "fleet: [https://git.x/g/a]\n"))
     assert cfg["delivery"] == {"mode": "dry-run", "dev_as_issues": True,
-                               "devops_project": None, "shape_stream": False,
+                               "devops_project": None, "devopsAssignee": None,
+                               "developerFallbackAssignee": None, "shape_stream": False,
                                "freshness_stream": False}
 
 
@@ -187,3 +189,27 @@ def test_probe_accept_without_reason_is_refused(tmp_path):
         assert False, "expected ConfigError for a reasonless acceptance"
     except ops_config.ConfigError as exc:
         assert "reason" in str(exc)
+
+
+# --- assignee fields (devops.assignee + developer.fallbackAssignee) ----------
+
+def test_delivery_parses_assignees(tmp_path):
+    cfg = ops_config.load(_write(tmp_path, """
+fleet: [https://git.x/g/r]
+delivery:
+  mode: create
+  devops: { assignee: ops-bot }
+  developer: { target: issues, fallbackAssignee: lead }
+"""))
+    assert cfg["delivery"]["devopsAssignee"] == "ops-bot"
+    assert cfg["delivery"]["developerFallbackAssignee"] == "lead"
+
+
+def test_missing_devops_assignee_when_creating_is_rejected(tmp_path):
+    with pytest.raises(ops_config.ConfigError, match="devops.assignee"):
+        ops_config.load(_write(tmp_path, """
+fleet: [https://git.x/g/r]
+delivery:
+  mode: create
+  developer: { target: issues }
+"""))
