@@ -84,5 +84,29 @@ This clones any URLs and classifies every source — **git repo · plain folder 
 
    **Freshness on demand.** Any time, `"$SCAN" catalog-check --now "$(date +%F)"` re-checks the catalogued vendors (eBay, Shopify) against their live sources and reports what changed — a NEW retirement we lack, a date the vendor MOVED, or a computed rule that drifted. Exit 3 means something changed (stage it and run `absorb`); exit 4 means a source was unreachable. When a scan just ran and `"$D/catalog-check.log"` exists from the weekly job, glance at it and surface any change to the user.
 
+## Probabilistic cross-check (opt-in)
+
+After the deterministic report is delivered, OFFER — do not auto-run — a probabilistic pass:
+
+> "Deterministic scan complete: N repos, M certified findings. I can run an **AI · unverified**
+> cross-check over all N repos — a second opinion that may surface integrations the rules
+> missed. It costs ~K tokens and its output is **leads, not findings** (kept in a separate
+> report). Run it?"
+
+Only on an explicit yes:
+
+1. For EACH scanned repo, dispatch one agent that reads the repo for third-party API
+   integrations and returns STRICT JSON (vendor, host, version, endpoint, file, line,
+   retired, note) — the schema in `docs/superpowers/specs/2026-07-31-probabilistic-scan-design.md`.
+   A repo an agent cannot read is reported, never dropped.
+2. Assemble the results into `<state>/ai_results.json` (`{meta:{reposRead,tokens}, repos:[...]}`).
+3. Render the separate artifact — NEVER touch `dashboard.html`. Use `$SCAN probabilistic` to render:
+   `"$SCAN" probabilistic --state <state> --ai-results <state>/ai_results.json --now $(date +%F)`
+   This writes `<state>/probabilistic.html` (labelled **AI · unverified**, outside `verify`).
+4. Show the tally (agree / AI-only / tool-only) and point to `probabilistic.html`.
+5. For any AI-only lead worth keeping, OFFER to promote it via `/drift-absorb` — the absorb gate
+   verifies it (sourced date, no false attribution, residue shrinks) before it can ever become a
+   certified finding. Never present a lead as certified; never merge one without the gate.
+
 ## Follow-ups
 Answer *"which repos use Amazon SP-API?"*, *"who's on an old runtime?"* etc. from `inventory.json` (the queryable shape-map) — filter the JSON, do **not** re-scan. Per repo: `{path, ref, head_sha, runtimes, frameworks, sdks[], endpoints[{vendor,domain,version,apiPath,file_count,files:[path:line]}]}`; plus `audit.json` for the vuln/EOL/sunset findings and `drift.json` → `catalog[]` for per-vendor coverage.
