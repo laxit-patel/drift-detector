@@ -108,6 +108,44 @@ drill-down fix queue: click a row for the upgrade command and the CVEs it clears
 sunset for its `file:line` call-sites. Dark/light theme. Tiles count **actions**, so a
 tile's number always matches the rows it filters to.
 
+### Deliver — a per-repo issue to the right owner
+
+```
+drift-scan deliver --state <dir> --config drift.yml     # add --dry-run to preview, write nothing
+```
+
+Every flagged repo gets up to **two comprehensive, idempotent GitLab issues, filed in the repo's
+own tracker** (the ticket lives with the code):
+
+- a **DevOps issue** — the repo's package CVEs + runtime EOL — assigned to a configured **DevOps
+  account**, labelled `drift:devops`;
+- a **Developer issue** — the repo's vendor sunsets + framework EOL — auto-assigned to the **repo
+  owner** (resolved from GitLab, with a config fallback), labelled `drift:developer`.
+
+Re-runs **update in place** (fingerprinted — never a duplicate, never a notification storm); a
+resolved finding **closes its own issue**. Aggregation is **native GitLab**: a group issue board on
+the `drift:devops` label — or simply *"issues assigned to the DevOps account"* — is the DevOps queue,
+with nothing custom to build. Findings are **issues only, no MRs**. (Teaching the scanner a new
+integration shape stays a *reviewed catalog MR* on the private ops repo — that's the review gate,
+not a finding.) Configure it in `drift.yml`:
+
+```yaml
+delivery:
+  mode: create                          # dry-run | create (file issues) | off
+  devops:    { assignee: ops-bot }      # every DevOps issue is assigned here (required to write)
+  developer: { fallbackAssignee: lead } # a Developer issue assigns to the repo owner; this is the fallback
+```
+
+### Probabilistic (AI) cross-check — an opt-in second opinion
+
+The deterministic scan is trustworthy but bounded — it flags only what it can *certify*. After it
+runs, you can **opt into an AI pass** that reads every repo and surfaces integrations the rules
+can't see (config-driven URLs, exotic wrappers). Its output is a **separate, clearly-labelled
+`AI · unverified` report** (`probabilistic.html`) — **leads, not findings** — that never touches the
+certified dashboard or the `verify` contract. Any lead can be **promoted through the deterministic
+absorb gate** to become certified on the next scan. **AI proposes; the gate certifies;** nothing
+unverified is ever presented as certified. It's off by default and costs tokens only when you say yes.
+
 ### Autonomous & scheduled
 
 `/drift-detector <folder>` runs the full **scan → audit** pipeline and then offers to make
@@ -129,7 +167,10 @@ before touching your crontab. (Cron = Linux/macOS.)
 |---|---|
 | `inventory.json` | The IR — per-repo `{runtimes, frameworks, sdks, endpoints[{vendor, domain, version, file_count, files:[path:line]}]}` + rollups + coverage. The queryable shape-map. |
 | `audit.json` | The findings + ranked actions + delta, as data. |
-| `dashboard.html` | **The report** — self-contained interactive dashboard: tiles, drill-down fix queue, the endpoint/sunset view, "Changed since last scan", and the per-repo **coverage grade**. No server, opens from `file://`. |
+| `drift.json` | **The one contract** — the canonical, schema'd report. `dashboard.html` and `drift.md` are *verified projections* of it; `drift-scan verify` re-derives them and fails if they disagree. |
+| `dashboard.html` | **The report** — self-contained interactive dashboard: tiles, drill-down fix queue, the endpoint/sunset view, "Changed since last scan", and the per-repo **coverage grade**. Call-site links open in GitLab at the exact line (pinned to the commit). No server, opens from `file://`. |
+| `drift.md` | The primary agent/CLI-readable view of the same report. |
+| `probabilistic.html` | **Only when you run the opt-in AI cross-check** — a separate, `AI · unverified` second-opinion report. Leads, not certified findings; outside the `verify` contract. |
 
 Re-runs are cheap: only repos whose git `HEAD` changed are re-analyzed (per-repo
 commit-SHA cache).

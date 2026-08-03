@@ -8,12 +8,19 @@ fleet:
   - https://git.example.com/team/service-b
 
 delivery:
-  mode: dry-run              # dry-run (print the plan, write nothing) | live | off
+  mode: create               # dry-run (print the plan, write nothing) | create (file issues) | off
+  # Each flagged repo gets up to TWO comprehensive issues, filed IN THE REPO'S OWN tracker:
+  #   • a DevOps issue    (package CVEs + runtime EOL)  — labelled drift:devops
+  #   • a Developer issue (vendor sunsets + framework EOL) — labelled drift:developer
+  # Assignee + label mean a GitLab group board (or "issues assigned to <account>") aggregates
+  # every DevOps issue across the fleet — no central project needed for findings.
   devops:
-    project: team/ops        # GitLab project path where DevOps (package/runtime) issues are filed
+    assignee: ops-bot        # the DevOps account every DevOps issue is assigned to.
+                             # REQUIRED whenever mode files issues (create/live).
+    project: team/ops        # where the MAINTAINER streams below (shape/freshness) are filed
   developer:
-    target: issues           # issues → works with Reporter access (the safe default)
-                             # mrs    → draft MRs on the scanned repos (needs Developer access)
+    fallbackAssignee: tech-lead   # a Developer issue auto-assigns to the repo's owner; this is
+                                  # used only when the owner can't be resolved from GitLab
   shape_stream: false        # true → file a maintainer "absorption needed" issue per UNKNOWN
                              # repo (a shape the scanner can't fully read). Opt in once the
                              # fleet is stable; closes itself when the repo goes KNOWN.
