@@ -555,3 +555,64 @@ def test_devops_repo_body_bundles_actions_with_marker():
     body = delivery.devops_repo_body("g/r", acts)
     assert "php" in body and "guzzle" in body
     assert delivery.marker(delivery.repo_fingerprint("g/r", "devops")) in body                  # idempotency marker present
+
+
+# --------------------------------------------------------------- I/O: per-repo fetch + assignee on write
+class _FakeAssigneeGL:
+    """A distinct fake from the MR-era `_FakeGL` above (which tracks branch/file/MR calls) —
+    this one models list_issues per-project + assignee_ids on create, for the in-repo delivery I/O."""
+    def __init__(self, issues_by_project=None):
+        self._issues = issues_by_project or {}
+        self.created = []
+
+    def list_issues(self, project, *, labels):
+        return self._issues.get(project, [])
+
+    def list_mrs(self, project, *, labels):
+        return []
+
+    def create_issue(self, project, *, title, description, labels, assignee_ids=None):
+        self.created.append({"project": project, "assignee_ids": assignee_ids, "labels": labels})
+        return {"iid": 1}
+
+    def update_issue(self, project, iid, **fields):
+        pass
+
+
+def test_execute_plan_sends_assignee_ids():
+    gl = _FakeAssigneeGL()
+    delivery.execute_plan(gl, {"issues": [{"op": "create", "project": "g/r1", "title": "T", "body": "B",
+                                           "assignee": 7, "stream": "developer"}], "mrs": []})
+    assert gl.created[0]["assignee_ids"] == [7]
+    assert "drift:developer" in gl.created[0]["labels"]
+
+
+def test_fetch_existing_reads_each_repo_tracker():
+    gl = _FakeAssigneeGL({"g/r1": [{"iid": 9, "description": "x"}], "g/ops": []})
+    got = delivery.fetch_existing(gl, "g/ops", ["g/r1"])
+    assert any(i["iid"] == 9 for i in got["issues"])         # the repo's own issue is seen
+
+
+def test_execute_plan_reports_a_failed_file_without_aborting():
+    """'Cannot see' != 'clean': a create that raises for one repo must land in done["failed"]
+    and must NOT stop the remaining ops from being attempted."""
+    class _Boom(_FakeAssigneeGL):
+        def create_issue(self, project, **k):
+            if project == "g/bad":
+                raise RuntimeError("403")
+            return super().create_issue(project, **k)
+    gl = _Boom()
+    done = delivery.execute_plan(gl, {"issues": [
+        {"op": "create", "project": "g/bad", "title": "T", "body": "B", "stream": "devops"},
+        {"op": "create", "project": "g/ok", "title": "T", "body": "B", "stream": "devops"}], "mrs": []})
+    assert done["failed"] and done["failed"][0][0] == "g/bad"
+    assert done["created"] == 1                       # g/ok still filed
+
+
+def test_fetch_existing_keeps_project_id_on_raw_issue_dicts():
+    """INTEGRATION: `_finish` reads iss.get("project_id") to close an in-repo issue at its own
+    project (Task 3's fix) — fetch_existing must return the RAW issue dicts, not a stripped copy."""
+    gl = _FakeAssigneeGL({"g/r1": [{"iid": 9, "description": "x", "project_id": "g/r1"}]})
+    got = delivery.fetch_existing(gl, "g/ops", ["g/r1"])
+    iss = next(i for i in got["issues"] if i["iid"] == 9)
+    assert iss["project_id"] == "g/r1"

@@ -434,10 +434,18 @@ def plan_detail(plan: dict) -> str:
 
 # ------------------------------------------------------------------------------- I/O
 def fetch_existing(gl, devops_project: str, dev_projects: list) -> dict:
-    """What drift-detector has already filed: labelled issues in the DevOps project, and
-    labelled MRs in each scanned project. Read-only — safe in --dry-run."""
-    return {"issues": gl.list_issues(devops_project, labels=LABEL),
-            "mrs": {p: gl.list_mrs(p, labels=LABEL) for p in dev_projects}}
+    """What drift-detector has already filed: labelled issues in the DevOps project (the
+    still-central maintainer streams: shape, freshness) UNION each dev project's own tracker
+    (the in-repo DevOps/Developer issues, Task 3) — every issue that build_plan could match a
+    fingerprint against. Read-only — safe in --dry-run.
+
+    Returns the RAW issue dicts from `list_issues`, `project_id` and all: `_finish` reads
+    `iss.get("project_id")` to close a stale in-repo issue at its OWN project rather than
+    devops_project, so nothing here may strip or copy fields off them."""
+    issues = list(gl.list_issues(devops_project, labels=LABEL))
+    for p in dev_projects:
+        issues += gl.list_issues(p, labels=LABEL)
+    return {"issues": issues, "mrs": {p: gl.list_mrs(p, labels=LABEL) for p in dev_projects}}
 
 
 def _issue_labels(stream: str) -> str:
@@ -454,24 +462,35 @@ def _issue_labels(stream: str) -> str:
 
 
 def execute_plan(gl, plan: dict) -> dict:
-    """Perform the writes. Every op is idempotent given the same plan."""
-    done = {"created": 0, "updated": 0, "closed": 0, "skipped": 0, "unroutable": 0}
+    """Perform the writes. Every op is idempotent given the same plan.
+
+    Each issue op is wrapped in its own try/except: one repo's write failing (permissions,
+    a renamed project, a transient GitLab error) must not abort the rest of the fleet's issues
+    — "cannot see" is never "clean", so a failure is collected into `done["failed"]`
+    (`(project, reason)` pairs) and REPORTED, never silently dropped."""
+    done = {"created": 0, "updated": 0, "closed": 0, "skipped": 0, "unroutable": 0, "failed": []}
     for it in plan["issues"]:
-        if it["op"] == "create":
-            gl.create_issue(it["project"], title=it["title"], description=it["body"],
-                            labels=_issue_labels(it.get("stream")))
-            done["created"] += 1
-        elif it["op"] == "update":
-            fields = {"description": it["body"], "title": it["title"]}
-            if it.get("reopen"):
-                fields["state_event"] = "reopen"
-            gl.update_issue(it["project"], it["iid"], **fields)
-            done["updated"] += 1
-        elif it["op"] == "close":
-            gl.update_issue(it["project"], it["iid"], state_event="close")
-            done["closed"] += 1
-        else:
-            done["skipped"] += 1
+        aid = [it["assignee"]] if it.get("assignee") else None
+        try:
+            if it["op"] == "create":
+                gl.create_issue(it["project"], title=it["title"], description=it["body"],
+                                labels=_issue_labels(it.get("stream")), assignee_ids=aid)
+                done["created"] += 1
+            elif it["op"] == "update":
+                fields = {"description": it["body"], "title": it["title"]}
+                if aid:
+                    fields["assignee_ids"] = aid
+                if it.get("reopen"):
+                    fields["state_event"] = "reopen"
+                gl.update_issue(it["project"], it["iid"], **fields)
+                done["updated"] += 1
+            elif it["op"] == "close":
+                gl.update_issue(it["project"], it["iid"], state_event="close")
+                done["closed"] += 1
+            else:
+                done["skipped"] += 1
+        except Exception as exc:                     # a failed file is REPORTED, never dropped
+            done["failed"].append((it.get("project"), str(exc)))
     for it in plan["mrs"]:
         if it["op"] == "unroutable":
             done["unroutable"] += 1
