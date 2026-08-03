@@ -616,3 +616,100 @@ def test_fetch_existing_keeps_project_id_on_raw_issue_dicts():
     got = delivery.fetch_existing(gl, "g/ops", ["g/r1"])
     iss = next(i for i in got["issues"] if i["iid"] == 9)
     assert iss["project_id"] == "g/r1"
+
+
+# ------------------------------------------------------------- Task 6: executor wiring (CLI)
+def test_resolve_assignees_maps_devops_and_repo_owner():
+    """A thin unit over the resolution the `deliver` executor performs before build_plan."""
+    devops_id = 5
+    members = [{"id": 7, "access_level": 50}]
+    assignees = {"devops": devops_id, "developer": {"r1": delivery.resolve_owner(members, 99)}}
+    assert assignees["devops"] == 5 and assignees["developer"]["r1"] == 7
+
+
+class _FakeDeliverGL:
+    """Models the pieces `_cmd_deliver` calls end-to-end: member/user lookups for assignee
+    resolution, plus issue create — nothing pre-filed, so every op is a `create`. `_cmd_deliver`
+    constructs its own instance internally, so tests recover it via `_last` (the class tracks
+    the most recently constructed instance) rather than threading one in."""
+    FAIL_PROJECT = None                                # set per-test to exercise done["failed"]
+    _last = None
+
+    def __init__(self, host, token=None, **k):
+        self.host = host
+        self.created = []
+        type(self)._last = self
+
+    def list_issues(self, *a, **k):
+        return []
+
+    def list_mrs(self, *a, **k):
+        return []
+
+    def members(self, project):
+        return {"g/r1": [{"id": 7, "access_level": 50}]}.get(project, [])
+
+    def user_id(self, username):
+        return {"devopsuser": 5, "fallbackuser": 99}.get(username)
+
+    def create_issue(self, project, *, title, description, labels, assignee_ids=None):
+        if project == self.FAIL_PROJECT:
+            raise RuntimeError("403 forbidden")
+        self.created.append({"project": project, "assignee_ids": assignee_ids, "labels": labels})
+        return {"iid": 1}
+
+
+def _deliver_cfg(tmp_path, *, mode="live"):
+    p = tmp_path / "drift.yml"
+    p.write_text(
+        "fleet: [https://git.x/g/r1]\n"
+        f"delivery:\n  mode: {mode}\n"
+        "  devops: { project: root/ops, assignee: devopsuser }\n"
+        "  developer: { fallbackAssignee: fallbackuser }\n")
+    return str(p)
+
+
+def _deliver_state(tmp_path):
+    import json
+    (tmp_path / "drift.json").write_text(json.dumps(
+        _payload([_cve(repo="r1"), _sunset(repo="r1")])))
+    (tmp_path / "inventory.json").write_text(json.dumps({"repos": [
+        {"path": "r1", "remote_url": "https://git.x/g/r1"}]}))
+
+
+def test_cli_deliver_resolves_and_threads_devops_and_developer_assignees(tmp_path, monkeypatch):
+    """A devops action -> the issue is assigned to the resolved DevOps account id; a developer
+    action -> the issue is assigned to the resolved repo-owner id (Maintainer+ access), not the
+    fallback (a real member exists)."""
+    from agent import cli
+    from agent.lib import gitlab_api
+    _deliver_state(tmp_path)
+    monkeypatch.setattr(gitlab_api, "GitLab", _FakeDeliverGL)
+
+    rc = cli.main(["deliver", "--config", _deliver_cfg(tmp_path), "--state", str(tmp_path)])
+
+    assert rc == 0
+    created = _FakeDeliverGL._last.created
+    devops_call = next(c for c in created if "drift:devops" in c["labels"])
+    developer_call = next(c for c in created if "drift:developer" in c["labels"])
+    assert devops_call["assignee_ids"] == [5]
+    assert developer_call["assignee_ids"] == [7]
+
+
+def test_cli_deliver_nonzero_exit_when_an_issue_fails_to_file(tmp_path, monkeypatch, capsys):
+    """`done["failed"]` non-empty (a repo's issue couldn't be filed) must fail the command —
+    the now-dead `plan["mrs"]` unroutable gate is retired; this replaces it."""
+    from agent import cli
+    from agent.lib import gitlab_api
+
+    class _FailingGL(_FakeDeliverGL):
+        FAIL_PROJECT = "g/r1"
+
+    _deliver_state(tmp_path)
+    monkeypatch.setattr(gitlab_api, "GitLab", _FailingGL)
+
+    rc = cli.main(["deliver", "--config", _deliver_cfg(tmp_path), "--state", str(tmp_path)])
+    err = capsys.readouterr().err
+
+    assert rc == 3
+    assert "g/r1" in err
