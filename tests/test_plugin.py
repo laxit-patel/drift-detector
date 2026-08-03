@@ -117,3 +117,11 @@ def test_still_no_skill_dir():
     """A skill was removed once as a duplicate of the command; the scout is a
     command too, deliberately."""
     assert not (_ROOT / "skills").exists()
+
+
+def test_drift_detector_offers_probabilistic_cross_check():
+    md = (_ROOT / "commands" / "drift-detector.md").read_text(encoding="utf-8")
+    assert "probabilistic" in md.lower()                       # the opt-in step exists
+    assert "AI · unverified" in md                             # the trust label is carried
+    assert "drift-scan probabilistic" in md or "$SCAN probabilistic" in md  # wires the subcommand
+    assert "drift-absorb" in md                                # promotion path referenced
