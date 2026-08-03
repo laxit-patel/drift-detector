@@ -395,6 +395,47 @@ def _cmd_probe(args) -> int:
     return result["exit_code"]
 
 
+def _cmd_probabilistic(args) -> int:
+    """Render the probabilistic (AI) cross-check as a SEPARATE, unverified artifact. Reads the
+    certified <state>/drift.json + an --ai-results JSON (produced by the AI driver). Pure +
+    deterministic: no network, no tokens. Refuses malformed ai_results (never fabricates)."""
+    from agent.lib.probabilistic import compare
+    from agent.lib.probabilistic_render import render_probabilistic
+    drift_path = os.path.join(args.state, "drift.json")
+    try:
+        with open(drift_path, encoding="utf-8") as fh:
+            drift = json.load(fh)
+    except OSError:
+        print(f"probabilistic: no drift.json in {args.state} — run a deterministic scan first",
+              file=sys.stderr)
+        return 2
+    try:
+        with open(args.ai_results, encoding="utf-8") as fh:
+            ai = json.load(fh)
+    except (OSError, json.JSONDecodeError) as exc:
+        print(f"probabilistic: cannot read --ai-results ({exc})", file=sys.stderr)
+        return 2
+    if not isinstance(ai, dict) or not isinstance(ai.get("repos"), list):
+        print("probabilistic: --ai-results malformed — expected {meta, repos:[...]}",
+              file=sys.stderr)
+        return 2
+    for entry in ai["repos"]:
+        if not isinstance(entry, dict) or "repo" not in entry:
+            print("probabilistic: --ai-results malformed — every repos[] entry needs a \"repo\" key",
+                  file=sys.stderr)
+            return 2
+    cmp = compare(ai, drift.get("endpoints", []))
+    meta = {"reposRead": (ai.get("meta") or {}).get("reposRead", cmp["tallies"]["reposReadByAI"]),
+            "tokens": (ai.get("meta") or {}).get("tokens", 0), "now": args.now}
+    out = os.path.join(args.state, "probabilistic.html")
+    with open(out, "w", encoding="utf-8") as fh:
+        fh.write(render_probabilistic(cmp, meta))
+    tl = cmp["tallies"]
+    print(f"✓ probabilistic (AI · unverified): {tl['aiOnly']} AI-only lead(s), "
+          f"{tl['agree']} agree, {tl['toolOnly']} tool-only · {out}")
+    return 0
+
+
 def _cmd_freshness(args) -> int:
     """The maintainer FRESHNESS work-order: which DETECTED vendors need a human re-check
     (STALE or unaudited, and no machine can re-fetch their source) and exactly what to fetch
@@ -1023,6 +1064,12 @@ def main(argv: list[str]) -> int:
     pfr.add_argument("--now", required=True)
     pfr.add_argument("--out", help="write the work-order here (default: stdout)")
     pfr.set_defaults(func=_cmd_freshness)
+
+    ppc = sub.add_parser("probabilistic")   # AI cross-check -> separate UNVERIFIED artifact
+    ppc.add_argument("--state", required=True)
+    ppc.add_argument("--ai-results", required=True, help="ai_results.json from the AI driver")
+    ppc.add_argument("--now", required=True)
+    ppc.set_defaults(func=_cmd_probabilistic)
 
     pa = sub.add_parser("audit")
     pa.add_argument("--in", dest="in_json", required=True)
