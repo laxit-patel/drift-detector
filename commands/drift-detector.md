@@ -98,7 +98,7 @@ Only on an explicit yes:
 1. For EACH scanned repo, dispatch one agent that reads the repo for third-party API
    integrations and returns STRICT JSON (vendor, host, version, endpoint, file, line,
    retired, note) — the schema in `docs/superpowers/specs/2026-07-31-probabilistic-scan-design.md`.
-   A repo an agent cannot read is reported, never dropped. — OMIT it from `ai_results.json`'s `repos[]` entirely; the compare step then marks it "not cross-checked" automatically. Do NOT add a placeholder entry for it, which would read as a checked-and-clean repo.
+   A repo an agent cannot read is reported, never dropped — OMIT it from `ai_results.json`'s `repos[]` entirely; the compare step then marks it "not cross-checked" automatically. Do NOT add a placeholder entry for it, which would read as a checked-and-clean repo.
 2. Assemble the results into `<state>/ai_results.json` (`{meta:{reposRead,tokens}, repos:[...]}`).
 3. Render the separate artifact — NEVER touch `dashboard.html`. Use `$SCAN probabilistic` to render:
    `"$SCAN" probabilistic --state <state> --ai-results <state>/ai_results.json --now $(date +%F)`
