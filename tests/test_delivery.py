@@ -214,7 +214,7 @@ def test_issue_and_mr_bodies_link_back_to_the_run_and_report():
     links = {"run": "https://gh/run/1", "report": "https://laxit-patel.github.io/drift-detector/"}
     ib = delivery.issue_body(_cve(), "root/web", links)
     assert "[scan run](https://gh/run/1)" in ib
-    assert "🔮 [open the cockpit](https://laxit-patel.github.io/drift-detector/)" in ib
+    assert "📊 [open the cockpit](https://laxit-patel.github.io/drift-detector/)" in ib
     mr = delivery.mr_description("g/ebayapi", [_sunset()], links)
     assert "[scan run](https://gh/run/1)" in mr and "Draft, filed by Drift Detector" in mr
 
@@ -831,7 +831,7 @@ def test_issue_body_carries_claude_cockpit_and_scanrun_links():
     body = delivery.issue_body(a, "rushikesh/ebayapi", links)
     # all three hand-off links present, cockpit relabelled (no 'full report'/readme wording)
     assert "🤖 [Open in Claude](https://claude.ai/code?prompt=" in body
-    assert "🔮 [open the cockpit](https://laxit-patel.github.io/drift-detector/)" in body
+    assert "📊 [open the cockpit](https://laxit-patel.github.io/drift-detector/)" in body
     assert "[scan run](https://github.com/laxit-patel/drift-detector/actions/runs/1)" in body
     assert "full report" not in body
 
@@ -857,7 +857,7 @@ def test_footer_omits_claude_when_no_action_context():
     # aggregate/maintainer bodies without a per-action url still render cleanly (no empty link)
     foot = delivery._footer({"report": "https://x.github.io/y/", "run": "https://ci/1"})
     assert "Open in Claude" not in foot
-    assert "🔮 [open the cockpit](https://x.github.io/y/)" in foot
+    assert "📊 [open the cockpit](https://x.github.io/y/)" in foot
 
 
 def test_claude_link_does_not_change_the_fingerprint():

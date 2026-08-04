@@ -208,7 +208,7 @@ def _footer(links: dict | None = None, *, draft: bool = False, claude_url: str |
         parts.append(f"🤖 [Open in Claude]({claude_url})")
     if links:
         if links.get("report"):
-            parts.append(f"🔮 [open the cockpit]({links['report']})")
+            parts.append(f"📊 [open the cockpit]({links['report']})")
         if links.get("run"):
             parts.append(f"[scan run]({links['run']})")
     return "_" + " · ".join(parts) + " — updates in place on the next scan._"

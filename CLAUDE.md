@@ -1,4 +1,4 @@
-# CLAUDE.md — working in Drift Detector (Ashen Oracle)
+# CLAUDE.md — working in Drift Detector
 
 A deterministic, zero-LLM-token scanner that finds dying third-party API integrations —
 deprecated packages (CVE/EOL) and **retired vendor APIs** (sunsets) — down to `file:line`,
@@ -90,5 +90,9 @@ resurfaces; and the tests' *comments* (each pins a real shipped bug — keep the
 
 ## Branding
 
-The **Ashen Oracle** in the TOPS artifact collection — see `DESIGN.md`. Tagline: *Know
-before it breaks.* Accent ember-crimson.
+Spirit/mascot: **Mahoraga — "the Wheel."** It names the tool's adaptation engine (the `absorb`
+gate + idiom families): the scanner adapts to every integration shape it's shown, then detects it
+deterministically — but only through the review gate, never autonomously. Tagline: *Know before it
+breaks.* Accent ember-crimson. (Retired the former "Ashen Oracle" alias — it collided with the
+Mahoraga adaptation theme. The shared `DESIGN.md` collection framework stays; Drift Detector opted
+out of its mystical-relic scheme.)

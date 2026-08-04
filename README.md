@@ -1,12 +1,13 @@
 <p align="center">
-  <img src="art/drift-detector.png" alt="Ashen Oracle — Drift Detector" width="160">
+  <img src="https://media1.tenor.com/m/1QMJcmOppoYAAAAd/mahoraga-makora.gif" alt="Drift Detector — Mahoraga, the Wheel of adaptation" width="320">
+  <br><em>The scanner <b>adapts</b> to every integration shape it's shown — codename <b>Mahoraga, the Wheel</b> (see <a href="#detection-layers--what-it-can-see">Detection</a>).</em>
 </p>
 
 # Drift Detector
 
-> 🔮 **Ashen Oracle** — *Know before it breaks.*
-> The TOPS relic that reads the ashes: it names the dying, sunset, and end-of-life
-> third-party APIs in your repos — with dates — before they break in production.
+> **Know before it breaks.**
+> It names the dying, sunset, and end-of-life third-party APIs in your repos — with dates —
+> before they break in production.
 
 **A DevSecOps supply-chain scanner for third-party integrations.** In one deterministic,
 zero-LLM-token pass it does **SBOM + SCA** — a CycloneDX **SBOM** of every component, **SCA**
@@ -19,11 +20,6 @@ Packages are the demo; **retired-API detection is the point** — it flags *"eBa
 called at `src/Ebay/…:37`, was decommissioned 2025-02-05; migrate to Browse API."* It ships as a
 **Claude Code plugin** but the scan is pure Python + the ast-grep static binary — **zero LLM
 tokens**; Claude only orchestrates.
-
-<p align="center">
-  <img src="https://media1.tenor.com/m/1QMJcmOppoYAAAAd/mahoraga-makora.gif" alt="Mahoraga — the wheel of adaptation" width="320">
-  <br><em>The scanner <b>adapts</b> to every integration shape it's shown — codename <b>Mahoraga, the Wheel</b> (see <a href="#detection-layers--what-it-can-see">Detection</a>).</em>
-</p>
 
 - **Runtime:** Python **stdlib + PyYAML only**, plus the **ast-grep** static binary (pinned).
 - **Scale:** ~9.6k production LOC, **832 tests** (~12s, no network — all I/O is injected).
@@ -100,7 +96,7 @@ flowchart LR
   CI -->|"file / update issues"| ISS
   CI -->|"persist state + report"| OPS
   CI -->|"publish"| PAGES
-  ISS -->|"🔮 cockpit link"| PAGES
+  ISS -->|"📊 cockpit link"| PAGES
   ISS -->|"🤖 Open in Claude"| CLAUDE
   DEV -->|"reads / fixes"| ISS
   DEV -->|"views"| PAGES
@@ -232,8 +228,8 @@ flowchart LR
 > to every integration shape it is *shown* — and thereafter detects it deterministically, forever.
 > The twist that makes it *trustworthy*: it never adapts **autonomously**. The Wheel turns only by
 > passing the deterministic `absorb` gate — sourced dates, no false endpoints, residue must strictly
-> shrink. Adaptation, disciplined. *(The Ashen Oracle stays the tool's face; Mahoraga is the spirit
-> of the part that learns.)*
+> shrink. Adaptation, disciplined. *(Mahoraga — the Wheel — is the tool's spirit: the part that
+> learns.)*
 
 <p align="center">
   <img src="https://media1.tenor.com/m/1YWBgZj5baUAAAAd/mahoraga-adapt.gif" alt="Mahoraga adapts" width="360">
@@ -263,7 +259,7 @@ flowchart TD
   PV --> I
   PP --> I["GitLab issue<br/>emoji title (🚨 past-due · ⏳ upcoming · ☣️ EOL · 🛡️ critical)<br/>hidden fingerprint marker · assignee · label"]
   I -->|"🤖"| CL["Open in Claude<br/>(prompt pre-loaded with the finding + call-sites)"]
-  I -->|"🔮"| CO["open the Cockpit"]
+  I -->|"📊"| CO["open the Cockpit"]
   I -.->|"next scan"| RE["idempotent: UPDATE in place;<br/>resolved finding closes its own issue"]
 ```
 
@@ -274,7 +270,7 @@ flowchart TD
   labels is the queue; nothing custom to build. Findings are **issues only, no MRs**.
 - **One-click hand-off** — every issue carries a 🤖 **Open in Claude** deep-link that pre-loads the
   finding (dying API, dated retirement, call-sites, recommendation, source) into Claude Code, and a
-  🔮 link to the public Cockpit.
+  📊 link to the public Cockpit.
 - **Configured entirely in `drift.yml`** (a reviewed commit in the private drift-ops repo):
 
 ```yaml
@@ -419,4 +415,4 @@ docs/                     schema/ (the contract) · PLUGIN · EVAL · TECH_DEBT
 ---
 
 *Every finding is dated and sourced; every report is `verify`-certified; where it's blind, it says so.*
-🔮 **Know before it breaks.**
+🎡 **Know before it breaks.**
