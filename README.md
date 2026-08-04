@@ -232,7 +232,7 @@ flowchart LR
 > learns.)*
 
 <p align="center">
-  <img src="https://tenor.com/suJu8MpBQk5.gif" alt="Mahoraga adapts" width="360">
+  <img src="https://c.tenor.com/1YWBgZj5baUAAAAC/tenor.gif" alt="Mahoraga adapts" width="360">
   <br><em>“Nah, I'd adapt.” — every new integration shape turns the Wheel through the <code>absorb</code> gate.</em>
 </p>
 
