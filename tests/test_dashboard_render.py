@@ -641,5 +641,24 @@ def test_deep_link_state_sync_is_wired():
     js = dr.APP_JS_SRC
     assert "location.search" in js or "URLSearchParams" in js
     assert "replaceState" in js                     # updates URL without history spam
-    for key in ("repo", "tile", "tab"):
-        assert key in js, key                        # the three round-tripped params
+    # interim params post-IA-restructure: repo (scope) + tab (primary metric dimension).
+    # Full ?repo=&tab=&sub= reconciliation is Task 4; this only proves the rename didn't
+    # leave a dangling reference to the old `filter`/`tile` state.
+    for key in ("repo", "tab"):
+        assert key in js, key
+
+
+# ---- Task 1: full-width cockpit — tiles become primary tabs + sub-tab shell ----
+
+def test_cockpit_ia_tiles_are_tabs_hero_and_subtabs():
+    from agent.lib import dashboard_render as dr
+    tmpl = dr.TEMPLATE_SRC
+    assert 'class="tabstrip"' in tmpl                 # tiles-as-tabs primary nav
+    assert 'class="hero"' in tmpl or 'id="hero' in tmpl
+    assert 'class="subbar"' in tmpl and 'class="subtab"' in tmpl
+    # full-width: the centered column is gone from the CSS
+    assert "max-width:1240px" not in dr.CSS_SRC
+    js = dr.APP_JS_SRC
+    assert "toggleTab" in js and "state" in js
+    # the summary rows scope to the active primary tab (null => all actions)
+    assert "this.tab" in js

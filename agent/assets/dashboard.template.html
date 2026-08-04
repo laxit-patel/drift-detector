@@ -19,27 +19,45 @@
     <p class="headline"><span class="dot">●</span>
       <span class="big">{{ counts.fixes }} fixes needed</span> ·
       {{ counts.reposAffected }} of {{ counts.reposScanned }} repos affected</p>
-    <div class="tilegroups">
-      <div class="tg" v-for="g in tileGroups" :key="g.title">
-        <span class="lbl">{{ g.title }}</span>
-        <div class="tiles">
-          <button v-for="t in g.tiles" :key="t.key" class="tile"
-                  :data-sev="t.sev || null" :aria-pressed="filter === t.key"
-                  @click="toggleTile(t.key)">
-            <span class="n" :data-hot="t.sev === 'crit' || null">{{ t.n }}</span>
+    <!-- PRIMARY TABS = the metric tiles: counts bind to the SAME tileGroups/counts payload
+         the old tile-grid read, just rendered as a tab strip instead of a grid of buttons. -->
+    <div class="tabstrip" role="tablist">
+      <div class="tgroup" v-for="g in tileGroups" :key="g.title">
+        <span class="tglbl">{{ g.title }}</span>
+        <div class="trow">
+          <button v-for="t in g.tiles" :key="t.key" class="mtab" role="tab"
+                  :data-sev="t.sev || null" :data-zero="t.n === 0 ? '1' : null"
+                  :data-on="tab === t.key ? '1' : '0'" :aria-pressed="tab === t.key"
+                  @click="toggleTab(t.key)">
+            <span class="n">{{ t.n }}</span>
             <span class="t">{{ t.label }}</span>
           </button>
         </div>
       </div>
     </div>
-    <div class="tabbar" role="tablist">
-      <button v-for="tb in tabs" :key="tb.id" class="tab" :class="{active: tab === tb.id}"
-              @click="tab = tb.id" role="tab">{{ tb.label }}</button>
+  </div>
+
+  <!-- HERO REGION (where the old cards lived) — empty mount point; Task 2/3 fill #hero-body. -->
+  <div class="hero">
+    <div class="herohead">
+      <h2>Overview</h2>
     </div>
+    <div id="hero-body"></div>
+  </div>
+
+  <!-- SUB-TABS: replace the old top-level tab bar (Summary/Retirement timeline/SBOM/SARIF).
+       The timeline retires as a top-level tab here — it becomes the hero in Task 2. -->
+  <div class="subbar" id="subbar" role="tablist">
+    <button class="subtab" role="tab" :data-on="sub === 'summary' ? '1' : '0'"
+            @click="sub = 'summary'">Summary</button>
+    <button class="subtab" role="tab" :data-on="sub === 'sbom' ? '1' : '0'"
+            @click="sub = 'sbom'">SBOM</button>
+    <button class="subtab" role="tab" :data-on="sub === 'sarif' ? '1' : '0'"
+            @click="sub = 'sarif'">SARIF</button>
   </div>
 
   <div id="main">
-    <section v-show="tab === 'summary'" class="panel active">
+    <section v-show="sub === 'summary'" class="panel active">
       <div class="subbar">
         <button class="tab" :class="{active: sumView === 'prev'}"
                 @click="sumView = 'prev'">Preview</button>
@@ -150,7 +168,14 @@
       </div>
       </div>
     </section>
-    <section v-show="tab === 'timeline'" class="panel active">
+    <!-- The Retirement Timeline's TOP-LEVEL TAB is dropped (no nav button reaches it anymore
+         — that affordance retires into the hero above, Task 2/3). This block is now unreachable
+         dead markup (v-if="false", never rendered) kept ONLY because agent/lib/verify.py's
+         check_timeline_lanes (exercised by tests/test_verify.py, out of this task's file scope)
+         asserts the template still references BOTH timeline lanes (dated + undated) so the
+         undated/deprecated-no-date lane can never silently vanish. Task 2/3 relocates this
+         markup live into #hero-body and this comment goes with it. -->
+    <section v-if="false" class="panel active">
       <div id="timeline-mount" class="timeline">
         <p class="tlhint">Every vendor API sunset, plotted by date
           <template v-if="scope"> for {{ repoLabelOf(scope) }}</template>. Past-due (already
@@ -188,7 +213,7 @@
       </div>
     </section>
 
-    <section v-show="tab === 'sbom'" class="panel active">
+    <section v-show="sub === 'sbom'" class="panel active">
       <div class="subbar">
         <button class="tab" :class="{active: sbomView === 'prev'}"
                 @click="sbomView = 'prev'">Preview</button>
@@ -237,7 +262,7 @@
       </div>
     </section>
 
-    <section v-show="tab === 'sarif'" class="panel active">
+    <section v-show="sub === 'sarif'" class="panel active">
       <div class="subbar">
         <button class="tab" :class="{active: sarifView === 'prev'}"
                 @click="sarifView = 'prev'">Preview</button>

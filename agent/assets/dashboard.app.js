@@ -38,17 +38,19 @@
         SBOM: Vue.markRaw(SBOM), SPDX: Vue.markRaw(SPDX), SARIF: Vue.markRaw(SARIF),
         generated: DATA.generated || "",
         scope: "",            // global repo scope ("" = all)
-        filter: null,         // active tile filter
+        tab: null,             // active PRIMARY tab = the metric-tile dimension (cockpit IA);
+                               // null = OVERVIEW default = no scope = the full ranked action
+                               // queue in Summary. Was `filter` pre-restructure.
+        sub: "summary",        // active sub-tab: summary | sbom | sarif (replaces the old
+                               // top-level tab bar; "Retirement timeline" retires into the
+                               // hero region — Task 2/3 — so it is not a sub-tab option)
         expanded: {},         // row drill-down: idx (within `rows`) -> open/closed
-        tab: "summary",
         sumView: "prev",       // Summary sub-tab: Preview | JSON · drift.json
         sbomView: "prev",      // SBOM sub-tab: Preview | CycloneDX | SPDX
         sarifView: "prev",     // SARIF sub-tab: Preview | JSON · sarif.json
         copyState: {},         // per-view "Copy"/"Copied" label for the JSON copy buttons
         q: "",
-        theme: "dark",
-        tabs: [{id:"summary",label:"Summary"},{id:"timeline",label:"Retirement timeline"},
-               {id:"sbom",label:"SBOM"},{id:"sarif",label:"SARIF"}]
+        theme: "dark"
       };
     },
     computed: {
@@ -83,7 +85,7 @@
       // mode map). "mode" mirrors the vanilla state.mode; "rows" mirrors calling the right
       // …For() and feeding it to the right renderX().
       mode: function(){
-        var f = this.filter;
+        var f = this.tab;
         if(f==="apis" || f==="unknown") return "endpoints";
         if(f==="private") return "private";
         if(f==="unaudited") return "catalog";
@@ -286,7 +288,10 @@
       }
     },
     methods: {
-      toggleTile: function(k){ this.filter = (this.filter===k) ? null : k; this.tab="summary"; },
+      // ---- toggleTab: set the active primary tab (the metric-tile dimension), or clear it
+      // back to null (OVERVIEW — no scope, the full ranked action queue) if it's already
+      // active. Was toggleTile/`filter` pre-restructure; same toggle semantics. ----
+      toggleTab: function(k){ this.tab = (this.tab===k) ? null : k; },
       cycleTheme: function(){ var m=["auto","light","dark"], i=(m.indexOf(this.theme)+1)%3; this.theme=m[i];
         document.documentElement.style.colorScheme = this.theme==="auto" ? "light dark" : this.theme;
         try{ localStorage.setItem("drift-theme", this.theme); }catch(e){} },
@@ -308,7 +313,7 @@
       copyText: function(text){ if(navigator.clipboard) navigator.clipboard.writeText(text); },
 
       actionsFor: function(){
-        var f = this.filter, self = this;
+        var f = this.tab, self = this;
         return (this.DATA.actions || []).filter(function(a){
           if(!self.matchesRepo(a.repo)) return false;                 // global repo scope
           // the retiring operation is part of the identity, so it must be searchable too —
@@ -328,7 +333,7 @@
         });
       },
       endpointsFor: function(){
-        var f = this.filter, self = this;
+        var f = this.tab, self = this;
         return (this.DATA.endpoints || []).filter(function(e){
           if(!self.matchesRepo(e.repo)) return false;                  // global repo scope
           if(!self.matchesQ((e.repo || "") + " " + (e.domain || "") + " " + (e.vendor || ""))) return false;
@@ -396,19 +401,21 @@
       },
       copyLabel: function(key){ return this.copyState[key] || "Copy"; },
 
-      // ---- Task 7: deep-linkable filter state — scope ("repo"), filter ("tile") and tab
+      // ---- Task 7: deep-linkable state — scope ("repo") and the active primary tab ("tab")
       // round-trip through the URL query string so a delivered issue (e.g. "APIs, scoped to
-      // repo X, on the Summary tab") can link straight to that view. `q` (the free-text search
-      // box) is deliberately NOT written here: it's transient per-session input, not a "view"
-      // worth bookmarking, and syncing it would rewrite the address bar on every keystroke.
-      // Only non-default values are written, so the clean/default view keeps a clean URL, and
-      // history.replaceState (not pushState) is used so every filter click doesn't spam Back.
+      // repo X") can link straight to that view. `q` (the free-text search box) is
+      // deliberately NOT written here: it's transient per-session input, not a "view" worth
+      // bookmarking, and syncing it would rewrite the address bar on every keystroke.
+      // INTERIM (Task 1 of the cockpit IA restructure): only `repo`/`tab` round-trip today;
+      // `sub` (Summary/SBOM/SARIF) does not participate in the URL yet — the full
+      // `?repo=&tab=&sub=` reconciliation is Task 4. Only non-default values are written, so
+      // the clean/default view keeps a clean URL, and history.replaceState (not pushState) is
+      // used so every tab click doesn't spam Back.
       syncUrl: function(){
         try{
           var params = new URLSearchParams();
           if(this.scope) params.set("repo", this.scope);
-          if(this.filter) params.set("tile", this.filter);
-          if(this.tab && this.tab !== "summary") params.set("tab", this.tab);
+          if(this.tab) params.set("tab", this.tab);
           var qs = params.toString();
           var url = location.pathname + (qs ? "?" + qs : "") + location.hash;
           history.replaceState(null, "", url);
@@ -416,34 +423,32 @@
       }
     },
     watch: {
-      // any change to WHAT is shown (tile filter, repo scope, search text) closes every open
+      // any change to WHAT is shown (primary tab, repo scope, search text) closes every open
       // detail row — mirrors the vanilla render(), which rebuilt the whole <tbody> (and so
       // discarded every row's open/closed state) on every tile click / scope change / keystroke.
-      // It also (filter/scope/tab only) re-syncs the URL — see the Task 7 note on syncUrl above.
-      filter: function(){ this.expanded = {}; this.syncUrl(); },
+      // It also (tab/scope only) re-syncs the URL — see the Task 7 note on syncUrl above.
+      tab: function(){ this.expanded = {}; this.syncUrl(); },
       scope: function(){ this.expanded = {}; this.syncUrl(); },
-      q: function(){ this.expanded = {}; },
-      tab: function(){ this.syncUrl(); }
+      q: function(){ this.expanded = {}; }
     },
     mounted: function(){
       try{ var s=localStorage.getItem("drift-theme"); if(s) this.theme=s; }catch(e){}
       document.documentElement.style.colorScheme = this.theme==="auto" ? "light dark" : this.theme;
       document.title = "Drift Detector — DevSecOps Cockpit · " + this.generated;
 
-      // ---- Task 7: seed scope/filter/tab from the URL on load. Every value is validated
-      // against the known-good option lists (repoOptions / tile keys / tab ids) before being
-      // assigned — an unknown or stale param (a repo that no longer exists, a typo'd tile,
-      // a garbage tab id) is silently ignored and the default view renders, never a throw.
+      // ---- Task 7: seed scope/tab from the URL on load. Every value is validated against
+      // the known-good option lists (repoOptions / tile keys) before being assigned — an
+      // unknown or stale param (a repo that no longer exists, a typo'd tab) is silently
+      // ignored and the default view renders, never a throw. `sub` is not seeded here yet
+      // (Task 4 — see the syncUrl note above).
       try{
         var params = new URLSearchParams(location.search);
         var repo = params.get("repo");
         if(repo && this.repoOptions.some(function(o){ return o.key === repo; })) this.scope = repo;
-        var tile = params.get("tile");
-        var knownTiles = [];
-        this.tileGroups.forEach(function(g){ g.tiles.forEach(function(t){ knownTiles.push(t.key); }); });
-        if(tile && knownTiles.indexOf(tile) > -1) this.filter = tile;
         var tab = params.get("tab");
-        if(tab && this.tabs.some(function(t){ return t.id === tab; })) this.tab = tab;
+        var knownTabs = [];
+        this.tileGroups.forEach(function(g){ g.tiles.forEach(function(t){ knownTabs.push(t.key); }); });
+        if(tab && knownTabs.indexOf(tab) > -1) this.tab = tab;
       }catch(e){}
       this.syncUrl();
     }
