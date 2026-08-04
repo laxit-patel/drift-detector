@@ -13,6 +13,24 @@
   var GENERIC_NOTE = [/^Sources:/, /^Versions are/, /^Parked:/, /^Vendor API sunsets:/];
   function isGenericNote(n){ return GENERIC_NOTE.some(function(r){ return r.test(n); }); }
 
+  // Deterministic "YYYY-MM-DD" -> a comparable day-ordinal, used ONLY to place the Retirement
+  // Timeline's points and its "today" line. Pure integer arithmetic (Howard Hinnant's
+  // days_from_civil) — no Date object, no wall-clock read, so two runs of the SAME drift.json
+  // place every point identically. "Today" is always DATA.generated, the scan's own date —
+  // reading the CURRENT wall clock instead would make the chart's own reference line
+  // non-deterministic and wrong the moment the page is opened a day after the scan ran.
+  function dayOrdinal(s){
+    var m = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(s || ""));
+    if(!m) return null;
+    var y = +m[1], mo = +m[2], d = +m[3];
+    y -= mo <= 2 ? 1 : 0;
+    var era = Math.floor((y >= 0 ? y : y - 399) / 400);
+    var yoe = y - era * 400;                                              // [0, 399]
+    var doy = Math.floor((153 * (mo + (mo > 2 ? -3 : 9)) + 2) / 5) + d - 1; // [0, 365]
+    var doe = yoe * 365 + Math.floor(yoe / 4) - Math.floor(yoe / 100) + doy; // [0, 146096]
+    return era * 146097 + doe;
+  }
+
   Vue.createApp({
     data: function(){
       return {
@@ -202,6 +220,68 @@
         var d = this.inventoryDrift; if(!d) return false;
         return !!((d.reposAdded && d.reposAdded.length) || (d.reposRemoved && d.reposRemoved.length) ||
                this.driftChangeRows.length > 0);
+      },
+
+      // ---- the Retirement Timeline (Task 6): every sunset action plotted by date, "today"
+      // = DATA.generated (never the wall clock). NONE silently dropped — a sunset is either a
+      // dated point on the axis or a chip in the undated lane; verify.check_chart_parity
+      // enforces dated+undated === counts.sunsets on the exact same DATA.actions this reads,
+      // so a filter bug here that drops a finding fails verify, not just a screenshot.
+      // Respects the global repo scope like every other view.
+      timeline: function(){
+        var self = this;
+        var genOrd = dayOrdinal(this.generated);
+        var sunsets = (this.DATA.actions || []).filter(function(a){
+          return a.kind === "sunset" && self.matchesRepo(a.repo);
+        });
+        var datedActions = sunsets.filter(function(a){ return !!a.date; });
+        var undatedActions = sunsets.filter(function(a){ return !a.date; });
+
+        var label = function(a){
+          return (a.repoLabel || a.repo) + " · " + a.ref + (a.unit ? " — " + a.unit : "");
+        };
+
+        if(!datedActions.length){
+          return {
+            dated: [],
+            undated: undatedActions.map(function(a){
+              return {repo: a.repoLabel || a.repo, vendor: a.ref, unit: a.unit,
+                      label: label(a) + " · date unknown"};
+            }),
+            genX: null
+          };
+        }
+
+        var ords = datedActions.map(function(a){ return dayOrdinal(a.date); });
+        var allOrds = genOrd === null ? ords : ords.concat([genOrd]);
+        var minOrd = Math.min.apply(null, allOrds), maxOrd = Math.max.apply(null, allOrds);
+        var span = Math.max(1, maxOrd - minOrd);
+        var PAD = 30, W = 940;                          // matches the <svg viewBox="0 0 1000 220">
+        var xOf = function(o){ return PAD + ((o - minOrd) / span) * W; };
+
+        var dated = datedActions.map(function(a, i){
+          var o = dayOrdinal(a.date);
+          var pastDue = genOrd !== null && o < genOrd;
+          var up = i % 2 === 0;                          // alternate stems so labels don't collide
+          return {
+            x: xOf(o), y: 130,
+            color: pastDue ? "var(--crit)" : "var(--sun)",
+            pastDue: pastDue,
+            date: a.date,
+            stemY: up ? 96 : 164,
+            labelY: up ? 88 : 180,
+            label: label(a) + " · " + a.date + (pastDue ? " (past-due)" : " (upcoming)")
+          };
+        }).sort(function(pa, pb){ return pa.x - pb.x; });
+
+        return {
+          dated: dated,
+          undated: undatedActions.map(function(a){
+            return {repo: a.repoLabel || a.repo, vendor: a.ref, unit: a.unit,
+                    label: label(a) + " · date unknown"};
+          }),
+          genX: genOrd === null ? null : xOf(genOrd)
+        };
       }
     },
     methods: {

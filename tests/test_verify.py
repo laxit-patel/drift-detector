@@ -354,6 +354,26 @@ def test_verify_passes_when_the_unscannable_root_is_named():
     verify.check_unscannable_surfaced(md_that_names_it, payload)   # no raise
 
 
+# ------------------------------------------------- the Retirement Timeline chart parity
+def test_chart_parity_flags_a_dropped_sunset():
+    """2 sunset actions but the tile claims 3 -> the timeline would silently omit one."""
+    payload = {"counts": {"sunsets": 3},
+               "actions": [{"kind": "sunset", "date": "2026-01-01"},
+                           {"kind": "sunset", "date": None}]}
+    try:
+        verify.check_chart_parity(payload)
+        assert False, "expected a Violation for the dropped sunset"
+    except verify.Violation as v:
+        assert v.check == "chart-parity"
+
+
+def test_chart_parity_passes_when_all_sunsets_accounted():
+    payload = {"counts": {"sunsets": 2},
+               "actions": [{"kind": "sunset", "date": "2026-01-01"},
+                           {"kind": "sunset", "date": None}]}
+    verify.check_chart_parity(payload)     # dated(1)+undated(1)==2 -> no raise
+
+
 def test_verify_catches_a_stale_or_tampered_sbom():
     """A verified projection: sbom.json must equal a fresh build from inventory+audit. A
     hand-edited BOM (dropped component/vuln) must fail, or the SBOM isn't trustworthy."""

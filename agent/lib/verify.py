@@ -401,6 +401,20 @@ def check_number_formats(payload: dict) -> None:
     walk(payload)
 
 
+def check_chart_parity(payload: dict) -> None:
+    """The Retirement Timeline must account for EVERY sunset the tile counts — dated points on
+    the axis plus undated ones in the labeled lane. A mismatch means the chart silently drops a
+    finding (the visual analog of a miscounting tile)."""
+    sunsets = [a for a in payload.get("actions", []) if a.get("kind") == "sunset"]
+    dated = [a for a in sunsets if a.get("date")]
+    undated = [a for a in sunsets if not a.get("date")]
+    claimed = (payload.get("counts") or {}).get("sunsets", 0)
+    if len(dated) + len(undated) != claimed:
+        raise Violation("chart-parity",
+                        f"timeline accounts for {len(dated)}+{len(undated)} sunsets but the tile "
+                        f"says {claimed} — a finding would be dropped from the chart")
+
+
 def verify_payload(payload: dict, findings: list) -> list:
     """Run every payload invariant. Returns the violations rather than raising, so
     `drift verify` can report all of them in one pass instead of one per run."""
@@ -408,7 +422,8 @@ def verify_payload(payload: dict, findings: list) -> list:
     for fn, args in ((check_tile_counts, (payload, findings)),
                      (check_owner_split, (payload,)),
                      (check_row_labels_distinct, (payload,)),
-                     (check_number_formats, (payload,))):
+                     (check_number_formats, (payload,)),
+                     (check_chart_parity, (payload,))):
         try:
             fn(*args)
         except Violation as v:

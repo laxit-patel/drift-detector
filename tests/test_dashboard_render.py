@@ -623,3 +623,12 @@ def test_sbom_sarif_and_coverage_footer_present():
         assert src in js, src
     # unscannable roots are still surfaced honestly ("cannot see ≠ clean")
     assert "rootsUnscannable" in js
+
+
+# ---- Task 6: the Retirement Timeline (SVG) ----
+
+def test_timeline_chart_is_svg_and_scope_aware():
+    from agent.lib import dashboard_render as dr
+    assert "timeline" in dr.APP_JS_SRC and "matchesRepo" in dr.APP_JS_SRC
+    assert "<svg" in dr.TEMPLATE_SRC and "generated" in dr.APP_JS_SRC   # today-line from generated, not Date.now
+    assert "Date.now" not in dr.APP_JS_SRC                              # determinism
