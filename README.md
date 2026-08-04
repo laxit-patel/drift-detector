@@ -15,22 +15,24 @@ which third-party **APIs your code calls, at `file:line`**, and when the vendor 
 them (**vendor-API sunsets**). Every finding is dated and sourced; every report is
 `verify`-certified; where it's blind, it says so.
 
-A Claude Code plugin — a **goal-driven agent** for keeping third-party API integrations
-green. It builds a **code-level inventory** of the integrations your repos use (which
-APIs/SDKs/runtimes, with `file:line` and versions), reports **what changed since the last
-scan** (drift), **audits** those dependencies for known vulnerabilities (OSV) and
-end-of-life runtimes (endoflife.date), rolls the findings up into a **ranked list of fix
-actions**, renders a **self-contained interactive dashboard**, and can **run itself on a
-schedule**. Everything runs locally as a
-**deterministic pipeline** (ast-grep AST matching + manifest parsing + public API
-lookups) — **zero LLM tokens**; Claude only orchestrates, narrates, and sets things up.
+Packages are the demo; **retired-API detection is the point** — it flags *"eBay's Finding API,
+called at `src/Ebay/…:37`, was decommissioned 2025-02-05; migrate to Browse API."* It ships as a
+**Claude Code plugin** but the scan is pure Python + the ast-grep static binary — **zero LLM
+tokens**; Claude only orchestrates.
 
-It emits a standard **CycloneDX SBOM** (components + CVE vulnerabilities — SBOM + VEX) like
-any SCA tool, then adds the one thing no SBOM or CVE scanner can: the **endpoint layer** — it
-knows *which third-party APIs your code calls, at which `file:line`*, and flags when a vendor
-**retires** one (e.g. *"eBay's Finding API — called at `src/Ebay/…:37` — was decommissioned
-2025-02-05; migrate to Browse API"*). Packages are the demo; **retired-API detection is the
-point**.
+<p align="center">
+  <img src="https://media1.tenor.com/m/1QMJcmOppoYAAAAd/mahoraga-makora.gif" alt="Mahoraga — the wheel of adaptation" width="320">
+  <br><em>The scanner <b>adapts</b> to every integration shape it's shown — codename <b>Mahoraga, the Wheel</b> (see <a href="#detection-layers--what-it-can-see">Detection</a>).</em>
+</p>
+
+- **Runtime:** Python **stdlib + PyYAML only**, plus the **ast-grep** static binary (pinned).
+- **Scale:** ~9.6k production LOC, **832 tests** (~12s, no network — all I/O is injected).
+- **Determinism:** same `(inventory, audit, now)` → **byte-identical** output. No wall-clock in logic.
+
+> This README is the **core reference** — pitch, quickstart, and the full architecture. For working
+> conventions see [CLAUDE.md](CLAUDE.md); for the plugin internals see [docs/PLUGIN.md](docs/PLUGIN.md).
+
+---
 
 ## Install
 
@@ -39,179 +41,382 @@ point**.
 /plugin install drift-detector@tops-tools
 ```
 
-Prerequisite: **`uv`** (recommended — https://docs.astral.sh/uv/) *or* Python ≥ 3.11
-with `venv`, plus internet on the first run. The bundled runner provisions its own
-venv + scan engine — no manual Python or ast-grep install.
-
-Check your machine any time:
-
-```
-/drift-detector doctor
-```
+Prerequisite: **`uv`** (recommended — https://docs.astral.sh/uv/) *or* Python ≥ 3.11 with `venv`,
+plus internet on the first run. The bundled runner provisions its own venv + scan engine — no
+manual Python or ast-grep install. Check your machine any time: `/drift-detector doctor`.
 
 ## Use
 
 ```
 /drift-detector <folder>              # scan one folder of repos (recursive)
 /drift-detector ~/work ~/personal     # or several folders at once
+/drift-detector audit <folder>        # what's risky / what to mend
 ```
 
-- Git repos are discovered **recursively** at any depth (skipping `node_modules`,
-  `vendor`, etc.), across every folder you pass.
-- The **first run** is a baseline; **later runs lead with what drifted** — new/removed
-  APIs, version bumps (e.g. SP-API v0→v2), SDK and runtime changes.
-- Ask follow-ups in chat (*"which repos use Amazon SP-API?"*) — answered from the
-  saved inventory, without re-scanning.
+- Git repos are discovered **recursively** at any depth (skipping `node_modules`, `vendor`, …).
+- The **first run** is a baseline; **later runs lead with what drifted** — new/removed APIs, version
+  bumps (e.g. SP-API v0→v2), SDK and runtime changes.
+- Ask follow-ups in chat (*"which repos use Amazon SP-API?"*) — answered from the saved inventory,
+  without re-scanning.
 
-### Audit — what's risky / what to mend
+The **audit** classifies each finding **DEPRECATED** (act now) / **REVIEW** (assess), each with a
+cited source, against three feeds: **OSV.dev** (CVEs, lockfile-exact where a lockfile exists),
+**endoflife.date** (EOL runtimes/frameworks), and the curated **`agent/vendor_sunsets.yaml`**
+catalog joined against your endpoint inventory (the thing package/CVE scanners can't see; entries
+can be domain- or operation-scoped so a dead legacy host is flagged without false-flagging a live
+one that shares its version string).
 
+---
+
+## Architecture
+
+The heart of the tool. The **scan** is offline, deterministic, and spends **zero LLM tokens**; the
+**audit** adds network lookups; everything downstream is a projection of one contract.
+
+### System topology — who runs what, where
+
+The scanner code is public (GitHub); the code it scans and the fleet config are private (GitLab);
+the report is public (GitHub Pages). No self-hosted runner, no container registry.
+
+```mermaid
+flowchart LR
+  subgraph GH["GitHub · public"]
+    CODE["drift-detector repo<br/>(the scanner)"]
+    CI["GitHub Actions<br/>scan.yml · ephemeral compute"]
+    PAGES["GitHub Pages<br/>the Cockpit (public, shareable)"]
+  end
+  subgraph GL["GitLab · private"]
+    FLEET["fleet repos<br/>(the code being scanned)"]
+    OPS["drift-ops<br/>config/drift.yml · state · learned overlay"]
+    ISS["per-repo issues<br/>(delivery)"]
+  end
+  NET["public APIs<br/>OSV.dev · endoflife.date"]
+  DEV["Developer / DevOps"]
+  CLAUDE["Claude Code<br/>orchestrate · Open-in-Claude hand-off"]
+
+  CI -->|"shallow clone + scan"| FLEET
+  CI -->|"read config + prior state"| OPS
+  CI -->|"audit (network)"| NET
+  CI -->|"file / update issues"| ISS
+  CI -->|"persist state + report"| OPS
+  CI -->|"publish"| PAGES
+  ISS -->|"🔮 cockpit link"| PAGES
+  ISS -->|"🤖 Open in Claude"| CLAUDE
+  DEV -->|"reads / fixes"| ISS
+  DEV -->|"views"| PAGES
+  CLAUDE -.->|"plugin: /drift-detector · /drift-absorb"| CODE
 ```
-/drift-detector audit <folder>        # after a scan of that folder
+
+GitHub gives free ephemeral compute + Pages; GitLab holds the private client repo names, the fleet
+config, and the durable state/overlay. The scanner never needs a server — it runs, delivers,
+persists, and exits. Claude only orchestrates + provides the one-click hand-off; it is **not** in
+the scan path.
+
+### The pipeline — scan → audit → render → deliver
+
+```mermaid
+flowchart TD
+  ROOT["repos — a local path or a GitLab URL/group"] --> SCAN
+
+  subgraph SCAN["① scan · offline · deterministic · 0 tokens"]
+    direction TB
+    RULES["generated rule pack<br/>vendors.yaml + idioms.yaml"] --> AST["ast-grep engine<br/>(pinned static binary)"]
+    AST --> ATTR["endpoint attribution<br/>(host · version · operation · file:line)"]
+    MAN["manifest + lockfile parse<br/>(packages · runtimes · frameworks)"]
+    ATTR --> INV["inventory.json — the IR<br/>(shape-map + coverage + residue)"]
+    MAN --> INV
+  end
+
+  INV --> AUDIT
+  subgraph AUDIT["② audit · network (still 0 tokens)"]
+    direction TB
+    OSV["OSV.dev — CVEs (lockfile-exact)"]
+    EOL["endoflife.date — EOL runtimes/frameworks"]
+    SUN["vendor_sunsets.yaml — curated,<br/>dated, sourced retirements"]
+    OSV --> AJSON["audit.json<br/>findings + ranked actions + delta"]
+    EOL --> AJSON
+    SUN --> AJSON
+  end
+
+  INV --> DRIFT
+  AJSON --> DRIFT["③ drift.json — THE contract (schema'd)"]
+
+  DRIFT --> MD["drift.md<br/>(agent/CLI view)"]
+  DRIFT --> HTML["dashboard.html<br/>(the Cockpit — Vue SPA)"]
+  DRIFT --> SBOM["sbom.json / .sarif<br/>(CycloneDX · SPDX · SARIF)"]
+  DRIFT --> DELIVER["④ deliver → GitLab issues"]
+
+  V{{"drift-scan verify"}}
+  DRIFT --> V
+  MD --> V
+  HTML --> V
+  V -->|"re-derives every projection,<br/>fails if any disagrees"| DRIFT
 ```
 
-Reads the folder's existing `inventory.json` and checks it against three sources,
-classifying each finding **DEPRECATED** (act now) / **REVIEW** (assess), with a cited source:
-- **OSV.dev** — known CVEs per package version (**lockfile-exact** where a lockfile exists, else the declared floor);
-- **endoflife.date** — EOL runtimes/frameworks;
-- **`agent/vendor_sunsets.yaml`** — a **curated vendor-API-sunset catalog** joined against your
-  endpoint inventory, so it flags *"eBay Finding API (`svcs.ebay.com`) decommissioned 2025-02-05 — called at these `file:line`"* —
-  the thing package/CVE scanners can't see. Entries can be **domain-scoped** so a dead legacy
-  host is flagged without false-flagging a live one that shares its version string. Extend it
-  with your vendors' announcements (each entry cites a source).
+Artifacts land in `<state>/` (`<folder>/.drift-detector/` for a local run):
 
-### SBOM — CycloneDX export (SBOM + SCA + VEX)
+| File | Role |
+|---|---|
+| `inventory.json` | The **IR** — per-repo `{runtimes, frameworks, sdks, endpoints[…file:line…]}` + rollups + coverage grade. The queryable shape-map. |
+| `audit.json` | Findings + **ranked actions** (30 CVEs on one package = **one** job) + week-over-week delta. |
+| **`drift.json`** | **The one contract** — canonical, schema'd ([`docs/schema/drift-v1.schema.json`](docs/schema)). Every other surface is a *verified projection* of it. |
+| `dashboard.html` | The **Cockpit** — a self-contained Vue SPA (below). |
+| `drift.md` | The primary agent/CLI-readable view. |
+| `sbom.json` / `*.sarif` | CycloneDX/SPDX SBOM + SARIF — standard supply-chain exports. |
+| `probabilistic.html` | *Only* with the opt-in AI cross-check — a separate `AI · unverified` report, outside the `verify` contract. |
+
+Re-runs are cheap: only repos whose git `HEAD` changed are re-analyzed (per-repo commit-SHA cache).
+
+### The one contract + `verify` — why you can trust it
+
+`drift.json` is the **single source of truth**; `drift.md`, `dashboard.html`, the SBOM and the
+delivery are all *projections* of it. **`drift-scan verify` re-derives each projection and fails if
+any disagrees** — it is the only claim the tool (or a maintainer) may make that a report is correct.
+"It looks right" is not allowed; the dashboard is rendered HTML nobody can eyeball for parity.
+
+What `verify` mechanically enforces (`agent/lib/verify.py`):
+
+- **blob parity** — the JSON embedded in `dashboard.html` **equals** `drift.json`, byte-for-byte.
+- **tile ↔ table parity** — every dashboard tile's number equals the rows its own filter yields.
+- **accessor coverage** — the client reads no field the payload lacks (no silently-blank column).
+- **timeline lanes** — the Retirement Timeline renders **both** the dated axis **and** the undated
+  lane, so a `deprecated-no-date` sunset can never be silently dropped.
+- **Markdown / SBOM parity** — `drift.md` tables and the CycloneDX SBOM re-derive from the payload.
+
+**The five non-negotiable principles**
+
+1. **"Cannot see" ≠ "clean".** A scan that reads nothing says so and exits non-zero — never a green
+   checkmark. Verdicts are KNOWN/UNKNOWN per repo, CURRENT/STALE/UNAUDITED per vendor.
+2. **Never invent a date.** Every retirement carries a `source:` URL fetched *that session*; undated
+   deprecations say so. The `absorb` gate refuses a date with no source.
+3. **Deterministic, zero tokens in the scan path.** Same inputs → byte-identical output; the engine
+   is version-pinned so two machines agree.
+4. **The catalog is data, reviewed.** Vendors/sunsets/idioms enter *only* through staging + the
+   `drift-scan absorb` gate — never a direct edit.
+5. **Prove a guard against its bug.** A verify invariant must be shown to FAIL on its target bug.
+
+### Detection layers — what it can see
+
+Packages are the demo; **retired-API detection is the point.** No SBOM or CVE scanner has the
+endpoint layer.
+
+```mermaid
+flowchart LR
+  subgraph CODE["your repo"]
+    M["manifests / lockfiles"]
+    S["source code"]
+  end
+  M --> P["packages · runtimes · frameworks"]
+  S --> E["hard-coded API endpoints<br/>host · version · operation · file:line"]
+  P --> OSV2["OSV → CVEs"]
+  P --> EOL2["endoflife.date → EOL"]
+  E --> CAT["vendor_sunsets.yaml join →<br/>retired vendor APIs (dated)"]
+  OSV2 --> F["findings"]
+  EOL2 --> F
+  CAT --> F
+```
+
+- **Manifest/SCA** — declared deps → **OSV** CVEs (lockfile-exact) and **endoflife.date** EOL.
+  Standard, but only direct deps.
+- **Endpoint layer (the moat)** — ast-grep matches call-sites against a generated rule pack; the
+  **vendor-sunset catalog** is joined on `(vendor, operation | domain | version)` so it flags
+  *"eBay `GetCategoryFeatures` — called at `EbayCategoryFieldsFeature.php:72` — decommissioned
+  2026-06-04"* — the thing package scanners can't see.
+- **Idiom families** (`idioms.yaml`, a *closed* set implemented in code, whose *instances* are data):
+  `url-assembly` (config-injected `getHost() . $path` wrappers), `operation-marker` (one host, many
+  operations on independent lifecycles — e.g. eBay Trading), `path-constant`. This is how detection
+  "gets smarter" without new code — new instances are reviewed YAML.
+
+> **🎡 Codename: Mahoraga — *the Wheel*.** The `absorb` gate + idiom families are the tool's
+> **adaptation engine**. Like Mahoraga adapting to any phenomenon it has faced, Drift Detector adapts
+> to every integration shape it is *shown* — and thereafter detects it deterministically, forever.
+> The twist that makes it *trustworthy*: it never adapts **autonomously**. The Wheel turns only by
+> passing the deterministic `absorb` gate — sourced dates, no false endpoints, residue must strictly
+> shrink. Adaptation, disciplined. *(The Ashen Oracle stays the tool's face; Mahoraga is the spirit
+> of the part that learns.)*
+
+<p align="center">
+  <img src="https://media1.tenor.com/m/1YWBgZj5baUAAAAd/mahoraga-adapt.gif" alt="Mahoraga adapts" width="360">
+  <br><em>“Nah, I'd adapt.” — every new integration shape turns the Wheel through the <code>absorb</code> gate.</em>
+</p>
+
+**Where it is blind, it says so:** unreadable languages, config-driven URLs it can't follow, private
+sub-dependencies it can't crawl, and unreachable repos all surface as explicit UNKNOWN / unscannable
+rows — counted, never hidden.
+
+### Delivery — findings to the right human, idempotently
+
+Findings roll up into **ranked actions**, split by audience, and become GitLab issues filed **in the
+flagged repo's own tracker** (the ticket lives with the code).
+
+```mermaid
+flowchart TD
+  ACT["ranked actions"] --> OWN{"audience"}
+  OWN -->|"package CVE · runtime EOL"| DO["DevOps → configured DevOps account"]
+  OWN -->|"vendor sunset · framework EOL"| DV["Developer → resolved repo owner"]
+  DO --> G{"delivery.granularity"}
+  DV --> G
+  G -->|"comprehensive (default)"| C["1 issue / repo / audience"]
+  G -->|"per-vendor"| PV["1 issue / repo / vendor"]
+  G -->|"per-problem"| PP["1 issue / finding"]
+  C --> I
+  PV --> I
+  PP --> I["GitLab issue<br/>emoji title (🚨 past-due · ⏳ upcoming · ☣️ EOL · 🛡️ critical)<br/>hidden fingerprint marker · assignee · label"]
+  I -->|"🤖"| CL["Open in Claude<br/>(prompt pre-loaded with the finding + call-sites)"]
+  I -->|"🔮"| CO["open the Cockpit"]
+  I -.->|"next scan"| RE["idempotent: UPDATE in place;<br/>resolved finding closes its own issue"]
+```
+
+- **Idempotent by construction** — each issue carries `<!-- drift-detector:<fp> -->`; a re-run
+  matches by fingerprint and **updates in place**, never duplicates; a resolved finding **closes
+  itself**. Switching granularity cleanly closes old-shape issues and opens the new-shape ones.
+- **Aggregation is native GitLab** — a group issue board on the `drift:devops` / `drift:developer`
+  labels is the queue; nothing custom to build. Findings are **issues only, no MRs**.
+- **One-click hand-off** — every issue carries a 🤖 **Open in Claude** deep-link that pre-loads the
+  finding (dying API, dated retirement, call-sites, recommendation, source) into Claude Code, and a
+  🔮 link to the public Cockpit.
+- **Configured entirely in `drift.yml`** (a reviewed commit in the private drift-ops repo):
+
+```yaml
+delivery:
+  mode: create                 # dry-run | create | off
+  granularity: per-problem      # comprehensive (default) | per-vendor | per-problem
+  devops:    { assignee: ops-bot }
+  developer: { fallbackAssignee: tech-lead }   # else the resolved repo owner
+```
+
+### The Cockpit — a verified projection you can share
+
+`dashboard.html` is a **single self-contained file** (Vue runtime + CSS + app + the `drift.json` blob
+all inlined; **no CDN, no build, opens from `file://`**, emails as one attachment), published to
+GitHub Pages.
+
+- **Vendored Vue** (pinned + provenance) — zero-build, zero external fetch; the renderer is a thin
+  injector, the page hydrates client-side.
+- **Information architecture:** the metric **tiles are the primary tabs**; a **hero chart** (the
+  per-operation **Retirement Timeline** — every dying API on a date axis, past-due left of a
+  deterministic "today" line) sits where cards used to; **Summary / SBOM / SARIF are sub-tabs**.
+- **Deep-linkable** (`?repo=&tab=&sub=`) so an issue links straight to a filtered view.
+- Still a **verified projection**: the embedded blob equals `drift.json`, and `verify` proves it.
+
+---
+
+## SBOM · SARIF exports
 
 ```
 drift-scan sbom --state <dir>          # writes <state>/sbom.json (CycloneDX 1.5)
 ```
 
-A standard **CycloneDX** Software Bill of Materials for the whole fleet: every component
-(packages, runtimes, frameworks, each with a **PURL** and the repos it appears in) plus the
-**OSV CVE** findings as `vulnerabilities` — i.e. **SBOM + SCA + VEX** in one file, for your
-DevSecOps / supply-chain compliance needs (EO 14028, EU CRA). It is a **verified projection**
-of `inventory.json` + `audit.json`: `drift-scan verify` re-derives it and fails if the SBOM is
-stale or hand-edited, so it can never quietly disagree with the scan. The scheduled pipeline
-emits `sbom.json` alongside every run.
+A standard **CycloneDX** SBOM for the whole fleet — every component (packages, runtimes, frameworks,
+each with a **PURL** and the repos it appears in) plus the **OSV CVE** findings as `vulnerabilities`
+(**SBOM + SCA + VEX** in one file) for EO 14028 / EU CRA compliance — plus **SPDX** and **SARIF**
+(file:line results → GitHub code scanning, VS Code). Each is a **verified projection** of the scan;
+`verify` re-derives it and fails if it's stale or hand-edited.
 
-**Findings roll up into actions.** Thirty CVEs against one package are **one** job —
-*upgrade `torch` to `2.10.0`* — so the report doesn't drown you in 300 rows. The dashboard
-opens with the tiles and a **ranked fix queue** (severity, then blast radius, each with the
-exact upgrade command). It also **leads with the delta** (🆕 new · ✅ resolved since last scan); accepted
-findings can be muted. Needs network on the run (still zero LLM tokens); degrades gracefully offline.
+## Probabilistic (AI) cross-check — an opt-in second opinion
 
-### Dashboard — the interactive view
+The deterministic scan is trustworthy but bounded — it flags only what it can *certify*. You can
+**opt into an AI pass** that reads every repo and surfaces integrations the rules can't see
+(config-driven URLs, exotic wrappers). Its output is a **separate, clearly-labelled `AI · unverified`
+report** (`probabilistic.html`) — **leads, not findings** — that never touches the certified
+dashboard or the `verify` contract. Any lead can be **promoted through the deterministic `absorb`
+gate** to become certified on the next scan. **AI proposes; the gate certifies.** Off by default;
+costs tokens only when you say yes.
 
-Every scan also writes **`dashboard.html`** — one self-contained file (inline CSS + JS, no
-server, no CDN, opens straight from `file://`, emails as one attachment). A cockpit of
-clickable tiles — **Critical · Fixes · EOL · Sunsets · APIs used · Unknown hosts** — over a
-drill-down fix queue: click a row for the upgrade command and the CVEs it clears, or a
-sunset for its `file:line` call-sites. Dark/light theme. Tiles count **actions**, so a
-tile's number always matches the rows it filters to.
+## Autonomous & scheduled
 
-### Deliver — a per-repo issue to the right owner
-
-```
-drift-scan deliver --state <dir> --config drift.yml     # add --dry-run to preview, write nothing
-```
-
-Every flagged repo gets up to **two comprehensive, idempotent GitLab issues, filed in the repo's
-own tracker** (the ticket lives with the code):
-
-- a **DevOps issue** — the repo's package CVEs + runtime EOL — assigned to a configured **DevOps
-  account**, labelled `drift:devops`;
-- a **Developer issue** — the repo's vendor sunsets + framework EOL — auto-assigned to the **repo
-  owner** (resolved from GitLab, with a config fallback), labelled `drift:developer`.
-
-Re-runs **update in place** (fingerprinted — never a duplicate, never a notification storm); a
-resolved finding **closes its own issue**. Aggregation is **native GitLab**: a group issue board on
-the `drift:devops` label — or simply *"issues assigned to the DevOps account"* — is the DevOps queue,
-with nothing custom to build. Findings are **issues only, no MRs**. (Teaching the scanner a new
-integration shape stays a *reviewed catalog MR* on the private ops repo — that's the review gate,
-not a finding.) Configure it in `drift.yml`:
-
-```yaml
-delivery:
-  mode: create                          # dry-run | create (file issues) | off
-  devops:    { assignee: ops-bot }      # every DevOps issue is assigned here (required to write)
-  developer: { fallbackAssignee: lead } # a Developer issue assigns to the repo owner; this is the fallback
-```
-
-### Probabilistic (AI) cross-check — an opt-in second opinion
-
-The deterministic scan is trustworthy but bounded — it flags only what it can *certify*. After it
-runs, you can **opt into an AI pass** that reads every repo and surfaces integrations the rules
-can't see (config-driven URLs, exotic wrappers). Its output is a **separate, clearly-labelled
-`AI · unverified` report** (`probabilistic.html`) — **leads, not findings** — that never touches the
-certified dashboard or the `verify` contract. Any lead can be **promoted through the deterministic
-absorb gate** to become certified on the next scan. **AI proposes; the gate certifies;** nothing
-unverified is ever presented as certified. It's off by default and costs tokens only when you say yes.
-
-### Autonomous & scheduled
-
-`/drift-detector <folder>` runs the full **scan → audit** pipeline and then offers to make
-it autonomous. On your OK it installs a **cron job on this machine** (default Sundays 7am)
-that re-runs the deterministic pipeline — **no Claude, no tokens**.
+`/drift-detector <folder>` runs the full pipeline and then offers to make it autonomous — a **cron
+job** (default Sundays 7am) re-running the deterministic pipeline, **no Claude, no tokens**:
 
 ```
 /drift-detector schedule <folder>      # install the weekly cron (shows the crontab line first)
 /drift-detector unschedule <folder>    # remove it
 ```
 
-The scheduled run is the `run` subcommand (`scan → audit → dashboard`); logs land in
-`<folder>/.drift-detector/cron.log`. The agent always shows the exact crontab line and asks
-before touching your crontab. (Cron = Linux/macOS.)
+For a fleet, `.github/workflows/scan.yml` runs the whole pipeline on ephemeral GitHub compute
+(Sundays + manual `workflow_dispatch`), reading the fleet + config from the private `drift-ops` repo
+and persisting state back.
 
-## Outputs (written to `<folder>/.drift-detector/`)
+---
 
-| File | What |
+## What's built (today)
+
+| Capability | Status |
 |---|---|
-| `inventory.json` | The IR — per-repo `{runtimes, frameworks, sdks, endpoints[{vendor, domain, version, file_count, files:[path:line]}]}` + rollups + coverage. The queryable shape-map. |
-| `audit.json` | The findings + ranked actions + delta, as data. |
-| `drift.json` | **The one contract** — the canonical, schema'd report. `dashboard.html` and `drift.md` are *verified projections* of it; `drift-scan verify` re-derives them and fails if they disagree. |
-| `dashboard.html` | **The report** — self-contained interactive dashboard: tiles, drill-down fix queue, the endpoint/sunset view, "Changed since last scan", and the per-repo **coverage grade**. Call-site links open in GitLab at the exact line (pinned to the commit). No server, opens from `file://`. |
-| `drift.md` | The primary agent/CLI-readable view of the same report. |
-| `probabilistic.html` | **Only when you run the opt-in AI cross-check** — a separate, `AI · unverified` second-opinion report. Leads, not certified findings; outside the `verify` contract. |
+| Deterministic scan (ast-grep, pinned) → inventory IR | ✅ shipped |
+| SCA (OSV CVEs) + EOL (endoflife.date) | ✅ shipped |
+| **Endpoint layer** + curated **vendor-sunset catalog** (dated, sourced) | ✅ shipped |
+| Idiom families + the `absorb` gate (**the Wheel**) | ✅ shipped |
+| `drift.json` contract + `verify` (blob/tile/accessor/timeline/md/sbom parity) | ✅ shipped |
+| CycloneDX / SPDX SBOM + SARIF exports | ✅ shipped |
+| Vue **Cockpit** (tiles-as-tabs, retirement timeline, deep-links) on GitHub Pages | ✅ shipped |
+| Delivery: per-repo GitLab issues, 3 granularities, emoji titles, idempotent | ✅ shipped |
+| **Open in Claude** hand-off + issue links → public cockpit | ✅ shipped |
+| CI: GitHub Actions scan→audit→deliver→publish→persist; scheduled + on-demand | ✅ shipped |
+| Opt-in **probabilistic (AI) cross-check** | ✅ shipped (opt-in) |
 
-Re-runs are cheap: only repos whose git `HEAD` changed are re-analyzed (per-repo
-commit-SHA cache).
+## What's next (roadmap)
 
-## How it works
+- **The AI two-plane Cockpit** *(next design cycle)* — probabilistic leads shown *beside* certified
+  findings in one cockpit, with the certified/unverified **firewall as a structural invariant** (two
+  payloads; `verify` governs only the certified plane; an AI lead can never land in a certified tile).
+- **Trend history** — the dashboard shows the latest run; week-over-week burn-down needs a multi-run
+  archive (a real persistence layer, not faked from one run).
+- **Broader fleet access** — today only the repos the scanning token can *read* are covered; the rest
+  are flagged blind. Granting the bot read access unlocks the full fleet.
+- **More idiom families / vendors** — each new integration shape turns the Wheel through the `absorb`
+  gate (a reviewed catalog contribution).
+- **The Rust port (banked)** — Rust is the only language that links ast-grep natively; a rewrite is
+  the verified end-state, **not** current work. Trigger-gated (single no-network binary demand *or*
+  sold as a product) — see [CLAUDE.md](CLAUDE.md). There is **no performance case** (the scan is
+  already inside a Rust binary).
 
-`bin/drift-scan` (self-bootstrapping runner) → `python -m agent.cli inventory-scan`.
-The scanner ([`agent/`](agent/)) walks each repo, runs the engine with a generated
-rule pack over the vendor catalog ([`agent/vendors.yaml`](agent/vendors.yaml)),
-parses manifests, and aggregates everything into the superset IR. Extend
-`agent/vendors.yaml` (vendors) and `agent/frameworks.yaml` (frameworks) as your
-stack grows. The **audit** (`agent/audit.py`) reads that IR and enriches it via
-OSV.dev + endoflife.date over stdlib HTTP (no extra dependency).
+---
 
-<p align="center">
-  <img src="https://media1.tenor.com/m/1QMJcmOppoYAAAAd/mahoraga-makora.gif" alt="Mahoraga — the wheel of adaptation" width="320">
-  <br><em>The scanner <b>adapts</b> to every integration shape it's shown — codename <b>Mahoraga, the Wheel</b>
-  (<a href="docs/ARCHITECTURE.md">architecture</a>).</em>
-</p>
+## Running it (CLI)
 
-**→ For the full picture — topology, the pipeline, the `verify` contract, delivery, the Cockpit,
-what's built and what's next — read [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) (the core reference,
-with diagrams).**
+```
+./bin/drift-scan run    --config drift.yml --state <dir> --now $(date +%F)   # scan→audit→dashboard
+./bin/drift-scan verify --state <dir>                                        # the trust gate
+./bin/drift-scan deliver --config drift.yml --state <dir> [--dry-run]        # file/update issues
+./bin/drift-scan plan   --config drift.yml                                   # preview, no scan
+```
 
-See [docs/PLUGIN.md](docs/PLUGIN.md) for details, and run the test suite with
-`pytest` (needs `pip install -r requirements.txt`). Contributors improving the
-scanner can measure it against real public repos with the evaluation harness —
-see [docs/EVAL.md](docs/EVAL.md) (`bin/drift-eval`).
+Exit codes: `0` ok · `2` error · `3` gate tripped (findings) · `4` couldn't verify / scanned nothing.
+`bin/drift-scan` self-bootstraps (fetches the pinned ast-grep engine + a venv). Run the test suite
+with `pytest` (needs `pip install -r requirements.txt`); measure the scanner against real public
+repos with the evaluation harness — see [docs/EVAL.md](docs/EVAL.md) (`bin/drift-eval`).
+
+## Repo map
+
+```
+bin/drift-scan            self-bootstrapping runner (fetches the pinned ast-grep engine + venv)
+agent/                    pipeline: inventory_scan · audit · run · deliver(cli) · absorb (the Wheel)
+agent/lib/                the pieces — engine, endpoints, classify_url, vendor_rules, idioms,
+                          osv, eol, actions, ranking, delivery, verify, dashboard_render, ops_config, …
+agent/*.yaml              the reviewed catalogs — vendors · vendor_sunsets · idioms · frameworks ·
+                          sdk_profiles · catalog_attestations
+agent/assets/             the Cockpit — dashboard.{template.html,app.js,css} + vendored Vue
+commands/                 the slash-command promptfiles (/drift-detector · /drift-absorb · /drift-deepen)
+.github/workflows/        scan.yml (the scheduled fleet scan) + probe / catalog-check / container
+docs/                     schema/ (the contract) · PLUGIN · EVAL · TECH_DEBT
+```
 
 ## Limits
 
-- Endpoint **version** is best-effort from the URL on the matched line — `None` when a
-  repo builds the URL from a base constant with the version appended elsewhere
-  (needs dataflow; out of scope).
-- Detects hard-coded endpoints + manifest-declared SDKs. An SDK used only via its
-  client library (no hard-coded URL) shows via the manifest, not as a call-site.
-- Versions are **lockfile-exact where a lockfile exists**, else the declared manifest floor
-  (marked as such). Only **direct** (manifest-declared) dependencies are audited; transitive
-  dependencies resolved in lockfiles are not queried.
+- Endpoint **version** is best-effort from the URL on the matched line — `None` when a repo builds
+  the URL from a base constant with the version appended elsewhere (needs dataflow; out of scope).
+- Detects hard-coded endpoints + manifest-declared SDKs. An SDK used only via its client library (no
+  hard-coded URL) shows via the manifest, not as a call-site.
+- Versions are **lockfile-exact where a lockfile exists**, else the declared manifest floor. Only
+  **direct** (manifest-declared) dependencies are audited; transitive lockfile deps are not queried.
 - Vulnerability/EOL sources are Tier 1 (OSV + endoflife.date); the vendor-sunset catalog is
   **curated** (you extend it). "Package abandoned/deprecated" (Tier 2) and community/early-warning
   (Tier 3) signals are not yet included.
-- The dashboard shows the **latest** run; week-over-week movement comes from the finding delta,
-  not a multi-run archive (that's a future layer).
+- The dashboard shows the **latest** run; week-over-week movement comes from the finding delta, not a
+  multi-run archive (that's a future layer).
+
+---
+
+*Every finding is dated and sourced; every report is `verify`-certified; where it's blind, it says so.*
+🔮 **Know before it breaks.**
