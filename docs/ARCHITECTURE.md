@@ -190,6 +190,13 @@ flowchart LR
 > strictly shrink. Adaptation, disciplined. *(The Ashen Oracle stays the tool's face; Mahoraga is the
 > spirit of the part that learns.)*
 
+<p align="center">
+  <img src="https://media1.tenor.com/m/1QMJcmOppoYAAAAd/mahoraga-makora.gif" alt="Mahoraga — the wheel of adaptation" width="300">
+  &nbsp;&nbsp;
+  <img src="https://media1.tenor.com/m/1YWBgZj5baUAAAAd/mahoraga-adapt.gif" alt="Mahoraga adapts" width="300">
+  <br><em>“Nah, I'd adapt.” — every new integration shape turns the Wheel through the <code>absorb</code> gate.</em>
+</p>
+
 **Where it is blind, it says so:** unreadable languages, config-driven URLs it can't follow, private
 sub-dependencies it can't crawl, and unreachable repos all surface as explicit UNKNOWN / unscannable
 rows — counted, never hidden.
