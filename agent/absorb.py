@@ -1,4 +1,9 @@
-"""The absorb gate: how a proposal becomes a durable, trusted tool capability.
+"""The absorb gate — codename MAHORAGA, "the Wheel": how the tool ADAPTS.
+
+Like Mahoraga adapting to any phenomenon it has faced, Drift Detector adapts to every
+integration shape it is *shown* — and thereafter detects it deterministically, forever.
+This gate IS the Wheel: a proposal becomes a durable, trusted capability only by turning it.
+Adaptation is never autonomous — that is the whole point of the checks below.
 
 An agent can read a repo the scanner cannot and propose what would close the gap —
 a new idiom instance, a new vendor, a sunset entry. None of that is trusted because

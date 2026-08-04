@@ -182,6 +182,14 @@ flowchart LR
   operations on independent lifecycles — e.g. eBay Trading), `path-constant`. This is how detection
   "gets smarter" without new code — new instances are reviewed YAML.
 
+> **🎡 Codename: Mahoraga — *the Wheel*.** The `absorb` gate + idiom families are the tool's
+> **adaptation engine**. Like Mahoraga adapting to any phenomenon it has faced, Drift Detector adapts
+> to every integration shape it is *shown* — and thereafter detects it deterministically, forever.
+> The twist that makes it *trustworthy*: it never adapts **autonomously**. The Wheel turns only by
+> passing the deterministic `absorb` gate (§3) — sourced dates, no false endpoints, residue must
+> strictly shrink. Adaptation, disciplined. *(The Ashen Oracle stays the tool's face; Mahoraga is the
+> spirit of the part that learns.)*
+
 **Where it is blind, it says so:** unreadable languages, config-driven URLs it can't follow, private
 sub-dependencies it can't crawl, and unreachable repos all surface as explicit UNKNOWN / unscannable
 rows — counted, never hidden.
