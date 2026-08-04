@@ -10,3 +10,11 @@ def test_vue_runtime_is_vendored_and_pinned():
     assert "vue" in prov.lower() and "http" in prov.lower()   # version + source URL recorded
     import re
     assert re.search(r"\b3\.\d+\.\d+\b", prov)    # a pinned 3.x version string
+
+
+def test_css_asset_loads_and_is_inlined():
+    from agent.lib import dashboard_render as dr
+    assert ".tile" in dr.CSS_SRC and "--accent" in dr.CSS_SRC     # the token system moved intact
+    from tests.test_dashboard_render import _inv, _audit
+    html = dr.render_dashboard(_inv(), _audit([]), "2026-07-15")
+    assert "<style>" in html and ".tilegroups" in html           # still inlined into the page
