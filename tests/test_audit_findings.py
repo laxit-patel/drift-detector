@@ -206,8 +206,14 @@ def test_operation_survives_into_the_rendered_dashboard():
     html = render_dashboard(inventory, audit, "2026-07-20")
     assert "GetCategoryFeatures" in html, "the operation never reached the dashboard"
     assert "AddDispute" in html
-    # and the header must not imply only one repo was scanned
-    assert "1 of 2 repos affected" in html
+    # and the header (now a reactive Vue binding, not server-built text) must not be fed a
+    # count that implies only one repo was scanned — assert the numbers in the trust-anchor
+    # blob the headline binds to (`{{ counts.reposAffected }} of {{ counts.reposScanned }}`)
+    import json
+    import re
+    m = re.search(r'<script id="drift-data" type="application/json">(.*?)</script>', html, re.S)
+    blob = json.loads(m.group(1).replace("\\u003c", "<"))
+    assert blob["counts"]["reposAffected"] == 1 and blob["counts"]["reposScanned"] == 2
 
 
 def test_gate_accepts_a_dateless_deprecation_only_when_declared():

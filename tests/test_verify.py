@@ -169,10 +169,15 @@ def test_live_projection_parity_over_real_build_actions():
 
 
 def test_live_accessor_coverage_over_the_real_client_js():
-    """Every a.field / e.field the shipped page reads must exist in the real payload."""
-    from agent.lib.dashboard_render import _CLIENT_JS
+    """Every a.field / e.field the shipped page reads must exist in the real payload.
+
+    Since the Task 3 re-platform, the client is the in-DOM Vue template + the app skeleton
+    (accessors now live in both — the guard itself is a pure regex over a string, so it is
+    fed the concatenation of the two sources rather than the old server-built _CLIENT_JS)."""
+    from agent.lib import dashboard_render as _dr
+    _CLIENT_SRC = _dr.TEMPLATE_SRC + "\n" + _dr.APP_JS_SRC
     payload, _ = _real_payload()
-    verify.check_accessor_coverage(_CLIENT_JS, {
+    verify.check_accessor_coverage(_CLIENT_SRC, {
         "actions": set(payload["actions"][0]),
         "endpoints": set(payload["endpoints"][0]) if payload.get("endpoints") else None,
         "private": set(payload["private"][0]) if payload.get("private") else None,
@@ -276,9 +281,14 @@ def test_unaudited_tile_excludes_current_vendors():
 
 
 def test_catalog_accessor_coverage_over_the_real_client_js():
-    """renderCatalog reads r.vendor / r.verdict / r.callSites — all must exist."""
-    from agent.lib.dashboard_render import _CLIENT_JS
-    verify.check_accessor_coverage(_CLIENT_JS, {"catalog": {
+    """renderCatalog reads r.vendor / r.verdict / r.callSites — all must exist.
+
+    (Same Task 3 re-pointing as above: the catalog-rendering JS is Task 4/5 territory and
+    reads no `cv.field` yet, so this currently holds vacuously — it activates the moment
+    that renderer is (re)written against the Vue app.)"""
+    from agent.lib import dashboard_render as _dr
+    _CLIENT_SRC = _dr.TEMPLATE_SRC + "\n" + _dr.APP_JS_SRC
+    verify.check_accessor_coverage(_CLIENT_SRC, {"catalog": {
         "vendor", "verdict", "callSites", "catalogEntries", "checked", "reasons", "source"}})
 
 

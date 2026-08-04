@@ -1,0 +1,52 @@
+<div id="app" v-cloak>
+  <div class="sticky">
+    <div class="brand">
+      <span class="mark" aria-hidden="true"></span>
+      <h1>Drift Detector</h1><span class="sub">DevSecOps Cockpit</span>
+      <span class="meta">{{ counts.reposScanned }} repos · {{ generated }}</span>
+      <span class="spacer"></span>
+      <span class="caps" title="Supply-chain coverage in one pass">
+        <span class="cap hot">SBOM</span><span class="cap hot">SCA</span>
+        <span class="cap hot">VEX</span><span class="cap hot">SARIF</span>
+        <span class="cap">CVE · EOL · sunsets</span></span>
+      <select id="repo-filter" class="repopick" aria-label="Scope the report to one repo"
+              :data-scoped="scope || null" v-model="scope">
+        <option value="">All repos</option>
+        <option v-for="r in repoOptions" :key="r.key" :value="r.key">{{ r.label }}</option>
+      </select>
+      <button class="themebtn" id="theme" @click="cycleTheme">{{ themeLabel }}</button>
+    </div>
+    <p class="headline"><span class="dot">●</span>
+      <span class="big">{{ counts.fixes }} fixes needed</span> ·
+      {{ counts.reposAffected }} of {{ counts.reposScanned }} repos affected</p>
+    <div class="tilegroups">
+      <div class="tg" v-for="g in tileGroups" :key="g.title">
+        <span class="lbl">{{ g.title }}</span>
+        <div class="tiles">
+          <button v-for="t in g.tiles" :key="t.key" class="tile"
+                  :data-sev="t.sev || null" :aria-pressed="filter === t.key"
+                  @click="toggleTile(t.key)">
+            <span class="n" :data-hot="t.sev === 'crit' || null">{{ t.n }}</span>
+            <span class="t">{{ t.label }}</span>
+          </button>
+        </div>
+      </div>
+    </div>
+    <div class="tabbar" role="tablist">
+      <button v-for="tb in tabs" :key="tb.id" class="tab" :class="{active: tab === tb.id}"
+              @click="tab = tb.id" role="tab">{{ tb.label }}</button>
+    </div>
+  </div>
+
+  <div id="main">
+    <section v-show="tab === 'summary'" class="panel active">
+      <!-- Task 4 fills: toolbar search + the reactive summary table -->
+      <div id="summary-mount"></div>
+    </section>
+    <section v-show="tab === 'timeline'" class="panel active">
+      <!-- Task 6 fills: the Retirement Timeline SVG + undated lane -->
+      <div id="timeline-mount"></div>
+    </section>
+    <!-- SBOM / SARIF panels ported in Task 5 -->
+  </div>
+</div>

@@ -10,6 +10,7 @@
   --crit:#e0533d; --high:#e08a3d; --med:#cdb63a; --low:#5f9e6a; --info:#3d7de0; --sun:#b06ee0;
   --mono:ui-monospace,"SF Mono",Menlo,Consolas,monospace; --sans:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif; --r:12px;
 }
+[v-cloak]{display:none}   /* hides the un-hydrated in-DOM template on first paint */
 *{box-sizing:border-box;margin:0}
 body{background:var(--bg);color:var(--ink);font-family:var(--sans);font-size:14px;line-height:1.5;
   -webkit-font-smoothing:antialiased;font-variant-numeric:tabular-nums;padding:0 20px 60px;
