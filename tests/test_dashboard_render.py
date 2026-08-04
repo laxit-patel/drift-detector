@@ -610,3 +610,16 @@ def test_xss_attribute_breakout_string_does_not_break_the_page():
     from agent.lib import dashboard_render as dr
     assert not re.search(r'"\s*\+\s*\w+.*\+\s*\'"', dr.APP_JS_SRC), \
         "app.js must not hand-build HTML attributes by string concatenation"
+
+
+# ---- Task 5: SBOM/SARIF panels + the drift.json / coverage footer ----
+
+def test_sbom_sarif_and_coverage_footer_present():
+    from agent.lib import dashboard_render as dr
+    tmpl, js = dr.TEMPLATE_SRC, dr.APP_JS_SRC
+    for id_ in ("sbom-table", "sarif-groups", "json-drift", "coverage"):
+        assert id_ in tmpl, id_
+    for src in ("sbom-data", "sarif-data", "spdx-data"):
+        assert src in js, src
+    # unscannable roots are still surfaced honestly ("cannot see ≠ clean")
+    assert "rootsUnscannable" in js

@@ -2,16 +2,31 @@
   function blob(id){ var el=document.getElementById(id); try{ return el?JSON.parse(el.textContent):{}; }catch(e){ return {}; } }
   var DATA = blob("drift-data");
   var C = DATA.counts || {}, OWN = (C.byOwner || {});
+  // the SBOM/SPDX/SARIF side-payloads (same standard-format bundle `drift-scan sbom`/`sarif`
+  // write) — embedded verbatim so the dashboard's SBOM/SARIF panels and the JSON views are
+  // byte-for-byte what those commands would produce. Read-only, so markRaw skips Vue's deep
+  // reactivity conversion (these can be large and never mutate).
+  var SBOM = blob("sbom-data"), SPDX = blob("spdx-data"), SARIF = blob("sarif-data");
+  // generic scan methodology (Sources / Versions / Parked tiers / catalog note) is boilerplate,
+  // identical every scan — it goes to its own "methodology" footer, NOT mixed into the
+  // data-specific coverage warnings (unaudited vendors, unreachable sources, …).
+  var GENERIC_NOTE = [/^Sources:/, /^Versions are/, /^Parked:/, /^Vendor API sunsets:/];
+  function isGenericNote(n){ return GENERIC_NOTE.some(function(r){ return r.test(n); }); }
 
   Vue.createApp({
     data: function(){
       return {
         DATA: DATA, counts: C,
+        SBOM: Vue.markRaw(SBOM), SPDX: Vue.markRaw(SPDX), SARIF: Vue.markRaw(SARIF),
         generated: DATA.generated || "",
         scope: "",            // global repo scope ("" = all)
         filter: null,         // active tile filter
         expanded: {},         // row drill-down: idx (within `rows`) -> open/closed
         tab: "summary",
+        sumView: "prev",       // Summary sub-tab: Preview | JSON · drift.json
+        sbomView: "prev",      // SBOM sub-tab: Preview | CycloneDX | SPDX
+        sarifView: "prev",     // SARIF sub-tab: Preview | JSON · sarif.json
+        copyState: {},         // per-view "Copy"/"Copied" label for the JSON copy buttons
         q: "",
         theme: "dark",
         tabs: [{id:"summary",label:"Summary"},{id:"timeline",label:"Retirement timeline"},
@@ -61,6 +76,132 @@
         if(this.mode==="private")   return this.privateFor();
         if(this.mode==="catalog")   return this.catalogFor();
         return this.actionsFor();
+      },
+
+      // ---- JSON views: drift.json / CycloneDX / SPDX / SARIF, pretty-printed for the
+      // read-only "view / copy" panels. Same DATA/SBOM/SPDX/SARIF the tables above render
+      // from — the verified source of truth, not a re-derived summary. ----
+      driftJsonText: function(){ return JSON.stringify(this.DATA, null, 2); },
+      sbomJsonText: function(){ return JSON.stringify(this.SBOM, null, 2); },
+      spdxJsonText: function(){ return JSON.stringify(this.SPDX, null, 2); },
+      sarifJsonText: function(){ return JSON.stringify(this.SARIF, null, 2); },
+
+      // ---- SBOM preview: components (scoped to the selected repo via drift:repo properties)
+      // + per-component worst vuln severity, ported from the pre-Vue renderSbom(). ----
+      sbomVulnIndex: function(){
+        var worst = {}, counts = {}, rank = {critical:4, high:3, medium:2, low:1, unknown:0};
+        (this.SBOM.vulnerabilities || []).forEach(function(v){
+          var sev = ((v.ratings || [{}])[0] || {}).severity || "unknown";
+          (v.affects || []).forEach(function(a){
+            if(!(a.ref in worst) || rank[sev] > rank[worst[a.ref]]) worst[a.ref] = sev;
+            counts[a.ref] = (counts[a.ref] || 0) + 1;
+          });
+        });
+        return {worst: worst, counts: counts};
+      },
+      sbomComponents: function(){
+        var self = this, all = this.SBOM.components || [];
+        if(!this.scope) return all;
+        return all.filter(function(c){ return self.componentRepos(c).indexOf(self.scope) > -1; });
+      },
+      sbomRows: function(){
+        var self = this, idx = this.sbomVulnIndex;
+        return this.sbomComponents.map(function(c){
+          var ref = c["bom-ref"], n = idx.counts[ref] || 0, sev = idx.worst[ref];
+          return {
+            type: c.type, purl: c.purl || c["bom-ref"], version: c.version || "",
+            repoCount: self.componentRepos(c).length,
+            vulnCount: n, vulnSeverity: sev,
+            pillClass: sev === "critical" ? "crit" : sev === "high" ? "high"
+                     : sev === "medium" ? "med" : "low"
+          };
+        });
+      },
+      sbomHeaderText: function(){
+        var n = this.sbomComponents.length, vulns = (this.SBOM.vulnerabilities || []).length;
+        return "Components — " + n + (this.scope ? (" in " + this.repoLabelOf(this.scope)) : "")
+             + "  ·  " + vulns + " vulnerabilities";
+      },
+
+      // ---- SARIF preview: results grouped by rule, scoped to the selected repo via the
+      // uri prefix (results carry no repo field of their own, just file:line uris rooted at
+      // the repo path) — ported from the pre-Vue renderSarif(). ----
+      sarifAllResults: function(){ return ((this.SARIF.runs || [{}])[0] || {}).results || []; },
+      sarifResults: function(){
+        var self = this;
+        if(!this.scope) return this.sarifAllResults;
+        return this.sarifAllResults.filter(function(r){
+          return self.sarifUri(r).indexOf(self.scope + "/") === 0; });
+      },
+      sarifGroups: function(){
+        var byRule = {};
+        this.sarifResults.forEach(function(r){ (byRule[r.ruleId] = byRule[r.ruleId] || []).push(r); });
+        return Object.keys(byRule).sort().map(function(rid){
+          var list = byRule[rid];
+          return {
+            ruleId: rid, count: list.length,
+            rows: list.slice(0, 200).map(function(r){
+              var pl = ((r.locations || [])[0] || {}).physicalLocation || {};
+              var uri = (pl.artifactLocation || {}).uri || "";
+              var line = (pl.region || {}).startLine;
+              return {
+                where: uri + (line ? (":" + line) : ""),
+                message: (r.message || {}).text || "",
+                level: r.level || "note",
+                pillClass: r.level === "error" ? "crit" : r.level === "warning" ? "high" : "low"
+              };
+            })
+          };
+        });
+      },
+      sarifHeaderText: function(){
+        return "Findings — " + this.sarifResults.length + " results"
+             + (this.scope ? (" in " + this.repoLabelOf(this.scope)) : "") + ", grouped by rule";
+      },
+
+      // ---- coverage / "changed since last scan" / methodology footer — the honest
+      // "how complete was this scan" context, out of the data (findings) plane. "Cannot see"
+      // must never render as "clean": the rootsUnscannable block below is the load-bearing
+      // one — it is the only thing standing between a repo the scanner couldn't open and a
+      // report that looks green over it. ----
+      rootsUnscannable: function(){ return this.DATA.rootsUnscannable || []; },
+      coverageNotesSpecific: function(){
+        return (this.DATA.coverageNotes || []).filter(function(n){ return !isGenericNote(n); });
+      },
+      methodologyNotes: function(){
+        return (this.DATA.coverageNotes || []).filter(isGenericNote);
+      },
+      unknownShapes: function(){
+        return (this.DATA.shapes || []).filter(function(s){ return s.verdict === "UNKNOWN"; });
+      },
+      gradedRepos: function(){
+        return (this.DATA.coverageGrades || []).filter(function(g){ return g.grade !== "HIGH"; });
+      },
+      sdkMediated: function(){ return this.DATA.sdkMediated || []; },
+      coveredDeps: function(){ return this.DATA.coveredDeps || []; },
+      coverageHasContent: function(){
+        return this.rootsUnscannable.length > 0 || this.coverageNotesSpecific.length > 0 ||
+               this.unknownShapes.length > 0 || this.gradedRepos.length > 0 ||
+               this.sdkMediated.length > 0 || this.coveredDeps.length > 0;
+      },
+      inventoryDrift: function(){ return this.DATA.inventoryDrift || null; },
+      driftChangeRows: function(){
+        var d = this.inventoryDrift; if(!d) return [];
+        return (d.changes || []).map(function(c){
+          var bits = [];
+          (c.endpointsAdded || []).forEach(function(e){ bits.push("+ endpoint " + e); });
+          (c.endpointsRemoved || []).forEach(function(e){ bits.push("− endpoint " + e); });
+          (c.sdkVersionChanges || []).forEach(function(s){ bits.push(s.pkg + " " + s.from + " → " + s.to); });
+          (c.sdksAdded || []).forEach(function(s){ bits.push("+ " + s.pkg + " " + s.ver); });
+          (c.sdksRemoved || []).forEach(function(s){ bits.push("− " + s.pkg + " " + s.ver); });
+          (c.runtimeChanges || []).forEach(function(r){ bits.push(r.product + " " + r.from + " → " + r.to); });
+          return {repo: c.repo, bits: bits};
+        }).filter(function(row){ return row.bits.length > 0; });
+      },
+      driftHasContent: function(){
+        var d = this.inventoryDrift; if(!d) return false;
+        return !!((d.reposAdded && d.reposAdded.length) || (d.reposRemoved && d.reposRemoved.length) ||
+               this.driftChangeRows.length > 0);
       }
     },
     methods: {
@@ -146,7 +287,33 @@
       // the current `rows`). Only actions/endpoints rows expand — private/catalog rows never
       // had a click handler in the vanilla engine either. ----
       onRowClick: function(idx){ if(this.mode==="actions" || this.mode==="endpoints") this.toggleRow(idx); },
-      toggleRow: function(idx){ this.expanded[idx] = !this.expanded[idx]; }
+      toggleRow: function(idx){ this.expanded[idx] = !this.expanded[idx]; },
+
+      // ---- SBOM/SARIF repo-scope helpers ----
+      componentRepos: function(c){
+        return (c.properties || []).filter(function(p){ return p.name === "drift:repo"; })
+                                    .map(function(p){ return p.value; });
+      },
+      sarifUri: function(r){
+        var l = (r.locations || [])[0];
+        return ((l && l.physicalLocation || {}).artifactLocation || {}).uri || "";
+      },
+      repoLabelOf: function(k){
+        var opt = this.repoOptions.filter(function(o){ return o.key === k; })[0];
+        return opt ? opt.label : k;
+      },
+
+      // ---- JSON view/copy panels (drift.json / CycloneDX / SPDX / SARIF): copy-to-clipboard
+      // with a brief "Copied" acknowledgement, keyed per view so the four panels' buttons
+      // don't share state. ----
+      copyJson: function(key, text){
+        var self = this;
+        var done = function(){ self.copyState[key] = "Copied";
+          setTimeout(function(){ self.copyState[key] = "Copy"; }, 1200); };
+        if(navigator.clipboard) navigator.clipboard.writeText(text).then(done, done);
+        else done();
+      },
+      copyLabel: function(key){ return this.copyState[key] || "Copy"; }
     },
     watch: {
       // any change to WHAT is shown (tile filter, repo scope, search text) closes every open

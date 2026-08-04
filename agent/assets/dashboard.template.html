@@ -40,6 +40,14 @@
 
   <div id="main">
     <section v-show="tab === 'summary'" class="panel active">
+      <div class="subbar">
+        <button class="tab" :class="{active: sumView === 'prev'}"
+                @click="sumView = 'prev'">Preview</button>
+        <button class="tab" :class="{active: sumView === 'json'}"
+                @click="sumView = 'json'">JSON · drift.json</button>
+      </div>
+      <div class="panels">
+      <div class="panel active" v-show="sumView === 'prev'">
       <div class="toolbar">
         <input class="search" id="search" type="search" v-model="q"
                placeholder="Filter by repo, package or vendor…">
@@ -131,11 +139,177 @@
         </tbody>
       </table>
       <p id="empty" class="empty" v-show="rows.length === 0">Nothing found.</p>
+      </div>
+      <div class="panel active" v-show="sumView === 'json'">
+        <p class="jsonhint">View / copy — the canonical <code>drift.json</code> every surface
+          projects from (read-only; the verified source of truth).</p>
+        <div class="jsonwrap">
+          <button class="copybtn" @click="copyJson('drift', driftJsonText)">{{ copyLabel('drift') }}</button>
+          <pre id="json-drift">{{ driftJsonText }}</pre>
+        </div>
+      </div>
+      </div>
     </section>
     <section v-show="tab === 'timeline'" class="panel active">
       <!-- Task 6 fills: the Retirement Timeline SVG + undated lane -->
       <div id="timeline-mount"></div>
     </section>
-    <!-- SBOM / SARIF panels ported in Task 5 -->
+
+    <section v-show="tab === 'sbom'" class="panel active">
+      <div class="subbar">
+        <button class="tab" :class="{active: sbomView === 'prev'}"
+                @click="sbomView = 'prev'">Preview</button>
+        <button class="tab" :class="{active: sbomView === 'cdx'}"
+                @click="sbomView = 'cdx'">CycloneDX</button>
+        <button class="tab" :class="{active: sbomView === 'spdx'}"
+                @click="sbomView = 'spdx'">SPDX</button>
+      </div>
+      <div class="panels">
+        <div class="panel active" v-show="sbomView === 'prev'">
+          <h3 id="sbom-h">{{ sbomHeaderText }}</h3>
+          <table id="sbom-table">
+            <thead><tr><th>Type</th><th>Component</th><th>Version</th><th>Used in</th><th>Vulns</th></tr></thead>
+            <tbody>
+              <tr v-for="(c, ci) in sbomRows" :key="ci">
+                <td>{{ c.type }}</td>
+                <td class="mono">{{ c.purl }}</td>
+                <td>{{ c.version }}</td>
+                <td>{{ c.repoCount }} repo{{ c.repoCount === 1 ? '' : 's' }}</td>
+                <td>
+                  <span v-if="c.vulnCount" class="pill" :class="c.pillClass">{{ c.vulnCount }} {{ c.vulnSeverity }}</span>
+                  <template v-else>—</template>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="panel active" v-show="sbomView === 'cdx'">
+          <p class="jsonhint">CycloneDX 1.5 (<code>sbom.json</code>) → Dependency-Track,
+            GitHub · <a class="viewbtn" href="https://apps.rancher.io/sbom-viewer"
+            target="_blank" rel="noopener">Open in Rancher SBOM viewer ↗</a></p>
+          <div class="jsonwrap">
+            <button class="copybtn" @click="copyJson('cdx', sbomJsonText)">{{ copyLabel('cdx') }}</button>
+            <pre id="json-cdx">{{ sbomJsonText }}</pre>
+          </div>
+        </div>
+        <div class="panel active" v-show="sbomView === 'spdx'">
+          <p class="jsonhint">SPDX 2.3 (<code>sbom.spdx.json</code>)
+            · <a class="viewbtn" href="https://apps.rancher.io/sbom-viewer"
+            target="_blank" rel="noopener">Open in Rancher SBOM viewer ↗</a></p>
+          <div class="jsonwrap">
+            <button class="copybtn" @click="copyJson('spdx', spdxJsonText)">{{ copyLabel('spdx') }}</button>
+            <pre id="json-spdx">{{ spdxJsonText }}</pre>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section v-show="tab === 'sarif'" class="panel active">
+      <div class="subbar">
+        <button class="tab" :class="{active: sarifView === 'prev'}"
+                @click="sarifView = 'prev'">Preview</button>
+        <button class="tab" :class="{active: sarifView === 'json'}"
+                @click="sarifView = 'json'">JSON · sarif.json</button>
+      </div>
+      <div class="panels">
+        <div class="panel active" v-show="sarifView === 'prev'">
+          <h3 id="sarif-h">{{ sarifHeaderText }}</h3>
+          <div id="sarif-groups">
+            <details class="grp" v-for="g in sarifGroups" :key="g.ruleId">
+              <summary>{{ g.ruleId }}<span class="count">{{ g.count }}</span></summary>
+              <table class="big">
+                <thead><tr><th>Location</th><th>Message</th><th>Level</th></tr></thead>
+                <tbody>
+                  <tr v-for="(r, ri) in g.rows" :key="ri">
+                    <td class="mono">{{ r.where }}</td>
+                    <td>{{ r.message }}</td>
+                    <td><span class="pill" :class="r.pillClass">{{ r.level }}</span></td>
+                  </tr>
+                </tbody>
+              </table>
+            </details>
+          </div>
+        </div>
+        <div class="panel active" v-show="sarifView === 'json'">
+          <p class="jsonhint">SARIF 2.1.0 (<code>drift.sarif.json</code>) — file:line
+            results → GitHub code scanning, VS Code · <a class="viewbtn"
+            href="https://microsoft.github.io/sarif-web-component/" target="_blank"
+            rel="noopener">Open in SARIF web viewer ↗</a></p>
+          <div class="jsonwrap">
+            <button class="copybtn" @click="copyJson('sarif', sarifJsonText)">{{ copyLabel('sarif') }}</button>
+            <pre id="json-sarif">{{ sarifJsonText }}</pre>
+          </div>
+        </div>
+      </div>
+    </section>
   </div>
+
+  <footer class="pagefoot">
+    <section id="coverage" class="coverage">
+      <template v-if="coverageHasContent">
+        <h2>Coverage</h2>
+        <template v-if="rootsUnscannable.length">
+          <div class="note"><b>⚠ Couldn't scan {{ rootsUnscannable.length }} source(s) you asked for</b>
+            — this is NOT a clean result for them (check the path exists and the token has access):</div>
+          <ul>
+            <li v-for="(u, i) in rootsUnscannable" :key="i">{{ u.root }} — {{ u.reason }}</li>
+          </ul>
+        </template>
+        <div class="note" v-for="(n, i) in coverageNotesSpecific" :key="'n' + i">{{ n }}</div>
+        <template v-if="unknownShapes.length">
+          <div class="note"><b>{{ unknownShapes.length }} repo(s) the scan could not fully read.</b>
+            A repo is only KNOWN when every language present has egress rules AND nothing was
+            left unattributed:</div>
+          <ul>
+            <li v-for="(s, i) in unknownShapes" :key="i">{{ s.repo }} — <b>{{ s.verdict }}</b>
+              ({{ (s.reasons || []).join(", ") }}); languages: {{ Object.keys(s.languages || {}).join(", ") }}</li>
+          </ul>
+        </template>
+        <template v-if="gradedRepos.length">
+          <div class="note">Coverage — repos where calls may be unattributed:</div>
+          <ul>
+            <li v-for="(g, i) in gradedRepos" :key="i">{{ g.repoLabel || g.repo }}: <b>{{ g.grade }}</b>
+              ({{ g.unattributedPaths }} path-literals, {{ g.unresolvedSinks }} sinks)</li>
+          </ul>
+        </template>
+        <template v-if="sdkMediated.length">
+          <div class="note">{{ sdkMediated.length }} repo(s) use SDK client(s) — calls routed through an
+            SDK have no URL literal and aren't listed as endpoints, so the endpoint count may
+            undercount:</div>
+          <ul>
+            <li v-for="(m, i) in sdkMediated" :key="i">{{ m.repo }} ({{ m.sdkCount }} SDKs,
+              {{ m.endpointCount }} endpoints)</li>
+          </ul>
+        </template>
+        <template v-if="coveredDeps.length">
+          <div class="note">{{ coveredDeps.length }} private dependency(ies) are <b>scanned directly</b>
+            as their own fleet repo — a dependency edge, not a blind spot:</div>
+          <ul>
+            <li v-for="(d, i) in coveredDeps" :key="i">{{ d.repo }} → {{ d.source }}</li>
+          </ul>
+        </template>
+      </template>
+    </section>
+    <section id="drift" class="coverage">
+      <details class="grp" v-if="driftHasContent">
+        <summary>Changed since last scan</summary>
+        <div style="padding:10px 14px">
+          <div class="note" v-if="inventoryDrift.reposAdded && inventoryDrift.reposAdded.length">
+            Repos added: {{ inventoryDrift.reposAdded.join(", ") }}</div>
+          <div class="note" v-if="inventoryDrift.reposRemoved && inventoryDrift.reposRemoved.length">
+            Repos removed: {{ inventoryDrift.reposRemoved.join(", ") }}</div>
+          <div class="note" v-for="(c, i) in driftChangeRows" :key="i">
+            <b>{{ c.repo }}</b>: {{ c.bits.join(" · ") }}</div>
+        </div>
+      </details>
+    </section>
+    <section id="methodology" class="coverage">
+      <details class="grp" v-if="methodologyNotes.length">
+        <summary>Scan methodology &amp; sources<span class="count">{{ methodologyNotes.length }}</span></summary>
+        <div style="padding:10px 14px">
+          <div class="note" v-for="(n, i) in methodologyNotes" :key="i">{{ n }}</div>
+        </div>
+      </details>
+    </section>
+  </footer>
 </div>
