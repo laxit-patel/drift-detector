@@ -233,6 +233,7 @@ flowchart LR
 
 <p align="center">
   <img src="https://c.tenor.com/1YWBgZj5baUAAAAC/tenor.gif" alt="Mahoraga adapts" width="360">
+  <img src="https://media1.tenor.com/m/1QMJcmOppoYAAAAd/mahoraga-makora.gif" alt="Drift Detector — Mahoraga, the Wheel of adaptation" width="320">
   <br><em>“Nah, I'd adapt.” — every new integration shape turns the Wheel through the <code>absorb</code> gate.</em>
 </p>
 
