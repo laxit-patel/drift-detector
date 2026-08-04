@@ -283,7 +283,8 @@ def _issue_op(fp: str, title: str, body: str, by_fp: dict, project: str, *,
 def build_plan(payload: dict, repo_meta: dict, existing: dict, devops_project: str,
                *, dev_as_issues: bool = False, links: dict | None = None,
                shape_stream: bool = False, freshness_stream: bool = False,
-               assignees: dict | None = None) -> dict:
+               assignees: dict | None = None,
+               granularity: str = "comprehensive") -> dict:
     """Compute the create/update/close plan. PURE: no I/O.
 
     `repo_meta`   : {repo -> {"project": "group/repo"}} for the scanned repos.
@@ -304,6 +305,8 @@ def build_plan(payload: dict, repo_meta: dict, existing: dict, devops_project: s
     Returns {"issues": [...], "mrs": []} where each item has an `op`
     (create|update|close|skip) and the rendered content. `mrs` is always empty for findings.
     """
+    # `granularity` accepted but unused here — consumed in build_plan's granularity branch,
+    # added next task.
     assignees = assignees or {"devops": None, "developer": {}}
     actions = payload.get("actions", [])
     devops = [a for a in actions if a.get("owner") == "devops"]

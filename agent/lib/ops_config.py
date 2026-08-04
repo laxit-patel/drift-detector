@@ -48,11 +48,12 @@ _TOP = {"version", "fleet", "delivery", "auth", "notify", "probe"}
 _DELIVERY_V1 = {"mode", "dev_as_issues", "devops_project"}
 _DELIVERY_V2 = {"mode", "devops", "developer"}
 # orthogonal to the v1/v2 split — allowed in either form, never counts toward the mix check
-_DELIVERY_COMMON = {"shape_stream", "freshness_stream"}
+_DELIVERY_COMMON = {"shape_stream", "freshness_stream", "granularity"}
 _DELIVERY = _DELIVERY_V1 | _DELIVERY_V2 | _DELIVERY_COMMON
 _AUTH = {"clone", "persist", "deliver"}
 _NOTIFY = {"gchat"}
 _STREAM = {"target", "project", "assignee", "fallbackAssignee"}
+_GRANULARITIES = {"comprehensive", "per-vendor", "per-problem"}
 
 # a value under `auth:`/`notify:` must be an env-var NAME, not a secret. This catches the most
 # common and most dangerous mistake — pasting the actual PAT into the reviewed, git-tracked
@@ -177,6 +178,12 @@ def _load_delivery(path: str, raw: dict) -> dict:
     if mode in ("create", "live") and not devops_assignee:
         raise ConfigError(f"{path}: delivery.devops.assignee is required when delivery.mode "
                           "files issues (create/live) — every DevOps issue is assigned to it")
+
+    granularity = d.get("granularity", "comprehensive")
+    if granularity not in _GRANULARITIES:
+        raise ConfigError(f"{path}: delivery.granularity must be one of "
+                          f"{sorted(_GRANULARITIES)}, got {granularity!r}")
+
     # the two maintainer streams, both off by default and opted into independently:
     # shape_stream files an absorption flag per UNKNOWN repo (opt in once the fleet is stable,
     # so early scans don't flag every not-yet-modeled repo); freshness_stream files THE
@@ -185,7 +192,8 @@ def _load_delivery(path: str, raw: dict) -> dict:
     return {"mode": mode, "dev_as_issues": dev_as_issues, "devops_project": devops_project,
             "devopsAssignee": devops_assignee, "developerFallbackAssignee": developer_fallback,
             "shape_stream": bool(d.get("shape_stream", False)),
-            "freshness_stream": bool(d.get("freshness_stream", False))}
+            "freshness_stream": bool(d.get("freshness_stream", False)),
+            "granularity": granularity}
 
 
 def load(path: str) -> dict:

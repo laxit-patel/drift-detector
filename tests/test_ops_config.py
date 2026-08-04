@@ -31,7 +31,7 @@ def test_valid_config_loads_and_derives_the_host(tmp_path):
     assert cfg["delivery"] == {"mode": "dry-run", "dev_as_issues": True,
                                "devops_project": "root/ops", "devopsAssignee": None,
                                "developerFallbackAssignee": None, "shape_stream": False,
-                               "freshness_stream": False}
+                               "freshness_stream": False, "granularity": "comprehensive"}
 
 
 def test_delivery_defaults_when_omitted(tmp_path):
@@ -41,7 +41,7 @@ def test_delivery_defaults_when_omitted(tmp_path):
     assert cfg["delivery"] == {"mode": "dry-run", "dev_as_issues": True,
                                "devops_project": None, "devopsAssignee": None,
                                "developerFallbackAssignee": None, "shape_stream": False,
-                               "freshness_stream": False}
+                               "freshness_stream": False, "granularity": "comprehensive"}
 
 
 def test_freshness_stream_opt_in(tmp_path):
@@ -64,6 +64,24 @@ def test_shape_stream_opt_in(tmp_path):
 def test_empty_fleet_is_an_error(tmp_path):
     with pytest.raises(ops_config.ConfigError):
         ops_config.load(_write(tmp_path, "fleet: []\n"))
+
+
+def test_granularity_defaults_to_comprehensive(tmp_path):
+    cfg = ops_config.load(_write(tmp_path, "fleet: [https://git.x/g/a]\n"))
+    assert cfg["delivery"]["granularity"] == "comprehensive"
+
+
+def test_granularity_parses_valid_values(tmp_path):
+    for v in ("comprehensive", "per-vendor", "per-problem"):
+        cfg = ops_config.load(_write(tmp_path,
+            f"fleet: [https://git.x/g/a]\ndelivery:\n  granularity: {v}\n"))
+        assert cfg["delivery"]["granularity"] == v
+
+
+def test_bad_granularity_is_rejected(tmp_path):
+    with pytest.raises(ops_config.ConfigError, match="granularity"):
+        ops_config.load(_write(tmp_path,
+            "fleet: [https://git.x/g/a]\ndelivery:\n  granularity: per-everything\n"))
 
 
 def test_non_https_fleet_entry_is_an_error(tmp_path):
