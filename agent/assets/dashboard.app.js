@@ -291,8 +291,8 @@
 
       // ---- SBOM/SARIF repo-scope helpers ----
       componentRepos: function(c){
-        return (c.properties || []).filter(function(p){ return p.name === "drift:repo"; })
-                                    .map(function(p){ return p.value; });
+        return (c.properties || []).filter(function(pr){ return pr.name === "drift:repo"; })
+                                    .map(function(pr){ return pr.value; });
       },
       sarifUri: function(r){
         var l = (r.locations || [])[0];

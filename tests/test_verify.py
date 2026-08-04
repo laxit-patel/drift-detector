@@ -184,6 +184,18 @@ def test_live_accessor_coverage_over_the_real_client_js():
     })
 
 
+def test_accessor_coverage_does_not_false_positive_on_sbom_property_loop():
+    # regression: componentRepos() must not use `p` for SBOM component properties — `p` is the
+    # reserved accessor-coverage letter for PRIVATE rows, so `p.name`/`p.value` would be read as
+    # bogus private fields and raise spuriously once a real private sample set is checked.
+    from agent.lib import dashboard_render as dr
+    from agent.lib import verify
+    src = dr.TEMPLATE_SRC + "\n" + dr.APP_JS_SRC
+    # the actual fields a private row carries (see _build_projection)
+    verify.check_accessor_coverage(src, {"private": {"repo", "source", "kind", "via"}})
+    # (no raise == pass)
+
+
 def test_live_invariants_hold_on_the_real_payload():
     payload, _ = _real_payload()
     assert verify.verify_payload(payload, TWELVE) == []
