@@ -214,7 +214,7 @@
           (c.sdksRemoved || []).forEach(function(s){ bits.push("− " + s.pkg + " " + s.ver); });
           (c.runtimeChanges || []).forEach(function(r){ bits.push(r.product + " " + r.from + " → " + r.to); });
           return {repo: c.repo, bits: bits};
-        }).filter(function(row){ return row.bits.length > 0; });
+        }).filter(function(chg){ return chg.bits.length > 0; });
       },
       driftHasContent: function(){
         var d = this.inventoryDrift; if(!d) return false;
@@ -224,9 +224,10 @@
 
       // ---- the Retirement Timeline (Task 6): every sunset action plotted by date, "today"
       // = DATA.generated (never the wall clock). NONE silently dropped — a sunset is either a
-      // dated point on the axis or a chip in the undated lane; verify.check_chart_parity
-      // enforces dated+undated === counts.sunsets on the exact same DATA.actions this reads,
-      // so a filter bug here that drops a finding fails verify, not just a screenshot.
+      // dated point on the axis (timeline.dated) or a chip in the undated lane
+      // (timeline.undated); verify.check_timeline_lanes enforces that the template still
+      // references BOTH lanes, so deleting either one (hiding deprecated-no-date sunsets,
+      // say) fails verify instead of only a screenshot nobody looks at.
       // Respects the global repo scope like every other view.
       timeline: function(){
         var self = this;

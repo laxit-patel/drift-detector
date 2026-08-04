@@ -44,24 +44,42 @@ def check_projection_parity(action: dict, projected: dict) -> None:
                         f"(This is how `unit` was lost and twelve rows rendered as 'eBay'.)")
 
 
-# `r` is deliberately NOT tracked: it is already a loop variable for other
-# records in the page, and conflating them makes this check lie in both
-# directions. A payload-backed loop uses a distinct name (cv for catalog).
-_ACCESSOR = re.compile(r"\b(a|e|p|cv)\.([A-Za-z_]\w*)\b")
+# Single-letter loop vars for the payload-backed record types: a=action, e=endpoint,
+# p=private, cv=catalog. `row` is the Vue summary-table's `v-for="(row, idx) in rows"` —
+# `rows` is POLYMORPHIC (actions OR endpoints OR private OR catalog, chosen by `mode`), so a
+# `row.foo` read is legal iff `foo` exists in AT LEAST ONE of those four field sets; see the
+# `row` branch in check_accessor_coverage, which checks it against their union rather than
+# any single sample. Every other loop var in the page (`r` for SARIF results, `c`/`g`/`u`/…
+# for SBOM/coverage lists) is deliberately NOT tracked here: those are NOT payload-record
+# accessors this check owns, and conflating them would make the check lie in both directions
+# (this is exactly the false-positive a `p`-collision bug already shipped once on this branch).
+_ACCESSOR = re.compile(r"\b(a|e|p|cv|row)\.([A-Za-z_]\w*)\b")
 # JS built-ins and locals that are not payload fields
 _NOT_FIELDS = frozenset({"length", "forEach", "map", "filter", "push", "join", "slice",
                          "indexOf", "toLowerCase", "toUpperCase", "concat", "sort"})
 
 
 def check_accessor_coverage(client_js: str, samples: dict) -> None:
-    """Every `a.foo` / `e.foo` / `p.foo` the page reads must exist in the payload.
+    """Every `a.foo` / `e.foo` / `p.foo` / `cv.foo` / `row.foo` the page reads must exist
+    in the payload.
 
     The other direction from projection-parity: that check catches a field the projection
     forgot, this catches the page reading a field nothing emits. Between them a rename
     cannot silently blank a column.
+
+    `row` is special: the Vue summary table's row loop var is polymorphic — the same
+    `v-for="(row, idx) in rows"` renders an action, an endpoint, a private-source, or a
+    catalog row depending on `mode`. Pass its allowed set explicitly as `samples["row"]` —
+    the UNION of whichever of the four row shapes the caller cares about (typically
+    `actions | endpoints | private | catalog`). It is deliberately opt-in rather than
+    auto-derived from the other keys: callers routinely pass just ONE category to check
+    that accessor prefix in isolation (e.g. only "catalog", to test `cv.foo`), and the
+    template's `row.*` reads span all four modes regardless — auto-unioning from a partial
+    sample would falsely flag every field belonging to a category that call didn't supply.
     """
     for var, keys in (("a", samples.get("actions")), ("e", samples.get("endpoints")),
-                      ("p", samples.get("private")), ("cv", samples.get("catalog"))):
+                      ("p", samples.get("private")), ("cv", samples.get("catalog")),
+                      ("row", samples.get("row"))):
         if not keys:
             continue
         read = {m.group(2) for m in _ACCESSOR.finditer(client_js)
@@ -401,18 +419,27 @@ def check_number_formats(payload: dict) -> None:
     walk(payload)
 
 
-def check_chart_parity(payload: dict) -> None:
-    """The Retirement Timeline must account for EVERY sunset the tile counts — dated points on
-    the axis plus undated ones in the labeled lane. A mismatch means the chart silently drops a
-    finding (the visual analog of a miscounting tile)."""
-    sunsets = [a for a in payload.get("actions", []) if a.get("kind") == "sunset"]
-    dated = [a for a in sunsets if a.get("date")]
-    undated = [a for a in sunsets if not a.get("date")]
-    claimed = (payload.get("counts") or {}).get("sunsets", 0)
-    if len(dated) + len(undated) != claimed:
-        raise Violation("chart-parity",
-                        f"timeline accounts for {len(dated)}+{len(undated)} sunsets but the tile "
-                        f"says {claimed} — a finding would be dropped from the chart")
+def check_timeline_lanes(template_src: str) -> None:
+    """The Retirement Timeline must render BOTH lanes: the dated axis (`timeline.dated`) and
+    the undated lane (`timeline.undated`).
+
+    STRUCTURAL, not numeric — this replaces a former `check_chart_parity(payload)` that
+    asserted `len(dated) + len(undated) == counts.sunsets`. That was a tautology: dated and
+    undated are computed as an exhaustive partition of the same sunset list (every action is
+    either dated or not), so the equality held by construction and was already re-covered by
+    check_tile_counts. It never looked at the client at all, so it could not catch the actual
+    risk: a future edit that deletes the undated lane from the template. A `deprecated-no-date`
+    sunset would then render nowhere on the timeline — 'cannot see' rendering as 'clean', the
+    project's first principle, violated in the one surface built to be honest about it.
+    Mirrors check_accessor_coverage: a plain substring check over the template source, so it
+    fails the moment either lane's binding is removed, independent of how the chart is styled.
+    """
+    missing = [name for name in ("timeline.dated", "timeline.undated") if name not in template_src]
+    if missing:
+        raise Violation("timeline-lanes",
+                        f"the timeline template no longer references {missing} — the "
+                        f"undated/deprecated-no-date lane could silently disappear from the "
+                        f"page while the tile stays green")
 
 
 def verify_payload(payload: dict, findings: list) -> list:
@@ -422,8 +449,7 @@ def verify_payload(payload: dict, findings: list) -> list:
     for fn, args in ((check_tile_counts, (payload, findings)),
                      (check_owner_split, (payload,)),
                      (check_row_labels_distinct, (payload,)),
-                     (check_number_formats, (payload,)),
-                     (check_chart_parity, (payload,))):
+                     (check_number_formats, (payload,))):
         try:
             fn(*args)
         except Violation as v:

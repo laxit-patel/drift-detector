@@ -124,7 +124,7 @@ def test_row_labels_distinct_once_the_host_is_carried():
 
 # --------------------------------------------------------------------------- the rail
 def test_accessor_coverage_catches_a_field_the_page_reads_but_nothing_emits():
-    js = 'var label = a.ref + " " + a.unit; row(a.repo, a.missingField);'
+    js = 'var label = a.ref + " " + a.unit; emit(a.repo, a.missingField);'
     with pytest.raises(Violation) as e:
         verify.check_accessor_coverage(js, {"actions": {"ref", "unit", "repo"}})
     assert "missingField" in str(e.value)
@@ -168,19 +168,46 @@ def test_live_projection_parity_over_real_build_actions():
         verify.check_projection_parity(action, projected)
 
 
+# The real endpoint/private/catalog row field sets, named explicitly rather than sampled
+# from a live row — the payload built by _real_payload() carries no endpoints, no private
+# sources and no coverage.catalog (the synthetic inventory/audit above pass none in), so
+# there is no live row to pull `set(row)` from the way `payload["actions"][0]` works below.
+# Endpoint fields: see _endpoints_of(); private fields: see _build_projection()'s private
+# loop; catalog fields: see catalog_coverage.py's record builder.
+_ENDPOINT_SAMPLE = {"repo", "domain", "vendor", "version", "classified", "file_count", "files"}
+_PRIVATE_SAMPLE = {"repo", "source", "kind", "via"}
+_CATALOG_SAMPLE = {"vendor", "callSites", "catalogEntries", "verdict", "reasons", "checked", "source"}
+
+
+def _row_union(payload):
+    """The allowed set for the Vue summary table's polymorphic `row` loop var: the union of
+    all four row shapes it can render (mode is actions | endpoints | private | catalog)."""
+    return set(payload["actions"][0]) | _ENDPOINT_SAMPLE | _PRIVATE_SAMPLE | _CATALOG_SAMPLE
+
+
 def test_live_accessor_coverage_over_the_real_client_js():
-    """Every a.field / e.field the shipped page reads must exist in the real payload.
+    """Every a.field / e.field / p.field / cv.field / row.field the shipped page reads must
+    exist in the real payload.
 
     Since the Task 3 re-platform, the client is the in-DOM Vue template + the app skeleton
     (accessors now live in both — the guard itself is a pure regex over a string, so it is
-    fed the concatenation of the two sources rather than the old server-built _CLIENT_JS)."""
+    fed the concatenation of the two sources rather than the old server-built _CLIENT_JS).
+    `row` (the polymorphic summary-table loop var) is checked against the union of all four
+    row shapes — actions/endpoints/private/catalog — since the same template renders all
+    four depending on `mode`."""
     from agent.lib import dashboard_render as _dr
     _CLIENT_SRC = _dr.TEMPLATE_SRC + "\n" + _dr.APP_JS_SRC
     payload, _ = _real_payload()
     verify.check_accessor_coverage(_CLIENT_SRC, {
         "actions": set(payload["actions"][0]),
+        # this fixture's inventory carries no endpoints/private rows (empty lists), so
+        # there is nothing live to sample for the independent "e."/"p." checks — unchanged
+        # from before this fix. The "row" union below still covers their fields via the
+        # named _ENDPOINT_SAMPLE/_PRIVATE_SAMPLE constants, independently of these two.
         "endpoints": set(payload["endpoints"][0]) if payload.get("endpoints") else None,
         "private": set(payload["private"][0]) if payload.get("private") else None,
+        "catalog": _CATALOG_SAMPLE,
+        "row": _row_union(payload),
     })
 
 
@@ -194,6 +221,32 @@ def test_accessor_coverage_does_not_false_positive_on_sbom_property_loop():
     # the actual fields a private row carries (see _build_projection)
     verify.check_accessor_coverage(src, {"private": {"repo", "source", "kind", "via"}})
     # (no raise == pass)
+
+
+def test_accessor_coverage_catches_a_bogus_summary_row_field():
+    """PROVE THE BUG: post-Vue-port, the summary table's row loop var (renamed `r` -> `row`
+    in this fix) went UNGUARDED, because _ACCESSOR only tracked a|e|p|cv — a typo'd or
+    renamed display field like `{{ row.bogusField }}` would render a blank column with
+    nothing failing. This reconstructs exactly that against the real union of
+    action/endpoint/private/catalog fields the row loop is checked against."""
+    from agent.lib import dashboard_render as dr
+    bogus_snippet = '<template v-for="(row, idx) in rows"><td>{{ row.bogusField }}</td></template>'
+    payload, _ = _real_payload()
+    with pytest.raises(Violation) as e:
+        verify.check_accessor_coverage(dr.APP_JS_SRC + "\n" + bogus_snippet,
+                                       {"row": _row_union(payload)})
+    assert e.value.check == "accessor-coverage"
+    assert "bogusField" in str(e.value)
+
+
+def test_accessor_coverage_passes_on_the_real_summary_table_row_fields():
+    """Positive control for the same guard: every real `row.field` in the shipped template
+    exists in the union of action/endpoint/private/catalog fields, so the r -> row rename
+    did not silently drop coverage over the 26-odd display fields the summary table reads."""
+    from agent.lib import dashboard_render as dr
+    payload, _ = _real_payload()
+    verify.check_accessor_coverage(dr.TEMPLATE_SRC + "\n" + dr.APP_JS_SRC,
+                                   {"row": _row_union(payload)})
 
 
 def test_live_invariants_hold_on_the_real_payload():
@@ -354,24 +407,29 @@ def test_verify_passes_when_the_unscannable_root_is_named():
     verify.check_unscannable_surfaced(md_that_names_it, payload)   # no raise
 
 
-# ------------------------------------------------- the Retirement Timeline chart parity
-def test_chart_parity_flags_a_dropped_sunset():
-    """2 sunset actions but the tile claims 3 -> the timeline would silently omit one."""
-    payload = {"counts": {"sunsets": 3},
-               "actions": [{"kind": "sunset", "date": "2026-01-01"},
-                           {"kind": "sunset", "date": None}]}
-    try:
-        verify.check_chart_parity(payload)
-        assert False, "expected a Violation for the dropped sunset"
-    except verify.Violation as v:
-        assert v.check == "chart-parity"
+# ------------------------------------------------- the Retirement Timeline structural guard
+def test_timeline_lanes_guard_flags_a_missing_undated_lane():
+    """PROVE THE BUG: the former check_chart_parity(payload) asserted
+    len(dated)+len(undated) == counts.sunsets, which is a tautology — dated/undated are an
+    exhaustive partition of the same sunset list by construction, so it holds no matter what
+    the template renders and never looked at the client at all. It would stay green even if a
+    future edit deleted the undated lane from the page, silently hiding every
+    deprecated-no-date sunset (a 'cannot see != clean' honesty regression). This reconstructs
+    that exact edit — a template that renders the dated axis but not the undated lane — and
+    the new structural guard must catch it."""
+    template_missing_undated = (
+        '<g v-for="(pt, i) in timeline.dated" :key="\'d\' + i" class="tl-point">'
+        '<circle :cx="pt.x" :cy="130" r="8" :fill="pt.color"></circle></g>'
+    )
+    with pytest.raises(Violation) as e:
+        verify.check_timeline_lanes(template_missing_undated)
+    assert e.value.check == "timeline-lanes"
+    assert "timeline.undated" in str(e.value)
 
 
-def test_chart_parity_passes_when_all_sunsets_accounted():
-    payload = {"counts": {"sunsets": 2},
-               "actions": [{"kind": "sunset", "date": "2026-01-01"},
-                           {"kind": "sunset", "date": None}]}
-    verify.check_chart_parity(payload)     # dated(1)+undated(1)==2 -> no raise
+def test_timeline_lanes_guard_passes_on_the_real_template():
+    from agent.lib import dashboard_render as dr
+    verify.check_timeline_lanes(dr.TEMPLATE_SRC)     # both lanes present -> no raise
 
 
 def test_verify_catches_a_stale_or_tampered_sbom():

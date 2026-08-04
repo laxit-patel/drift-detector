@@ -62,51 +62,51 @@
             <td colspan="5" class="intro">Sub-dependencies the scan couldn't crawl — private or
               unreachable.</td>
           </tr>
-          <template v-for="(r, idx) in rows" :key="mode + '-' + idx">
+          <template v-for="(row, idx) in rows" :key="mode + '-' + idx">
             <tr class="row" @click="onRowClick(idx)">
               <template v-if="mode === 'actions'">
-                <td>{{ r.repoLabel || r.repo }}</td>
-                <td>{{ actionLabel(r) }}</td>
-                <td>{{ targetText(r) }}</td>
-                <td>{{ r.finding_count }}</td>
-                <td :class="'sev-' + r.worst">{{ r.worst }}</td>
+                <td>{{ row.repoLabel || row.repo }}</td>
+                <td>{{ actionLabel(row) }}</td>
+                <td>{{ targetText(row) }}</td>
+                <td>{{ row.finding_count }}</td>
+                <td :class="'sev-' + row.worst">{{ row.worst }}</td>
               </template>
               <template v-else-if="mode === 'endpoints'">
-                <td>{{ r.repo }}</td>
-                <td>{{ r.domain }}</td>
-                <td>{{ r.vendor }}</td>
-                <td>{{ r.version || '?' }}</td>
-                <td>{{ r.file_count }}</td>
+                <td>{{ row.repo }}</td>
+                <td>{{ row.domain }}</td>
+                <td>{{ row.vendor }}</td>
+                <td>{{ row.version || '?' }}</td>
+                <td>{{ row.file_count }}</td>
               </template>
               <template v-else-if="mode === 'private'">
-                <td>{{ r.repo }}</td>
+                <td>{{ row.repo }}</td>
                 <td>
-                  <a v-if="r.kind === 'repo' && safeUrl(r.source)" :href="safeUrl(r.source)"
-                     rel="noopener">{{ r.source }}</a>
-                  <template v-else>{{ r.source }}</template>
+                  <a v-if="row.kind === 'repo' && safeUrl(row.source)" :href="safeUrl(row.source)"
+                     rel="noopener">{{ row.source }}</a>
+                  <template v-else>{{ row.source }}</template>
                 </td>
-                <td>{{ r.kind }}</td>
-                <td>{{ r.via || '' }}</td>
+                <td>{{ row.kind }}</td>
+                <td>{{ row.via || '' }}</td>
                 <td></td>
               </template>
               <template v-else-if="mode === 'catalog'">
-                <td>{{ r.vendor }}</td>
-                <td>{{ catalogWhy(r) }}</td>
-                <td>{{ r.callSites }} call-site(s)</td>
-                <td>{{ r.catalogEntries }} entr(y/ies)</td>
-                <td :class="'sev-' + r.verdict">{{ r.verdict }}</td>
+                <td>{{ row.vendor }}</td>
+                <td>{{ catalogWhy(row) }}</td>
+                <td>{{ row.callSites }} call-site(s)</td>
+                <td>{{ row.catalogEntries }} entr(y/ies)</td>
+                <td :class="'sev-' + row.verdict">{{ row.verdict }}</td>
               </template>
             </tr>
             <tr v-if="expanded[idx] && mode === 'actions'">
               <td colspan="5" class="detail">
-                <div v-if="r.command"><span class="cmd">{{ r.command }}</span>
-                  <button class="copy" @click.stop="copyText(r.command)">copy</button></div>
-                <div v-else-if="r.recommendation">{{ r.recommendation }}</div>
-                <div>Clears {{ r.finding_count }} advisor{{ r.finding_count === 1 ? 'y' : 'ies' }}<template
-                  v-if="r.critical_count"> ({{ r.critical_count }} critical)</template></div>
-                <div class="usedat" v-if="r.files && r.files.length">
+                <div v-if="row.command"><span class="cmd">{{ row.command }}</span>
+                  <button class="copy" @click.stop="copyText(row.command)">copy</button></div>
+                <div v-else-if="row.recommendation">{{ row.recommendation }}</div>
+                <div>Clears {{ row.finding_count }} advisor{{ row.finding_count === 1 ? 'y' : 'ies' }}<template
+                  v-if="row.critical_count"> ({{ row.critical_count }} critical)</template></div>
+                <div class="usedat" v-if="row.files && row.files.length">
                   <b>Used at:</b>
-                  <div class="callsite" v-for="(f, fi) in r.files" :key="fi">
+                  <div class="callsite" v-for="(f, fi) in row.files" :key="fi">
                     <a v-if="f.href && safeUrl(f.href)" :href="safeUrl(f.href)" target="_blank"
                        rel="noopener">{{ f.loc }}</a>
                     <template v-else>{{ f.loc }}</template>
@@ -114,23 +114,23 @@
                             :data-loc="f.loc">copy</button>
                   </div>
                 </div>
-                <ul v-if="r.cves && r.cves.length">
-                  <li v-for="(c, ci) in r.cves" :key="ci">{{ c.id }} — {{ c.title }}</li>
+                <ul v-if="row.cves && row.cves.length">
+                  <li v-for="(c, ci) in row.cves" :key="ci">{{ c.id }} — {{ c.title }}</li>
                 </ul>
-                <div v-if="r.sources && r.sources.length">
-                  <template v-for="(u, si) in r.sources" :key="si">
+                <div v-if="row.sources && row.sources.length">
+                  <template v-for="(u, si) in row.sources" :key="si">
                     <a v-if="safeUrl(u)" :href="safeUrl(u)" target="_blank"
                        rel="noopener">source ↗</a>
                     <template v-else>{{ u }}</template>
-                    <template v-if="si < r.sources.length - 1"> · </template>
+                    <template v-if="si < row.sources.length - 1"> · </template>
                   </template>
                 </div>
               </td>
             </tr>
             <tr v-if="expanded[idx] && mode === 'endpoints'">
               <td colspan="5" class="detail">
-                <template v-if="r.files && r.files.length">
-                  <div v-for="(f, fi) in r.files" :key="fi">{{ f }}</div>
+                <template v-if="row.files && row.files.length">
+                  <div v-for="(f, fi) in row.files" :key="fi">{{ f }}</div>
                 </template>
                 <template v-else>—</template>
               </td>
