@@ -191,9 +191,7 @@ flowchart LR
 > spirit of the part that learns.)*
 
 <p align="center">
-  <img src="https://media1.tenor.com/m/1QMJcmOppoYAAAAd/mahoraga-makora.gif" alt="Mahoraga — the wheel of adaptation" width="300">
-  &nbsp;&nbsp;
-  <img src="https://media1.tenor.com/m/1YWBgZj5baUAAAAd/mahoraga-adapt.gif" alt="Mahoraga adapts" width="300">
+  <img src="https://media1.tenor.com/m/1YWBgZj5baUAAAAd/mahoraga-adapt.gif" alt="Mahoraga adapts" width="360">
   <br><em>“Nah, I'd adapt.” — every new integration shape turns the Wheel through the <code>absorb</code> gate.</em>
 </p>
 

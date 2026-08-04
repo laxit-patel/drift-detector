@@ -185,6 +185,12 @@ parses manifests, and aggregates everything into the superset IR. Extend
 stack grows. The **audit** (`agent/audit.py`) reads that IR and enriches it via
 OSV.dev + endoflife.date over stdlib HTTP (no extra dependency).
 
+<p align="center">
+  <img src="https://media1.tenor.com/m/1QMJcmOppoYAAAAd/mahoraga-makora.gif" alt="Mahoraga — the wheel of adaptation" width="320">
+  <br><em>The scanner <b>adapts</b> to every integration shape it's shown — codename <b>Mahoraga, the Wheel</b>
+  (<a href="docs/ARCHITECTURE.md">architecture</a>).</em>
+</p>
+
 **→ For the full picture — topology, the pipeline, the `verify` contract, delivery, the Cockpit,
 what's built and what's next — read [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) (the core reference,
 with diagrams).**
