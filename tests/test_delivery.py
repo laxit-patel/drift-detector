@@ -25,6 +25,16 @@ def _payload(actions):
     return {"actions": actions}
 
 
+def _act(*, repo="r", owner="developer", kind="sunset", ref="eBay", unit="A",
+         status="DEPRECATED", date="2025-01-01", worst="SUNSET", recommendation="migrate",
+         files=None, sources=None):
+    return {"repo": repo, "owner": owner, "kind": kind, "ref": ref, "unit": unit,
+            "status": status, "date": date, "worst": worst, "recommendation": recommendation,
+            "files": files if files is not None else
+                     [{"loc": "src/A.php:1", "href": "https://git.x/g/r/-/blob/a/src/A.php#L1"}],
+            "sources": sources if sources is not None else ["https://vendor.example/x"]}
+
+
 # --------------------------------------------------------------- identity + parsing
 def test_action_fingerprint_is_version_independent():
     a1 = {"repo": "r", "kind": "cve", "ref": "npm/x", "unit": None}
@@ -53,7 +63,7 @@ def test_new_findings_create_one_devops_and_one_developer_issue_in_repo():
     assert devops[0]["project"] == "root/web"                         # in the repo, not central
     assert len(dev) == 1 and dev[0]["op"] == "create"
     assert dev[0]["project"] == "g/ebayapi"                           # in the repo, not central
-    assert dev[0]["title"] == "[drift] API migrations for g/ebayapi"
+    assert dev[0]["title"] == "🚨 [drift] API migrations for g/ebayapi"   # past-due sunset -> 🚨
 
 
 def test_existing_issue_with_same_body_is_skipped_not_duplicated():
@@ -162,7 +172,7 @@ def test_developer_stream_is_always_issues_never_mrs():
         dev_issues = [i for i in plan["issues"] if i.get("stream") == "developer"]
         assert len(dev_issues) == 1                               # one per repo
         dev_issue = dev_issues[0]
-        assert dev_issue["title"] == "[drift] API migrations for g/ebayapi"
+        assert dev_issue["title"] == "🚨 [drift] API migrations for g/ebayapi"   # past-due sunset -> 🚨
         assert dev_issue["project"] == "g/ebayapi"                # in the repo, not central
         # idempotent: the per-repo issue carries the repo+audience marker
         assert delivery.repo_fingerprint("g/ebayapi", "developer") in dev_issue["body"]
@@ -736,6 +746,63 @@ def test_plan_summary_breaks_down_by_stream():
                        {"op": "skip", "stream": "developer"}], "mrs": []}
     s = delivery.plan_summary(plan)
     assert "devops" in s and "developer" in s
+
+
+def test_per_problem_files_one_issue_per_action():
+    # 3 developer actions in one repo -> 3 issues (not 1 comprehensive)
+    payload = {"actions": [
+        _act(repo="ebayapi", owner="developer", kind="sunset", ref="eBay", unit="GetCategories",
+             status="DEPRECATED", date="2025-01-01", worst="SUNSET"),
+        _act(repo="ebayapi", owner="developer", kind="sunset", ref="eBay", unit="GetCharities",
+             status="DEPRECATED", date="2023-09-18", worst="SUNSET"),
+        _act(repo="ebayapi", owner="developer", kind="sunset", ref="eBay", unit="AddDispute",
+             status="DEPRECATED", date="2023-01-31", worst="SUNSET")]}
+    plan = delivery.build_plan(payload, {"ebayapi": {"project": "r/ebayapi"}},
+                               {"issues": []}, "g/ops", granularity="per-problem")
+    creates = [o for o in plan["issues"] if o["op"] == "create"]
+    assert len(creates) == 3
+    # each keyed by its own action_fingerprint (idempotent per problem)
+    fps = {delivery.markers_in(o["body"]).pop() for o in creates}
+    assert len(fps) == 3
+    # emoji title — a past-due sunset leads with the siren
+    assert all(o["title"].startswith("🚨") for o in creates)
+
+
+def test_per_problem_is_idempotent_and_updates_in_place():
+    payload = {"actions": [_act(repo="ebayapi", owner="developer", kind="sunset", ref="eBay",
+                 unit="GetCategories", status="DEPRECATED", date="2025-01-01", worst="SUNSET")]}
+    fp = delivery.action_fingerprint(payload["actions"][0])
+    existing = {"issues": [{"iid": 7, "project_id": "r/ebayapi", "state": "opened",
+                            "description": delivery.marker(fp)}]}
+    plan = delivery.build_plan(payload, {"ebayapi": {"project": "r/ebayapi"}}, existing,
+                               "g/ops", granularity="per-problem")
+    ops = [o["op"] for o in plan["issues"]]
+    assert "update" in ops and "create" not in ops        # matched by marker -> update
+
+
+def test_per_vendor_groups_by_vendor():
+    payload = {"actions": [
+        _act(repo="r", owner="developer", kind="sunset", ref="eBay", unit="A", status="DEPRECATED",
+             date="2025-01-01", worst="SUNSET"),
+        _act(repo="r", owner="developer", kind="sunset", ref="eBay", unit="B", status="DEPRECATED",
+             date="2025-01-01", worst="SUNSET"),
+        _act(repo="r", owner="developer", kind="sunset", ref="Amazon SP-API", unit="/c/v0",
+             status="DEPRECATED", date="2025-01-01", worst="SUNSET")]}
+    plan = delivery.build_plan(payload, {"r": {"project": "g/r"}}, {"issues": []}, "g/ops",
+                               granularity="per-vendor")
+    creates = [o for o in plan["issues"] if o["op"] == "create"]
+    assert len(creates) == 2                               # eBay + Amazon, one each
+
+
+def test_comprehensive_is_unchanged_default():
+    payload = {"actions": [_act(repo="r", owner="developer", kind="sunset", ref="eBay", unit="A",
+                 status="DEPRECATED", date="2025-01-01", worst="SUNSET"),
+               _act(repo="r", owner="developer", kind="sunset", ref="eBay", unit="B",
+                 status="DEPRECATED", date="2025-01-01", worst="SUNSET")]}
+    plan = delivery.build_plan(payload, {"r": {"project": "g/r"}}, {"issues": []}, "g/ops")
+    creates = [o for o in plan["issues"] if o["op"] == "create"]
+    assert len(creates) == 1                               # one comprehensive developer issue
+    assert creates[0]["title"].startswith("🚨")            # emoji now on comprehensive titles too
 
 
 def test_fetch_existing_does_not_fetch_dead_mrs():

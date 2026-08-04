@@ -62,6 +62,13 @@ def repo_fingerprint(repo: str, stream: str = "") -> str:
     return hashlib.sha256(raw.encode()).hexdigest()[:16]
 
 
+def vendor_fingerprint(repo: str, vendor: str, stream: str) -> str:
+    """Identity for a per-vendor issue: (audience stream, repo, vendor) — distinct namespace
+    from repo/action/shape/freshness so a granularity switch never collides fingerprints."""
+    raw = f"vendor|{stream}|{repo}|{vendor}"
+    return hashlib.sha256(raw.encode()).hexdigest()[:16]
+
+
 def shape_fingerprint(repo: str) -> str:
     """Repo-keyed identity for an absorption flag: ONE issue per repo that UPDATES in place as
     the residue drifts (a new residueFingerprint rewrites the body, the marker stays), rather
@@ -101,6 +108,33 @@ def _when(a: dict) -> str:
     return d
 
 
+_EMOJI_ORDER = ("🚨", "☣️", "🛡️", "⏳", "⚠️")
+
+
+def _emoji(a: dict) -> str:
+    """A leading urgency glyph so a drift issue stands out in a crowded tracker AND encodes
+    state at a glance, without reading the body. Pure function of already-computed fields
+    (status/kind/worst) — no wall-clock, no date-math here (the pipeline already resolved
+    past-due-ness into `status`)."""
+    if a.get("kind") == "sunset":
+        return "🚨" if (a.get("status") == "DEPRECATED" and a.get("date")) else "⏳"
+    if a.get("kind") == "eol":
+        return "☣️"
+    if a.get("worst") == "CRITICAL":
+        return "🛡️"
+    return "⚠️"
+
+
+def _emoji_worst(acts: list) -> str:
+    """The most urgent emoji among a group of actions, so a comprehensive/per-vendor issue's
+    title reflects its worst-case content."""
+    present = {_emoji(a) for a in acts}
+    for e in _EMOJI_ORDER:
+        if e in present:
+            return e
+    return "⚠️"
+
+
 def _sites_md(a: dict) -> list:
     lines = []
     for f in (a.get("files") or [])[:12]:
@@ -114,7 +148,7 @@ def _sites_md(a: dict) -> list:
 def issue_title(a: dict) -> str:
     when = _when(a)
     tail = f" — by {when}" if when else ""
-    return f"[drift] {_label_of(a)}{tail}"
+    return f"{_emoji(a)} [drift] {_label_of(a)}{tail}"
 
 
 def _footer(links: dict | None = None, *, draft: bool = False) -> str:
@@ -280,6 +314,63 @@ def _issue_op(fp: str, title: str, body: str, by_fp: dict, project: str, *,
 
 
 # ----------------------------------------------------------------------- the planner (pure)
+def _audience_ops(acts: list, audience: str, title_word: str, body_fn, repo_meta: dict,
+                  assignees: dict, links: dict | None, granularity: str, by_fp: dict,
+                  live_fps: set, issue_plan: list) -> None:
+    """Build + append the issue ops for one audience (devops/developer) under the chosen
+    granularity, mutating `issue_plan`/`live_fps` in place (mirrors the shape/freshness blocks
+    around it). `body_fn(project, acts, links)` renders the comprehensive/per-vendor body —
+    `devops_repo_body` and `migrations_md` share that signature."""
+    def assignee_for(repo):
+        if audience == "devops":
+            return assignees.get("devops")
+        return (assignees.get("developer") or {}).get(repo)
+
+    by_repo: dict = {}
+    for a in acts:
+        by_repo.setdefault(a.get("repo"), []).append(a)
+
+    if granularity == "per-problem":
+        for a in acts:
+            repo = a.get("repo")
+            project = (repo_meta.get(repo) or {}).get("project") or repo
+            fp = action_fingerprint(a)
+            live_fps.add(fp)
+            op = _issue_op(fp, issue_title(a), issue_body(a, project, links), by_fp, project,
+                          assignee=assignee_for(repo))
+            op["stream"] = audience
+            issue_plan.append(op)
+        return
+
+    if granularity == "per-vendor":
+        for repo, repo_acts in by_repo.items():
+            project = (repo_meta.get(repo) or {}).get("project") or repo
+            by_vendor: dict = {}
+            for a in repo_acts:
+                by_vendor.setdefault(a.get("ref"), []).append(a)
+            for vendor, v_acts in by_vendor.items():
+                fp = vendor_fingerprint(project, vendor, audience)
+                live_fps.add(fp)
+                op = _issue_op(fp, f"{_emoji_worst(v_acts)} [drift] {vendor} — {project}",
+                              body_fn(project, v_acts, links), by_fp, project,
+                              assignee=assignee_for(repo))
+                op["stream"] = audience
+                issue_plan.append(op)
+        return
+
+    # comprehensive (default): ONE issue per repo, byte-identical to pre-granularity behaviour
+    # except the leading emoji.
+    for repo, repo_acts in by_repo.items():
+        project = (repo_meta.get(repo) or {}).get("project") or repo
+        fp = repo_fingerprint(project, audience)
+        live_fps.add(fp)
+        op = _issue_op(fp, f"{_emoji_worst(repo_acts)} [drift] {title_word} {project}",
+                      body_fn(project, repo_acts, links), by_fp, project,
+                      assignee=assignee_for(repo))
+        op["stream"] = audience
+        issue_plan.append(op)
+
+
 def build_plan(payload: dict, repo_meta: dict, existing: dict, devops_project: str,
                *, dev_as_issues: bool = False, links: dict | None = None,
                shape_stream: bool = False, freshness_stream: bool = False,
@@ -302,11 +393,17 @@ def build_plan(payload: dict, repo_meta: dict, existing: dict, devops_project: s
                     the whole catalog) while any DETECTED vendor is STALE/unaudited and off the
                     auto lane — the drift:freshness label's producer. Constant-keyed, updates
                     in place, closes itself via `_finish` when the due-list empties.
+    `granularity` : how the DevOps/Developer audiences split into issues — "comprehensive"
+                    (default, one issue per repo per audience), "per-problem" (one issue per
+                    action, keyed by `action_fingerprint`), or "per-vendor" (one issue per
+                    (repo, `ref`) per audience, keyed by `vendor_fingerprint`). Does not affect
+                    the shape/freshness maintainer streams. See `_audience_ops`.
     Returns {"issues": [...], "mrs": []} where each item has an `op`
     (create|update|close|skip) and the rendered content. `mrs` is always empty for findings.
     """
-    # `granularity` accepted but unused here — consumed in build_plan's granularity branch,
-    # added next task.
+    # `granularity` ("comprehensive" | "per-problem" | "per-vendor") governs how the DevOps and
+    # Developer audiences are split into issues — see `_audience_ops`. It does not touch the
+    # shape/freshness maintainer streams below.
     assignees = assignees or {"devops": None, "developer": {}}
     actions = payload.get("actions", [])
     devops = [a for a in actions if a.get("owner") == "devops"]
@@ -319,19 +416,9 @@ def build_plan(payload: dict, repo_meta: dict, existing: dict, devops_project: s
             by_fp[fp] = iss
     issue_plan, live_fps = [], set()
 
-    # ---- DevOps: ONE comprehensive issue per repo, IN the repo, assigned to the DevOps account ----
-    devops_by_repo = {}
-    for a in devops:
-        devops_by_repo.setdefault(a.get("repo"), []).append(a)
-    for repo, acts in devops_by_repo.items():
-        project = (repo_meta.get(repo) or {}).get("project") or repo
-        fp = repo_fingerprint(project, "devops")
-        live_fps.add(fp)
-        op = _issue_op(fp, f"[drift] platform upkeep for {project}",
-                       devops_repo_body(project, acts, links), by_fp, project,
-                       assignee=assignees.get("devops"))
-        op["stream"] = "devops"
-        issue_plan.append(op)
+    # ---- DevOps: filed IN the repo, assigned to the DevOps account ----
+    _audience_ops(devops, "devops", "platform upkeep for", devops_repo_body, repo_meta,
+                 assignees, links, granularity, by_fp, live_fps, issue_plan)
 
     # ---- absorption flags (maintainer: one per UNKNOWN shape) ----
     # Placed before the dev branch so it lands in issue_plan + live_fps for BOTH return paths;
@@ -379,19 +466,9 @@ def build_plan(payload: dict, repo_meta: dict, existing: dict, devops_project: s
             op["stream"] = "freshness"      # so execute_plan labels it drift:freshness
             issue_plan.append(op)
 
-    # ---- Developer: ONE comprehensive issue per repo, IN the repo, assigned to the repo owner ----
-    dev_by_repo = {}
-    for a in developer:
-        dev_by_repo.setdefault(a.get("repo"), []).append(a)
-    for repo, acts in dev_by_repo.items():
-        project = (repo_meta.get(repo) or {}).get("project") or repo
-        fp = repo_fingerprint(project, "developer")
-        live_fps.add(fp)
-        op = _issue_op(fp, f"[drift] API migrations for {project}",
-                       migrations_md(project, acts, links), by_fp, project,
-                       assignee=(assignees.get("developer") or {}).get(repo))
-        op["stream"] = "developer"
-        issue_plan.append(op)
+    # ---- Developer: filed IN the repo, assigned to the resolved repo owner ----
+    _audience_ops(developer, "developer", "API migrations for", migrations_md, repo_meta,
+                 assignees, links, granularity, by_fp, live_fps, issue_plan)
 
     return _finish(issue_plan, [], by_fp, live_fps, devops_project)
 
