@@ -40,8 +40,97 @@
 
   <div id="main">
     <section v-show="tab === 'summary'" class="panel active">
-      <!-- Task 4 fills: toolbar search + the reactive summary table -->
-      <div id="summary-mount"></div>
+      <div class="toolbar">
+        <input class="search" id="search" type="search" v-model="q"
+               placeholder="Filter by repo, package or vendor…">
+      </div>
+      <table id="panel">
+        <tbody>
+          <tr v-if="mode === 'catalog' && rows.length">
+            <td colspan="5" class="intro">Vendors this code calls whose retirement list nobody
+              has checked. Zero findings for these is UNAUDITED, not clean.</td>
+          </tr>
+          <tr v-if="mode === 'private' && rows.length">
+            <td colspan="5" class="intro">Sub-dependencies the scan couldn't crawl — private or
+              unreachable.</td>
+          </tr>
+          <template v-for="(r, idx) in rows" :key="mode + '-' + idx">
+            <tr class="row" @click="onRowClick(idx)">
+              <template v-if="mode === 'actions'">
+                <td>{{ r.repoLabel || r.repo }}</td>
+                <td>{{ actionLabel(r) }}</td>
+                <td>{{ targetText(r) }}</td>
+                <td>{{ r.finding_count }}</td>
+                <td :class="'sev-' + r.worst">{{ r.worst }}</td>
+              </template>
+              <template v-else-if="mode === 'endpoints'">
+                <td>{{ r.repo }}</td>
+                <td>{{ r.domain }}</td>
+                <td>{{ r.vendor }}</td>
+                <td>{{ r.version || '?' }}</td>
+                <td>{{ r.file_count }}</td>
+              </template>
+              <template v-else-if="mode === 'private'">
+                <td>{{ r.repo }}</td>
+                <td>
+                  <a v-if="r.kind === 'repo' && safeUrl(r.source)" :href="safeUrl(r.source)"
+                     rel="noopener">{{ r.source }}</a>
+                  <template v-else>{{ r.source }}</template>
+                </td>
+                <td>{{ r.kind }}</td>
+                <td>{{ r.via || '' }}</td>
+                <td></td>
+              </template>
+              <template v-else-if="mode === 'catalog'">
+                <td>{{ r.vendor }}</td>
+                <td>{{ catalogWhy(r) }}</td>
+                <td>{{ r.callSites }} call-site(s)</td>
+                <td>{{ r.catalogEntries }} entr(y/ies)</td>
+                <td :class="'sev-' + r.verdict">{{ r.verdict }}</td>
+              </template>
+            </tr>
+            <tr v-if="expanded[idx] && mode === 'actions'">
+              <td colspan="5" class="detail">
+                <div v-if="r.command"><span class="cmd">{{ r.command }}</span>
+                  <button class="copy" @click.stop="copyText(r.command)">copy</button></div>
+                <div v-else-if="r.recommendation">{{ r.recommendation }}</div>
+                <div>Clears {{ r.finding_count }} advisor{{ r.finding_count === 1 ? 'y' : 'ies' }}<template
+                  v-if="r.critical_count"> ({{ r.critical_count }} critical)</template></div>
+                <div class="usedat" v-if="r.files && r.files.length">
+                  <b>Used at:</b>
+                  <div class="callsite" v-for="(f, fi) in r.files" :key="fi">
+                    <a v-if="f.href && safeUrl(f.href)" :href="safeUrl(f.href)" target="_blank"
+                       rel="noopener">{{ f.loc }}</a>
+                    <template v-else>{{ f.loc }}</template>
+                    <button class="copy-loc" @click.stop="copyText(f.loc)"
+                            :data-loc="f.loc">copy</button>
+                  </div>
+                </div>
+                <ul v-if="r.cves && r.cves.length">
+                  <li v-for="(c, ci) in r.cves" :key="ci">{{ c.id }} — {{ c.title }}</li>
+                </ul>
+                <div v-if="r.sources && r.sources.length">
+                  <template v-for="(u, si) in r.sources" :key="si">
+                    <a v-if="safeUrl(u)" :href="safeUrl(u)" target="_blank"
+                       rel="noopener">source ↗</a>
+                    <template v-else>{{ u }}</template>
+                    <template v-if="si < r.sources.length - 1"> · </template>
+                  </template>
+                </div>
+              </td>
+            </tr>
+            <tr v-if="expanded[idx] && mode === 'endpoints'">
+              <td colspan="5" class="detail">
+                <template v-if="r.files && r.files.length">
+                  <div v-for="(f, fi) in r.files" :key="fi">{{ f }}</div>
+                </template>
+                <template v-else>—</template>
+              </td>
+            </tr>
+          </template>
+        </tbody>
+      </table>
+      <p id="empty" class="empty" v-show="rows.length === 0">Nothing found.</p>
     </section>
     <section v-show="tab === 'timeline'" class="panel active">
       <!-- Task 6 fills: the Retirement Timeline SVG + undated lane -->

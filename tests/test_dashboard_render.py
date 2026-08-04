@@ -504,3 +504,109 @@ def test_build_payload_threads_config_gitlab_host_into_hrefs(monkeypatch):
     proj = build_payload(inv, audit, gitlab_hosts={"git.topsdemo.in"})
     hrefs = [f["href"] for a in proj["actions"] for f in a["files"]]
     assert hrefs == ["https://git.topsdemo.in/g/r/-/blob/S/src/x.php#L5"]
+
+
+# ---- Task 4: the reactive Summary table — filters + row drill-down + repo scope ----
+
+def test_repo_scope_and_tile_filters_are_wired_in_all_modes():
+    from agent.lib import dashboard_render as dr
+    js = dr.APP_JS_SRC
+    # the four filter predicates ported from the vanilla engine
+    for hook in ("DEPRECATED", "sunset", 'owner', "classified"):
+        assert hook in js, hook
+    # the repo scope applies to actions, endpoints AND private (the earlier bug)
+    assert js.count("matchesRepo") >= 3
+    assert "a.repo" in js and "e.repo" in js and "p.repo" in js
+    tmpl = dr.TEMPLATE_SRC
+    assert 'id="panel"' in tmpl and "v-for" in tmpl        # the table renders rows reactively
+
+
+def test_no_v_html_used_for_scan_controlled_rendering():
+    """Task 3 deleted the vanilla esc/escA/safeUrl escapers along with the innerHTML-built
+    rows. The Vue port must not reintroduce an innerHTML-shaped XSS hole: every scan-controlled
+    field (repo, vendor, recommendation, file paths, source URLs, CVE titles) must go through
+    Vue's auto-escaping text/attr bindings, never through v-html. A single v-html on scan data
+    is exactly the bug class the old esc()/escA() helpers existed to prevent."""
+    from agent.lib import dashboard_render as dr
+    assert "v-html" not in dr.TEMPLATE_SRC
+    assert "v-html" not in dr.APP_JS_SRC
+    assert "innerHTML" not in dr.APP_JS_SRC
+
+
+def test_safe_url_scheme_allowlist_is_ported():
+    """safeUrl() must gate every clickable href built from scan data (call-site permalinks,
+    source URLs, private repo URLs) — only http/https become links; javascript:/data: etc.
+    must not. Mirrors the vanilla safeUrl regex."""
+    from agent.lib import dashboard_render as dr
+    js = dr.APP_JS_SRC
+    assert "safeUrl" in js
+    assert re.search(r"\^https\?", js), "safeUrl must allow-list the http/https scheme"
+    # every target=_blank call-site/source link must be scheme-gated by safeUrl first
+    assert 'target="_blank"' in dr.TEMPLATE_SRC and "rel=\"noopener\"" in dr.TEMPLATE_SRC
+
+
+def test_call_site_links_open_new_tab_with_copy_alongside():
+    """Requirement: call-site links open in a NEW tab, with the copy button ALONGSIDE (a link
+    jumps to code, copy grabs path:line) — the recently-fixed behavior must not regress."""
+    from agent.lib import dashboard_render as dr
+    tmpl = dr.TEMPLATE_SRC
+    assert "copy-loc" in tmpl
+    # the call-site anchor and its copy button live in the same block
+    m = re.search(r'<a[^>]*target="_blank"[^>]*>.*?copy-loc.*?</div>', tmpl, re.S)
+    assert m, "expected a target=_blank call-site link followed by a copy-loc button"
+
+
+def test_rows_computed_dispatches_by_mode():
+    """apis|unknown -> endpoints, private -> private, unaudited -> catalog, else -> actions
+    (mirrors the vanilla state.mode map)."""
+    from agent.lib import dashboard_render as dr
+    js = dr.APP_JS_SRC
+    assert '"apis"' in js and '"unknown"' in js and '"endpoints"' in js
+    assert '"unaudited"' in js and '"catalog"' in js
+    assert '"private"' in js
+
+
+def _fleet_for_xss(evil):
+    inv = {"repos": [{"path": "r", "remote_url": None, "head_sha": None, "endpoints": [
+        {"domain": evil, "vendor": evil, "version": "v1", "classified": True,
+         "file_count": 1, "files": ["a.php:1"]}]}],
+        "coverage": {"privateSources": [{"repo": evil, "packages": [],
+                                         "repositories": [evil]}]}}
+    audit = {"generated": "2026-08-04", "actions": [
+        {"repo": evil, "ref": evil, "kind": "cve", "status": "DEPRECATED", "worst": "HIGH",
+         "finding_count": 1, "recommendation": evil, "files": ["x.php:1"], "fixes": [],
+         "sources": [evil]}], "coverage": {"catalog": [{"vendor": evil, "verdict": "STALE"}]}}
+    return inv, audit
+
+
+def test_xss_script_tag_neutralized_at_client_render_layer():
+    """A repo/vendor/recommendation/source_url containing <script> must not become an
+    executable node — proven here by there being no v-html sink for it to execute through
+    (the JSON blob itself is already </script>-hardened, tested elsewhere)."""
+    from agent.lib.dashboard_render import render_dashboard
+    evil = 'a<script>alert(1)</script>&"x'
+    inv, audit = _fleet_for_xss(evil)
+    html = render_dashboard(inv, audit, "2026-08-04")
+    assert "<script>alert(1)</script>" not in html
+    # no v-html sink exists anywhere in the shipped page for this data to be injected through
+    assert "v-html" not in html
+
+
+def test_xss_javascript_scheme_source_url_never_becomes_a_link():
+    """A source_url of `javascript:alert(1)` must never render as a clickable href — the
+    safeUrl scheme gate must refuse it (falls back to plain escaped text)."""
+    from agent.lib.dashboard_render import render_dashboard
+    evil = "javascript:alert(1)"
+    inv, audit = _fleet_for_xss(evil)
+    html = render_dashboard(inv, audit, "2026-08-04")
+    assert 'href="javascript:' not in html.lower()
+
+
+def test_xss_attribute_breakout_string_does_not_break_the_page():
+    """A `"` attribute-breakout string in a repo/vendor field must not let scan data escape
+    its attribute context. Since rendering goes through Vue's :attr bindings (never string
+    concatenation into an attribute), there is no breakout point — this is a regression guard
+    on that design staying true (no manual `+'"'+` attribute building in app.js)."""
+    from agent.lib import dashboard_render as dr
+    assert not re.search(r'"\s*\+\s*\w+.*\+\s*\'"', dr.APP_JS_SRC), \
+        "app.js must not hand-build HTML attributes by string concatenation"
