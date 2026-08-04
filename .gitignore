@@ -24,3 +24,6 @@ docs/results/
 
 # local demo dashboard (drift-scan run --state .drift-demo)
 .drift-demo/
+
+# local full-fleet scan state
+.drift-fleet/
