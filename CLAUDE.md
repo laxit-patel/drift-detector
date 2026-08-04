@@ -93,6 +93,5 @@ resurfaces; and the tests' *comments* (each pins a real shipped bug — keep the
 Spirit/mascot: **Mahoraga — "the Wheel."** It names the tool's adaptation engine (the `absorb`
 gate + idiom families): the scanner adapts to every integration shape it's shown, then detects it
 deterministically — but only through the review gate, never autonomously. Tagline: *Know before it
-breaks.* Accent ember-crimson. (Retired the former "Ashen Oracle" alias — it collided with the
-Mahoraga adaptation theme. The shared `DESIGN.md` collection framework stays; Drift Detector opted
-out of its mystical-relic scheme.)
+breaks.* Accent ember-crimson. (Retired the former "Ashen Oracle" alias + its relic-icon branding —
+it collided with the Mahoraga adaptation theme.)
