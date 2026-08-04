@@ -50,7 +50,11 @@
         sarifView: "prev",     // SARIF sub-tab: Preview | JSON · sarif.json
         copyState: {},         // per-view "Copy"/"Copied" label for the JSON copy buttons
         q: "",
-        theme: "dark"
+        theme: "dark",
+        // the Retirement Timeline's hover tooltip: reactive state bound via {{ }}/:style ONLY
+        // (no raw-HTML sink of any kind) — see showTip/moveTip/hideTip below.
+        tip: {visible: false, x: 0, y: 0, vendor: "", unit: "", repo: "",
+              date: "", when: "", statusLabel: "", pillClass: ""}
       };
     },
     computed: {
@@ -224,13 +228,18 @@
                this.driftChangeRows.length > 0);
       },
 
-      // ---- the Retirement Timeline (Task 6): every sunset action plotted by date, "today"
-      // = DATA.generated (never the wall clock). NONE silently dropped — a sunset is either a
-      // dated point on the axis (timeline.dated) or a chip in the undated lane
-      // (timeline.undated); verify.check_timeline_lanes enforces that the template still
-      // references BOTH lanes, so deleting either one (hiding deprecated-no-date sunsets,
-      // say) fails verify instead of only a screenshot nobody looks at.
-      // Respects the global repo scope like every other view.
+      // ---- the Retirement Timeline (Task 2 restructure of the old per-vendor SVG scatter,
+      // per docs/design/2026-08-04-cockpit-mockup.html): one row per OPERATION, not one dot
+      // per vendor — two sunsets on the same vendor but different operations (SP-API
+      // /catalog/v0 vs /fba/inbound/v0) must render as two rows, never merge into one point.
+      // Rows are grouped by vendor (`byVendor`) and positioned on a shared date axis; "today"
+      // is anchored at dayOrdinal(DATA.generated) — never the live wall clock — so the SAME drift.json
+      // places every point identically on any machine, on any day it's opened. NONE silently
+      // dropped: a sunset is either a dated row on the axis (timeline.dated) or a chip in the
+      // undated lane (timeline.undated); verify.check_timeline_lanes enforces the template
+      // still references BOTH, so deleting either (hiding deprecated-no-date sunsets, say)
+      // fails verify instead of only a screenshot nobody looks at. Respects the global repo
+      // scope like every other view.
       timeline: function(){
         var self = this;
         var genOrd = dayOrdinal(this.generated);
@@ -240,50 +249,59 @@
         var datedActions = sunsets.filter(function(a){ return !!a.date; });
         var undatedActions = sunsets.filter(function(a){ return !a.date; });
 
-        var label = function(a){
-          return (a.repoLabel || a.repo) + " · " + a.ref + (a.unit ? " — " + a.unit : "");
-        };
+        var undated = undatedActions.map(function(a){
+          return {repo: a.repoLabel || a.repo, vendor: a.ref, unit: a.unit || ""};
+        });
 
         if(!datedActions.length){
-          return {
-            dated: [],
-            undated: undatedActions.map(function(a){
-              return {repo: a.repoLabel || a.repo, vendor: a.ref, unit: a.unit,
-                      label: label(a) + " · date unknown"};
-            }),
-            genX: null
-          };
+          return {dated: [], undated: undated, byVendor: [], years: [], todayPct: null};
         }
 
+        // shared date axis: span the dated actions AND today (so "today" is never clipped
+        // off the edge), padded a little so points don't sit flush on the axis border.
         var ords = datedActions.map(function(a){ return dayOrdinal(a.date); });
-        var allOrds = genOrd === null ? ords : ords.concat([genOrd]);
+        var allOrds = genOrd === null ? ords.slice() : ords.concat([genOrd]);
         var minOrd = Math.min.apply(null, allOrds), maxOrd = Math.max.apply(null, allOrds);
         var span = Math.max(1, maxOrd - minOrd);
-        var PAD = 30, W = 940;                          // matches the <svg viewBox="0 0 1000 220">
-        var xOf = function(o){ return PAD + ((o - minOrd) / span) * W; };
+        var pad = Math.max(1, Math.round(span * 0.05));
+        var lo = minOrd - pad, hi = maxOrd + pad, fullSpan = Math.max(1, hi - lo);
+        var pctOf = function(o){ return ((o - lo) / fullSpan) * 100; };
 
-        var dated = datedActions.map(function(a, i){
-          var o = dayOrdinal(a.date);
-          var pastDue = genOrd !== null && o < genOrd;
-          var up = i % 2 === 0;                          // alternate stems so labels don't collide
+        // kind: past-due (already retired) / soon (retires within ~6 months) / upcoming —
+        // the three colors the legend + the hover pill both key off.
+        var dated = datedActions.map(function(a){
+          var ord = dayOrdinal(a.date);
+          var days = genOrd === null ? null : (ord - genOrd);
+          var kind = days === null ? "up" : (days < 0 ? "crit" : (days <= 183 ? "soon" : "up"));
           return {
-            x: xOf(o), y: 130,
-            color: pastDue ? "var(--crit)" : "var(--sun)",
-            pastDue: pastDue,
-            date: a.date,
-            stemY: up ? 96 : 164,
-            labelY: up ? 88 : 180,
-            label: label(a) + " · " + a.date + (pastDue ? " (past-due)" : " (upcoming)")
+            repo: a.repoLabel || a.repo, vendor: a.ref, unit: a.unit || "", date: a.date,
+            pct: pctOf(ord), kind: kind,
+            when: days === null ? "" : (days < 0 ? (Math.abs(days) + " days ago") : ("in " + days + " days")),
+            statusLabel: kind === "crit" ? "past-due" : kind === "soon" ? "retires ≤ 6 months" : "upcoming",
+            pillClass: kind === "crit" ? "crit" : "up"
           };
-        }).sort(function(pa, pb){ return pa.x - pb.x; });
+        });
+
+        var byVendorMap = {};
+        dated.forEach(function(pt){ (byVendorMap[pt.vendor] = byVendorMap[pt.vendor] || []).push(pt); });
+        var byVendor = Object.keys(byVendorMap).sort().map(function(v){
+          return {vendor: v, items: byVendorMap[v].slice().sort(function(x, y){ return x.pct - y.pct; })};
+        });
+
+        // year ticks along the axis — derived from the data's own date range (+ today), never
+        // a hardcoded calendar window, so the axis fits whatever fleet is scanned.
+        var yearSet = {};
+        datedActions.forEach(function(a){ yearSet[+String(a.date).slice(0, 4)] = true; });
+        if(self.generated) yearSet[+String(self.generated).slice(0, 4)] = true;
+        var yearNums = Object.keys(yearSet).map(Number).sort(function(x, y){ return x - y; });
+        var years = [];
+        for(var y = yearNums[0]; y <= yearNums[yearNums.length - 1]; y++){
+          years.push({year: y, pct: pctOf(dayOrdinal(y + "-01-01"))});
+        }
 
         return {
-          dated: dated,
-          undated: undatedActions.map(function(a){
-            return {repo: a.repoLabel || a.repo, vendor: a.ref, unit: a.unit,
-                    label: label(a) + " · date unknown"};
-          }),
-          genX: genOrd === null ? null : xOf(genOrd)
+          dated: dated, undated: undated, byVendor: byVendor, years: years,
+          todayPct: genOrd === null ? null : pctOf(genOrd)
         };
       }
     },
@@ -311,6 +329,24 @@
       safeUrl: function(u){ u = String(u==null ? "" : u); return /^https?:\/\//i.test(u) ? u : null; },
 
       copyText: function(text){ if(navigator.clipboard) navigator.clipboard.writeText(text); },
+
+      // ---- Retirement Timeline hover tooltip: identity (vendor+operation+retires-date+
+      // "N days ago/in N days"+repo), positioned off the mouse. Content is set on reactive
+      // `tip` state and rendered via {{ }} bindings in the template — no raw-HTML sink — so a
+      // scan-controlled vendor/operation/repo string cannot break out into markup. ----
+      showTip: function(pt, evt){
+        this.tip.visible = true;
+        this.tip.vendor = pt.vendor; this.tip.unit = pt.unit; this.tip.repo = pt.repo;
+        this.tip.date = pt.date; this.tip.when = pt.when;
+        this.tip.statusLabel = pt.statusLabel; this.tip.pillClass = pt.pillClass;
+        this.moveTip(evt);
+      },
+      moveTip: function(evt){
+        var x = evt.clientX + 14, y = evt.clientY + 14;
+        if(x + 300 > window.innerWidth) x = evt.clientX - 300;
+        this.tip.x = x; this.tip.y = y;
+      },
+      hideTip: function(){ this.tip.visible = false; },
 
       actionsFor: function(){
         var f = this.tab, self = this;

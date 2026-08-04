@@ -37,12 +37,74 @@
     </div>
   </div>
 
-  <!-- HERO REGION (where the old cards lived) — empty mount point; Task 2/3 fill #hero-body. -->
+  <!-- HERO REGION (where the old cards lived). Task 2 fills #hero-body with the flagship,
+       always-on Retirement Timeline — one row per OPERATION, grouped by vendor, positioned on
+       a shared date axis with a dashed TODAY line. The non-timeline hero states (APIs/Unknown
+       bars, the generic per-dimension empty-state, dynamic herohead swapping by active tab)
+       are Task 3's job, layered on top of this. -->
   <div class="hero">
     <div class="herohead">
-      <h2>Overview</h2>
+      <h2>Retirement timeline</h2>
+      <span class="why">every vendor API sunset, one row per operation<template
+        v-if="scope"> for {{ repoLabelOf(scope) }}</template> — hover a row for detail</span>
+      <span class="sp"></span>
+      <span class="legend" v-if="timeline.dated.length">
+        <span><i class="i-crit"></i>past-due</span><span><i class="i-soon"></i>≤ 6 mo</span>
+        <span><i class="i-up"></i>upcoming</span>
+      </span>
     </div>
-    <div id="hero-body"></div>
+    <div id="hero-body">
+      <template v-if="timeline.dated.length || timeline.undated.length">
+        <div class="axis" v-if="timeline.years.length">
+          <span class="yr" v-for="yr in timeline.years" :key="yr.year"
+                :style="{left: yr.pct + '%'}">{{ yr.year }}</span>
+        </div>
+        <div class="todaywrap" v-if="timeline.todayPct !== null">
+          <div class="today" :style="{left: timeline.todayPct + '%'}">
+            <span class="cap">TODAY · {{ generated }}</span>
+          </div>
+        </div>
+        <div class="tl">
+          <!-- dated ops: one .trk row PER OPERATION (not per vendor) on the shared axis,
+               grouped under a .vhead per vendor — timeline.byVendor. -->
+          <div class="vgroup" v-for="vg in timeline.byVendor" :key="vg.vendor">
+            <div class="vhead">{{ vg.vendor }} · {{ vg.items.length }} operation(s)</div>
+            <div class="trk" v-for="(pt, pi) in vg.items" :key="pi"
+                 @mouseenter="showTip(pt, $event)" @mousemove="moveTip($event)"
+                 @mouseleave="hideTip">
+              <div class="lab"><span class="vend">{{ pt.vendor }}</span> {{ pt.unit }}</div>
+              <div class="line">
+                <span class="pt" :class="pt.kind" :style="{left: pt.pct + '%'}">
+                  <span class="d">{{ pt.date }}</span>
+                </span>
+              </div>
+            </div>
+          </div>
+          <!-- undated ops: no announced cut-off, so no axis position to guess at — listed in
+               their own labeled lane instead. timeline.undated — NEVER dropped (verify's
+               check_timeline_lanes fails the build if this lane's binding disappears). -->
+          <div class="vgroup" v-if="timeline.undated.length">
+            <div class="vhead">Undated — no announced cut-off ({{ timeline.undated.length }})</div>
+            <div class="trk" v-for="(u, ui) in timeline.undated" :key="'u' + ui">
+              <div class="lab"><span class="vend">{{ u.vendor }}</span> {{ u.unit || '—' }}</div>
+              <div class="line"><span class="undated-note">{{ u.repo }} — date unknown</span></div>
+            </div>
+          </div>
+        </div>
+      </template>
+      <p class="empty" v-else>No vendor API sunsets to plot<template
+        v-if="scope"> for {{ repoLabelOf(scope) }}</template>.</p>
+    </div>
+  </div>
+
+  <!-- Retirement Timeline hover tooltip: reactive `tip` state (showTip/moveTip/hideTip),
+       rendered via {{ }}/:class/:style bindings only — no raw-HTML sink of any kind — so a
+       scan-controlled vendor/operation/repo string cannot break out into markup. -->
+  <div class="tip" :style="{opacity: tip.visible ? 1 : 0, left: tip.x + 'px', top: tip.y + 'px'}">
+    <b>{{ tip.vendor }} {{ tip.unit }}</b>
+    <span class="k">retires</span> {{ tip.date }} ({{ tip.when }})<br>
+    <span class="k">repo</span> {{ tip.repo }}
+    <br><span class="pill" :class="tip.pillClass">{{ tip.statusLabel }}</span>
   </div>
 
   <!-- SUB-TABS: replace the old top-level tab bar (Summary/Retirement timeline/SBOM/SARIF).
@@ -168,51 +230,6 @@
       </div>
       </div>
     </section>
-    <!-- The Retirement Timeline's TOP-LEVEL TAB is dropped (no nav button reaches it anymore
-         — that affordance retires into the hero above, Task 2/3). This block is now unreachable
-         dead markup (v-if="false", never rendered) kept ONLY because agent/lib/verify.py's
-         check_timeline_lanes (exercised by tests/test_verify.py, out of this task's file scope)
-         asserts the template still references BOTH timeline lanes (dated + undated) so the
-         undated/deprecated-no-date lane can never silently vanish. Task 2/3 relocates this
-         markup live into #hero-body and this comment goes with it. -->
-    <section v-if="false" class="panel active">
-      <div id="timeline-mount" class="timeline">
-        <p class="tlhint">Every vendor API sunset, plotted by date
-          <template v-if="scope"> for {{ repoLabelOf(scope) }}</template>. Past-due (already
-          retired) sits left of the dashed <b>today</b> line, upcoming sits right — undated
-          sunsets have no announced cut-off and are listed below instead of guessed at.</p>
-        <template v-if="timeline.dated.length || timeline.undated.length">
-          <div class="tl-legend">
-            <span class="tl-lg"><span class="tl-sw" style="background:var(--crit)"></span>Past-due</span>
-            <span class="tl-lg"><span class="tl-sw" style="background:var(--sun)"></span>Upcoming</span>
-            <span class="tl-lg" v-if="timeline.undated.length">
-              <span class="tl-sw tl-sw-undated"></span>Undated</span>
-            <span class="tl-today" v-if="timeline.dated.length">Today · {{ generated }}</span>
-          </div>
-          <svg v-if="timeline.dated.length" class="tl-svg" viewBox="0 0 1000 220" role="img"
-               aria-label="Retirement timeline: vendor API sunsets plotted by date, relative to today">
-            <line class="tl-axis" x1="30" y1="130" x2="970" y2="130"></line>
-            <template v-if="timeline.genX !== null">
-              <line class="tl-todayline" :x1="timeline.genX" y1="30" :x2="timeline.genX" y2="190"></line>
-              <text class="tl-todaylabel" :x="timeline.genX" y="20" text-anchor="middle">today</text>
-            </template>
-            <g v-for="(pt, i) in timeline.dated" :key="'d' + i" class="tl-point">
-              <line :x1="pt.x" y1="130" :x2="pt.x" :y2="pt.stemY" class="tl-stem"></line>
-              <circle :cx="pt.x" :cy="130" r="8" :fill="pt.color"><title>{{ pt.label }}</title></circle>
-              <text :x="pt.x" :y="pt.labelY" text-anchor="middle" class="tl-date">{{ pt.date }}</text>
-            </g>
-          </svg>
-          <div class="tl-undated" v-if="timeline.undated.length">
-            <span class="tl-undated-lbl">Undated — no announced cut-off ({{ timeline.undated.length }}):</span>
-            <span class="tl-chip" v-for="(u, i) in timeline.undated" :key="'u' + i" :title="u.label">
-              {{ u.repo }} · {{ u.vendor }}<template v-if="u.unit"> — {{ u.unit }}</template>
-            </span>
-          </div>
-        </template>
-        <p class="empty" v-else>No vendor API sunsets to plot{{ scope ? " for " + repoLabelOf(scope) : "" }}.</p>
-      </div>
-    </section>
-
     <section v-show="sub === 'sbom'" class="panel active">
       <div class="subbar">
         <button class="tab" :class="{active: sbomView === 'prev'}"

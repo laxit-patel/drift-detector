@@ -432,6 +432,22 @@ def test_timeline_lanes_guard_passes_on_the_real_template():
     verify.check_timeline_lanes(dr.TEMPLATE_SRC)     # both lanes present -> no raise
 
 
+def test_timeline_lanes_guard_matches_the_new_per_operation_markup():
+    """Task 2: the timeline was rewritten from a per-vendor SVG scatter into per-operation
+    `.trk` rows grouped by vendor (`timeline.byVendor`), plus an undated lane
+    (`timeline.undated`). The guard must keep working against THIS markup, not just the
+    retired SVG one — reconstruct the exact edit that would silently drop the undated lane
+    from the new template and prove the guard still catches it."""
+    from agent.lib import dashboard_render as dr
+    verify.check_timeline_lanes(dr.TEMPLATE_SRC)                 # real template passes
+    bad = dr.TEMPLATE_SRC.replace("timeline.undated", "timeline.dated")  # drop the undated lane
+    try:
+        verify.check_timeline_lanes(bad)
+        assert False, "expected a Violation"
+    except verify.Violation as v:
+        assert v.check == "timeline-lanes"
+
+
 def test_verify_catches_a_stale_or_tampered_sbom():
     """A verified projection: sbom.json must equal a fresh build from inventory+audit. A
     hand-edited BOM (dropped component/vuln) must fail, or the SBOM isn't trustworthy."""

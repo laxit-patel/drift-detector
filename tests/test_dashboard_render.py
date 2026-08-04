@@ -625,13 +625,44 @@ def test_sbom_sarif_and_coverage_footer_present():
     assert "rootsUnscannable" in js
 
 
-# ---- Task 6: the Retirement Timeline (SVG) ----
+# ---- Task 6 (superseded by Task 2): the Retirement Timeline ----
+#
+# Task 6 shipped a per-VENDOR SVG scatter (one dot per vendor, merging distinct operations
+# onto a single point). Task 2 replaced it with per-operation `.trk` rows grouped by vendor
+# (docs/design/2026-08-04-cockpit-mockup.html) — the SVG is gone, so the old
+# `test_timeline_chart_is_svg_and_scope_aware` assertion on `<svg` no longer describes the
+# shipped markup; it is superseded by test_hero_timeline_is_per_operation_and_deterministic
+# below, which asserts the NEW per-operation structure instead.
 
-def test_timeline_chart_is_svg_and_scope_aware():
+def test_timeline_is_scope_aware_and_deterministic():
     from agent.lib import dashboard_render as dr
     assert "timeline" in dr.APP_JS_SRC and "matchesRepo" in dr.APP_JS_SRC
-    assert "<svg" in dr.TEMPLATE_SRC and "generated" in dr.APP_JS_SRC   # today-line from generated, not Date.now
-    assert "Date.now" not in dr.APP_JS_SRC                              # determinism
+    assert "generated" in dr.APP_JS_SRC          # today-line anchored on DATA.generated
+    assert "Date.now" not in dr.APP_JS_SRC       # determinism
+
+
+# ---- Task 2: the per-operation Retirement Timeline hero (supersedes Task 6's SVG scatter) ----
+
+def test_hero_timeline_is_per_operation_and_deterministic():
+    """The flagship hero chart: one row per OPERATION (not one dot per vendor — the bug the
+    old SVG scatter had), grouped by vendor, positioned by dayOrdinal(DATA.generated) — never
+    Date.now() / wall-clock, so the SAME drift.json places every point identically regardless
+    of when the page is opened."""
+    from agent.lib import dashboard_render as dr
+    assert "timeline" in dr.APP_JS_SRC and "dayOrdinal" in dr.APP_JS_SRC
+    assert "Date.now" not in dr.APP_JS_SRC
+    assert "byVendor" in dr.APP_JS_SRC or "vgroup" in dr.TEMPLATE_SRC   # grouped per operation
+    # per-operation rows in the template, not a per-vendor scatter: one .trk per item in
+    # timeline.byVendor's items (dated) and one per timeline.undated entry (undated) — no
+    # string-concatenated HTML (v-for, not innerHTML-built rows).
+    assert 'v-for="(pt, pi) in vg.items"' in dr.TEMPLATE_SRC
+    assert 'v-for="(u, ui) in timeline.undated"' in dr.TEMPLATE_SRC
+    assert "<svg" not in dr.TEMPLATE_SRC          # the old per-vendor scatter is gone
+    # the inert Task-1 bridge stub is gone — no dead v-if="false" markup left behind
+    assert 'v-if="false"' not in dr.TEMPLATE_SRC
+    # tooltip content is reactive state rendered via {{ }}/:class bindings, never v-html
+    assert "v-html" not in dr.TEMPLATE_SRC and "innerHTML" not in dr.APP_JS_SRC
+    assert "showTip" in dr.APP_JS_SRC and "tip.visible" in dr.TEMPLATE_SRC
 
 
 # ---- Task 7: deep-linkable filter state (URL <-> Vue state) ----
