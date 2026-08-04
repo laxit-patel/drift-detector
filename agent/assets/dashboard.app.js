@@ -530,21 +530,20 @@
       },
       copyLabel: function(key){ return this.copyState[key] || "Copy"; },
 
-      // ---- Task 7: deep-linkable state — scope ("repo") and the active primary tab ("tab")
-      // round-trip through the URL query string so a delivered issue (e.g. "APIs, scoped to
-      // repo X") can link straight to that view. `q` (the free-text search box) is
-      // deliberately NOT written here: it's transient per-session input, not a "view" worth
-      // bookmarking, and syncing it would rewrite the address bar on every keystroke.
-      // INTERIM (Task 1 of the cockpit IA restructure): only `repo`/`tab` round-trip today;
-      // `sub` (Summary/SBOM/SARIF) does not participate in the URL yet — the full
-      // `?repo=&tab=&sub=` reconciliation is Task 4. Only non-default values are written, so
-      // the clean/default view keeps a clean URL, and history.replaceState (not pushState) is
-      // used so every tab click doesn't spam Back.
+      // ---- Task 4/7: deep-linkable state — scope ("repo"), the active primary tab ("tab")
+      // and the active sub-tab ("sub") round-trip through the URL query string so a
+      // delivered issue (e.g. "APIs, scoped to repo X, SBOM view") can link straight to that
+      // view. `q` (the free-text search box) is deliberately NOT written here: it's transient
+      // per-session input, not a "view" worth bookmarking, and syncing it would rewrite the
+      // address bar on every keystroke. Only non-default values are written (sub's default is
+      // "summary"), so the clean/default view keeps a clean URL, and history.replaceState
+      // (not pushState) is used so every tab click doesn't spam Back.
       syncUrl: function(){
         try{
           var params = new URLSearchParams();
           if(this.scope) params.set("repo", this.scope);
           if(this.tab) params.set("tab", this.tab);
+          if(this.sub && this.sub !== "summary") params.set("sub", this.sub);
           var qs = params.toString();
           var url = location.pathname + (qs ? "?" + qs : "") + location.hash;
           history.replaceState(null, "", url);
@@ -555,9 +554,12 @@
       // any change to WHAT is shown (primary tab, repo scope, search text) closes every open
       // detail row — mirrors the vanilla render(), which rebuilt the whole <tbody> (and so
       // discarded every row's open/closed state) on every tile click / scope change / keystroke.
-      // It also (tab/scope only) re-syncs the URL — see the Task 7 note on syncUrl above.
+      // It also (tab/scope only) re-syncs the URL — see the Task 4/7 note on syncUrl above.
       tab: function(){ this.expanded = {}; this.syncUrl(); },
       scope: function(){ this.expanded = {}; this.syncUrl(); },
+      // sub (Summary/SBOM/SARIF) doesn't scope `rows`/`expanded` — only the primary tab and
+      // repo scope do — so switching it just re-syncs the URL, no accordion reset needed.
+      sub: function(){ this.syncUrl(); },
       q: function(){ this.expanded = {}; }
     },
     mounted: function(){
@@ -565,11 +567,11 @@
       document.documentElement.style.colorScheme = this.theme==="auto" ? "light dark" : this.theme;
       document.title = "Drift Detector — DevSecOps Cockpit · " + this.generated;
 
-      // ---- Task 7: seed scope/tab from the URL on load. Every value is validated against
-      // the known-good option lists (repoOptions / tile keys) before being assigned — an
-      // unknown or stale param (a repo that no longer exists, a typo'd tab) is silently
-      // ignored and the default view renders, never a throw. `sub` is not seeded here yet
-      // (Task 4 — see the syncUrl note above).
+      // ---- Task 4/7: seed scope/tab/sub from the URL on load. Every value is validated
+      // against the known-good option lists (repoOptions / tile keys / the fixed sub-tab set)
+      // before being assigned — an unknown or stale param (a repo that no longer exists, a
+      // typo'd tab=bogus, a sub=bogus) is silently ignored and the default view renders,
+      // never a throw.
       try{
         var params = new URLSearchParams(location.search);
         var repo = params.get("repo");
@@ -578,6 +580,8 @@
         var knownTabs = [];
         this.tileGroups.forEach(function(g){ g.tiles.forEach(function(t){ knownTabs.push(t.key); }); });
         if(tab && knownTabs.indexOf(tab) > -1) this.tab = tab;
+        var sub = params.get("sub");
+        if(sub && ["summary", "sbom", "sarif"].indexOf(sub) > -1) this.sub = sub;
       }catch(e){}
       this.syncUrl();
     }

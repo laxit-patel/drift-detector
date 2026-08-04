@@ -665,17 +665,24 @@ def test_hero_timeline_is_per_operation_and_deterministic():
     assert "showTip" in dr.APP_JS_SRC and "tip.visible" in dr.TEMPLATE_SRC
 
 
-# ---- Task 7: deep-linkable filter state (URL <-> Vue state) ----
+# ---- Task 7/4: deep-linkable filter state (URL <-> Vue state) ----
 
 def test_deep_link_state_sync_is_wired():
     from agent.lib import dashboard_render as dr
     js = dr.APP_JS_SRC
     assert "location.search" in js or "URLSearchParams" in js
     assert "replaceState" in js                     # updates URL without history spam
-    # interim params post-IA-restructure: repo (scope) + tab (primary metric dimension).
-    # Full ?repo=&tab=&sub= reconciliation is Task 4; this only proves the rename didn't
-    # leave a dangling reference to the old `filter`/`tile` state.
     for key in ("repo", "tab"):
+        assert key in js, key
+
+
+def test_deep_links_use_the_new_tab_and_sub_params():
+    # Task 4: full ?repo=&tab=&sub= reconciliation for the new cockpit IA — repo (scope),
+    # tab (the active primary/tile tab) and sub (summary|sbom|sarif) all round-trip.
+    from agent.lib import dashboard_render as dr
+    js = dr.APP_JS_SRC
+    assert "replaceState" in js and "URLSearchParams" in js
+    for key in ("repo", "tab", "sub"):
         assert key in js, key
 
 
