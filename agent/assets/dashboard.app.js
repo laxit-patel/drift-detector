@@ -83,6 +83,14 @@
             {key:"private",label:"Private",n:c.private},{key:"unaudited",label:"Unaudited",n:c.unaudited}]}
         ];
       },
+      // tile key -> its count, flattened out of tileGroups. The single place heroMode (and
+      // the empty-state header) look up "is this dimension zero", so the zero-check always
+      // agrees with the number printed on the tab itself — no second count computed by hand.
+      tileCountsByKey: function(){
+        var m = {};
+        this.tileGroups.forEach(function(g){ g.tiles.forEach(function(t){ m[t.key] = t.n; }); });
+        return m;
+      },
       themeLabel: function(){ var m=this.theme; return (m==="dark"?"●":m==="light"?"○":"◐")+" Theme: "+m; },
       // ---- Summary table: mode dispatch + scope/query-filtered rows (ported from the
       // pre-Vue _CLIENT_JS: actionsFor/endpointsFor/privateFor/catalogFor + the render()
@@ -303,6 +311,81 @@
           dated: dated, undated: undated, byVendor: byVendor, years: years,
           todayPct: genOrd === null ? null : pctOf(genOrd)
         };
+      },
+
+      // ---- Task 3: the hero is CONTEXTUAL to the active primary tab, per
+      // docs/design/2026-08-04-cockpit-mockup.html's buildHero(). Exactly one of three
+      // states, decided ONCE here so the template is a plain v-if/v-else-if/v-else chain
+      // with no duplicated branching logic:
+      //   'timeline' — the flagship Retirement Timeline (Task 2, unchanged): sunsets/pastdue/
+      //     fixes/developer, and the null OVERVIEW default. Same always-on timeline for all
+      //     of these (it was never tab-filtered — see the `timeline` computed above), so this
+      //     mode is really "no bespoke hero view — show the fleet's sunset landscape".
+      //   'vendors' — apis/unknown: which third-party APIs (or unclassified hosts) this code
+      //     calls, per vendorBars below.
+      //   'empty' — every other dimension (critical/eol/private/unaudited/devops) WHEN its
+      //     tile count is 0. This is the load-bearing branch: "cannot see" must never render
+      //     as "clean" (CLAUDE.md principle 1), so a genuine zero gets the honest empty-state
+      //     copy instead of an empty timeline that could be mistaken for "nothing to see
+      //     here, scan's fine". If one of those dimensions is NOT zero, there's still no
+      //     bespoke hero for it, so it falls back to the always-on timeline (real data, just
+      //     not scoped to that dimension) rather than lying with a "nothing found" empty-state
+      //     over a tab that plainly has rows in the table below.
+      heroMode: function(){
+        var TIMELINE_TABS = {sunsets:1, pastdue:1, fixes:1, developer:1};
+        var t = this.tab;
+        if(t === null || TIMELINE_TABS[t]) return "timeline";
+        if(t === "apis" || t === "unknown") return "vendors";
+        return (this.tileCountsByKey[t] || 0) === 0 ? "empty" : "timeline";
+      },
+      heroTitle: function(){
+        var m = this.heroMode;
+        if(m === "vendors") return this.tab === "apis" ? "Integrations by vendor" : "Unclassified endpoints";
+        if(m === "empty") return this.tabName(this.tab);
+        return "Retirement timeline";
+      },
+      heroWhy: function(){
+        var scopeSuffix = this.scope ? (" for " + this.repoLabelOf(this.scope)) : "";
+        if(this.heroMode === "vendors") return "which third-party APIs this code calls" + scopeSuffix;
+        if(this.heroMode === "empty") return "";
+        return "every vendor API sunset, one row per operation" + scopeSuffix + " — hover a row for detail";
+      },
+      // ---- vendor/endpoint breakdown for the 'vendors' hero (apis/unknown tabs), grouping
+      // DATA.endpoints — the mockup's `.mini`/`.bar` bars. Endpoints carry no per-operation
+      // field on this projection (repo/domain/vendor/version/classified/file_count/files
+      // only — see _endpoints_of in dashboard_render.py), so rather than inventing an
+      // "operations" number the bars report what the data actually holds: distinct hosts +
+      // the number of distinct endpoint records per vendor (apis), or call-site volume per
+      // unclassified host (unknown — vendor is always the literal string "Unknown" there, so
+      // grouping by vendor would collapse every unclassified host into one bar; domain is the
+      // real identity for that tab). Respects the global repo scope like every other view.
+      vendorBars: function(){
+        var self = this, wantUnknown = this.tab === "unknown";
+        var eps = (this.DATA.endpoints || []).filter(function(e){
+          return self.matchesRepo(e.repo) && !!e.classified === !wantUnknown;
+        });
+        var byKey = {}, order = [];
+        eps.forEach(function(e){
+          var key = wantUnknown ? (e.domain || "Unknown host") : (e.vendor || "Unknown");
+          if(!(key in byKey)){ byKey[key] = {hosts:{}, records:0, files:0}; order.push(key); }
+          var g = byKey[key];
+          g.hosts[e.domain || ""] = true;
+          g.records += 1;
+          g.files += (e.file_count || 0);
+        });
+        var maxRecords = Math.max.apply(null, order.map(function(k){ return byKey[k].records; }).concat([1]));
+        var palette = ["var(--accent)", "var(--sun)", "var(--accent-2)", "var(--high)", "var(--low)"];
+        return order.map(function(k, i){
+          var g = byKey[k], hostN = Object.keys(g.hosts).filter(Boolean).length;
+          var sub = wantUnknown
+            ? (g.files + " call site" + (g.files === 1 ? "" : "s") + " — unclassified")
+            : (hostN + " host" + (hostN === 1 ? "" : "s") + " · " + g.records + " endpoint" + (g.records === 1 ? "" : "s"));
+          return {
+            name: k, sub: sub,
+            pct: Math.max(4, Math.round((g.records / maxRecords) * 100)),
+            color: wantUnknown ? "var(--muted)" : palette[i % palette.length]
+          };
+        });
       }
     },
     methods: {
@@ -423,6 +506,16 @@
       repoLabelOf: function(k){
         var opt = this.repoOptions.filter(function(o){ return o.key === k; })[0];
         return opt ? opt.label : k;
+      },
+
+      // ---- Task 3: display name for a primary-tab key in the empty-state hero header.
+      // Ported from the mockup's tabName() (docs/design/2026-08-04-cockpit-mockup.html) —
+      // only the dimensions that can actually reach heroMode === 'empty' need an entry;
+      // an unlisted key falls back to the raw key rather than throwing.
+      tabName: function(k){
+        var m = {devops:"DevOps queue", developer:"Developer queue", critical:"Critical",
+                 eol:"End-of-life", private:"Private / uncrawlable", unaudited:"Unaudited vendors"};
+        return m[k] || k;
       },
 
       // ---- JSON view/copy panels (drift.json / CycloneDX / SPDX / SARIF): copy-to-clipboard

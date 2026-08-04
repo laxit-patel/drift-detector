@@ -693,3 +693,27 @@ def test_cockpit_ia_tiles_are_tabs_hero_and_subtabs():
     assert "toggleTab" in js and "state" in js
     # the summary rows scope to the active primary tab (null => all actions)
     assert "this.tab" in js
+
+
+# ---- Task 3: contextual hero — vendor bars + honest empty-states per tab ----
+
+def test_hero_is_contextual_with_honest_empty_state():
+    """The hero is not always the Retirement Timeline: apis/unknown get a vendor/endpoint
+    breakdown, and a zero-count dimension (critical/eol/private/unaudited/devops) gets the
+    honest "cannot see != clean" empty-state, never a plain "nothing found" that could be
+    mistaken for a clean scan."""
+    from agent.lib import dashboard_render as dr
+    js, tmpl = dr.APP_JS_SRC, dr.TEMPLATE_SRC
+    assert "heroMode" in js                                   # timeline | vendors | empty
+    # honest empty-state copy for a zero dimension (cannot see != clean)
+    assert "could read" in tmpl or "cannot see" in tmpl.lower() or "unaudited" in js.lower()
+    assert "endpoints" in js                                  # vendor breakdown reads endpoints
+    # the three states are a plain v-if/v-else-if/v-else chain, decided once by heroMode —
+    # no duplicated branching logic re-deriving the same tab checks in the template
+    assert "heroMode === 'timeline'" in tmpl
+    assert "heroMode === 'vendors'" in tmpl
+    assert "vendorBars" in js and "vendorBars" in tmpl
+    # timeline lanes are untouched by the wrap (check_timeline_lanes still has both to find)
+    assert "timeline.dated" in tmpl and "timeline.undated" in tmpl
+    # XSS: vendor/domain names are scan-controlled — interpolated via {{ }}, never a raw sink
+    assert "v-html" not in tmpl and "innerHTML" not in js

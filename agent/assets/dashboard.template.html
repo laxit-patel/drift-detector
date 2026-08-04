@@ -44,56 +44,79 @@
        are Task 3's job, layered on top of this. -->
   <div class="hero">
     <div class="herohead">
-      <h2>Retirement timeline</h2>
-      <span class="why">every vendor API sunset, one row per operation<template
-        v-if="scope"> for {{ repoLabelOf(scope) }}</template> — hover a row for detail</span>
+      <h2>{{ heroTitle }}</h2>
+      <span class="why" v-if="heroWhy">{{ heroWhy }}</span>
       <span class="sp"></span>
-      <span class="legend" v-if="timeline.dated.length">
+      <span class="legend" v-if="heroMode === 'timeline' && timeline.dated.length">
         <span><i class="i-crit"></i>past-due</span><span><i class="i-soon"></i>≤ 6 mo</span>
         <span><i class="i-up"></i>upcoming</span>
       </span>
     </div>
+    <!-- HERO BODY: CONTEXTUAL to the active primary tab (Task 3) — exactly one of three
+         states, decided once by the `heroMode` computed so this is a plain v-if chain with
+         no re-derived branching. -->
     <div id="hero-body">
-      <template v-if="timeline.dated.length || timeline.undated.length">
-        <div class="axis" v-if="timeline.years.length">
-          <span class="yr" v-for="yr in timeline.years" :key="yr.year"
-                :style="{left: yr.pct + '%'}">{{ yr.year }}</span>
-        </div>
-        <div class="todaywrap" v-if="timeline.todayPct !== null">
-          <div class="today" :style="{left: timeline.todayPct + '%'}">
-            <span class="cap">TODAY · {{ generated }}</span>
+      <template v-if="heroMode === 'timeline'">
+        <template v-if="timeline.dated.length || timeline.undated.length">
+          <div class="axis" v-if="timeline.years.length">
+            <span class="yr" v-for="yr in timeline.years" :key="yr.year"
+                  :style="{left: yr.pct + '%'}">{{ yr.year }}</span>
           </div>
-        </div>
-        <div class="tl">
-          <!-- dated ops: one .trk row PER OPERATION (not per vendor) on the shared axis,
-               grouped under a .vhead per vendor — timeline.byVendor. -->
-          <div class="vgroup" v-for="vg in timeline.byVendor" :key="vg.vendor">
-            <div class="vhead">{{ vg.vendor }} · {{ vg.items.length }} operation(s)</div>
-            <div class="trk" v-for="(pt, pi) in vg.items" :key="pi"
-                 @mouseenter="showTip(pt, $event)" @mousemove="moveTip($event)"
-                 @mouseleave="hideTip">
-              <div class="lab"><span class="vend">{{ pt.vendor }}</span> {{ pt.unit }}</div>
-              <div class="line">
-                <span class="pt" :class="pt.kind" :style="{left: pt.pct + '%'}">
-                  <span class="d">{{ pt.date }}</span>
-                </span>
+          <div class="todaywrap" v-if="timeline.todayPct !== null">
+            <div class="today" :style="{left: timeline.todayPct + '%'}">
+              <span class="cap">TODAY · {{ generated }}</span>
+            </div>
+          </div>
+          <div class="tl">
+            <!-- dated ops: one .trk row PER OPERATION (not per vendor) on the shared axis,
+                 grouped under a .vhead per vendor — timeline.byVendor. -->
+            <div class="vgroup" v-for="vg in timeline.byVendor" :key="vg.vendor">
+              <div class="vhead">{{ vg.vendor }} · {{ vg.items.length }} operation(s)</div>
+              <div class="trk" v-for="(pt, pi) in vg.items" :key="pi"
+                   @mouseenter="showTip(pt, $event)" @mousemove="moveTip($event)"
+                   @mouseleave="hideTip">
+                <div class="lab"><span class="vend">{{ pt.vendor }}</span> {{ pt.unit }}</div>
+                <div class="line">
+                  <span class="pt" :class="pt.kind" :style="{left: pt.pct + '%'}">
+                    <span class="d">{{ pt.date }}</span>
+                  </span>
+                </div>
+              </div>
+            </div>
+            <!-- undated ops: no announced cut-off, so no axis position to guess at — listed
+                 in their own labeled lane instead. timeline.undated — NEVER dropped (verify's
+                 check_timeline_lanes fails the build if this lane's binding disappears). -->
+            <div class="vgroup" v-if="timeline.undated.length">
+              <div class="vhead">Undated — no announced cut-off ({{ timeline.undated.length }})</div>
+              <div class="trk" v-for="(u, ui) in timeline.undated" :key="'u' + ui">
+                <div class="lab"><span class="vend">{{ u.vendor }}</span> {{ u.unit || '—' }}</div>
+                <div class="line"><span class="undated-note">{{ u.repo }} — date unknown</span></div>
               </div>
             </div>
           </div>
-          <!-- undated ops: no announced cut-off, so no axis position to guess at — listed in
-               their own labeled lane instead. timeline.undated — NEVER dropped (verify's
-               check_timeline_lanes fails the build if this lane's binding disappears). -->
-          <div class="vgroup" v-if="timeline.undated.length">
-            <div class="vhead">Undated — no announced cut-off ({{ timeline.undated.length }})</div>
-            <div class="trk" v-for="(u, ui) in timeline.undated" :key="'u' + ui">
-              <div class="lab"><span class="vend">{{ u.vendor }}</span> {{ u.unit || '—' }}</div>
-              <div class="line"><span class="undated-note">{{ u.repo }} — date unknown</span></div>
-            </div>
+        </template>
+        <p class="empty" v-else>No vendor API sunsets to plot<template
+          v-if="scope"> for {{ repoLabelOf(scope) }}</template>.</p>
+      </template>
+      <template v-else-if="heroMode === 'vendors'">
+        <div class="mini" v-if="vendorBars.length">
+          <div class="bar" v-for="(b, bi) in vendorBars" :key="bi">
+            <div class="bn">{{ b.name }}</div>
+            <div class="bl">{{ b.sub }}</div>
+            <div class="track"><div class="fill" :style="{width: b.pct + '%', background: b.color}"></div></div>
           </div>
         </div>
+        <p class="empty" v-else>No {{ tab === 'unknown' ? 'unclassified' : 'classified' }}
+          endpoints found<template v-if="scope"> for {{ repoLabelOf(scope) }}</template>.</p>
       </template>
-      <p class="empty" v-else>No vendor API sunsets to plot<template
-        v-if="scope"> for {{ repoLabelOf(scope) }}</template>.</p>
+      <!-- honest empty-state (CLAUDE.md principle 1: "cannot see" != "clean") — a zero here
+           is only meaningful because the scan could READ these repos; an unaudited or
+           unscannable source would say so in Coverage below, not show a clean zero. -->
+      <template v-else>
+        <div class="empty">Nothing in this dimension for the current scan.
+          <b>Zero here is only meaningful because the scan could read these repos</b> — an
+          unaudited or unscannable source would say so, not show a clean zero.</div>
+      </template>
     </div>
   </div>
 
