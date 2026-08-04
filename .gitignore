@@ -21,3 +21,6 @@ docs/results/
 
 # agent worktrees / local scratch (never publish)
 .claude/
+
+# local demo dashboard (drift-scan run --state .drift-demo)
+.drift-demo/

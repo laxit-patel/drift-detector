@@ -8,7 +8,8 @@ fleet:
   - https://git.example.com/team/service-b
 
 delivery:
-  mode: create               # dry-run (print the plan, write nothing) | create (file issues) | off
+  mode: dry-run              # dry-run (print the plan, write nothing) | create (file issues) | off
+                             # the template ships dry-run — a copy can't file issues until you opt in
   # Each flagged repo gets up to TWO comprehensive issues, filed IN THE REPO'S OWN tracker:
   #   • a DevOps issue    (package CVEs + runtime EOL)  — labelled drift:devops
   #   • a Developer issue (vendor sunsets + framework EOL) — labelled drift:developer

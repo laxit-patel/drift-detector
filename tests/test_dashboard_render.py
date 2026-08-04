@@ -592,13 +592,21 @@ def test_no_unscannable_key_pollution_when_all_scanned():
 
 
 def test_repo_filter_present_and_wired_across_panels():
-    """A global repo scope (Summary + SBOM + SARIF) so you can look at one repo."""
+    """A global repo scope (Summary + SBOM + SARIF) so you can look at one repo. The control
+    lives in the header chip row (top-right), and EVERY repo-scoped mode honours it — the bug
+    was that only the default `actions` mode filtered, so the dropdown silently no-op'd the
+    moment you clicked the APIs / Unknown / Private tiles."""
     html = render_dashboard(_inv(), _audit([_cve(repo="web")]), "2026-07-15")
-    assert 'id="repo-filter"' in html and ">all repos<" in html      # the control
+    assert 'id="repo-filter"' in html and ">All repos<" in html      # the control
+    # it sits in the pinned header (the .brand row), not a separate bar below the tiles
+    header = html.split('class="brand"')[1].split("</div>")[0]
+    assert 'id="repo-filter"' in header and 'class="repopick"' in header
     js = html.split("<script>")[-1]
     for hook in ("matchesRepo", "state.repo", "renderSbom", "renderSarif", "repo-filter"):
         assert hook in js, hook
-    assert "if(!matchesRepo(a.repo)) return" in js                   # Summary honours it
+    assert "if(!matchesRepo(a.repo)) return" in js                   # Summary/actions honours it
+    assert "if(!matchesRepo(e.repo)) return" in js                   # APIs/Unknown (endpoints) honours it
+    assert "matchesRepo(p.repo)" in js                               # Private honours it
 
 
 def test_covered_private_dep_is_excluded_from_the_tile_and_surfaced_separately():

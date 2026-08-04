@@ -268,6 +268,9 @@ def render_payload(projection: dict, now: str, *, bundle: dict | None = None) ->
              '<span class="cap hot">SBOM</span><span class="cap hot">SCA</span>'
              '<span class="cap hot">VEX</span><span class="cap hot">SARIF</span>'
              '<span class="cap">CVE · EOL · sunsets</span></span>'
+             '<select id="repo-filter" class="repopick" aria-label="Scope the report to one repo" '
+             'title="Scope the whole report — Summary, SBOM and SARIF — to one repo">'
+             '<option value="">All repos</option></select>'
              '<button class="themebtn" id="theme">◐ Theme: auto</button></div>')
     p.append(f'<p class="headline"><span class="dot">●</span> '
              f'<span class="big">{c["fixes"]} fixes needed</span> · '
@@ -288,10 +291,7 @@ def render_payload(projection: dict, now: str, *, bundle: dict | None = None) ->
         ("private", "Private", c["private"], ""),
         ("unaudited", "Unaudited", c["unaudited"], "")]))
     p.append("</div>")
-    # global repo scope — filters Summary + SBOM + SARIF to one repo (populated client-side)
-    p.append('<div class="repobar">Viewing <select id="repo-filter" aria-label="Filter by repo">'
-             '<option value="">all repos</option></select><span id="repo-scope-note"></span></div>')
-    # top tabs
+    # top tabs (the global repo scope now lives in the header — #repo-filter, top-right)
     p.append('<div class="tabbar tabgroup" data-panels="main" role="tablist">'
              '<button class="tab active" data-tab="p-summary" role="tab">Summary</button>'
              '<button class="tab" data-tab="p-sbom" role="tab">SBOM</button>'
@@ -426,19 +426,21 @@ a{color:var(--accent-2);text-decoration:none} a:hover{text-decoration:underline}
 .themebtn{appearance:none;background:var(--panel);border:1px solid var(--line);color:var(--muted);
   border-radius:20px;padding:5px 12px;font:inherit;font-size:12px;cursor:pointer}
 .themebtn:hover{color:var(--ink);border-color:var(--accent-2)}
-.headline{font-size:15px;text-wrap:balance;margin:12px 0} .headline .big{font-weight:680} .dot{color:var(--crit)}
-.tilegroups{display:flex;gap:10px 26px;flex-wrap:wrap;padding-bottom:14px;border-bottom:1px solid var(--line)}
-.tg{display:flex;flex-direction:column;gap:7px}
-.tg .lbl{font-size:10.5px;letter-spacing:.09em;text-transform:uppercase;color:var(--muted)}
-.tiles{display:flex;gap:8px;flex-wrap:wrap}
-.tile{background:var(--panel);border:1px solid var(--line);border-radius:var(--r);padding:8px 13px;min-width:76px;
-  display:flex;flex-direction:column;gap:1px;cursor:pointer;color:var(--ink);transition:border-color .15s,transform .1s}
+.headline{font-size:15px;text-wrap:balance;margin:10px 0} .headline .big{font-weight:680} .dot{color:var(--crit)}
+/* the three groups spread edge-to-edge across the full width instead of clustering left */
+.tilegroups{display:flex;justify-content:space-between;gap:10px 22px;flex-wrap:wrap;padding-bottom:11px;border-bottom:1px solid var(--line)}
+.tg{display:flex;flex-direction:column;gap:6px}
+.tg .lbl{font-size:10px;letter-spacing:.09em;text-transform:uppercase;color:var(--muted)}
+.tiles{display:flex;gap:6px;flex-wrap:wrap}
+.tile{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:6px 11px;min-width:66px;
+  display:flex;flex-direction:column;gap:0;cursor:pointer;color:var(--ink);transition:border-color .15s,transform .1s}
 .tile:hover{border-color:color-mix(in oklab,var(--accent-2) 60%,var(--line));transform:translateY(-1px)}
-.tile .n{font-size:21px;font-weight:670;line-height:1.1} .tile .t{font-size:11px;color:var(--muted)}
+.tile .n{font-size:18px;font-weight:670;line-height:1.15} .tile .t{font-size:10.5px;color:var(--muted)}
 .tile[data-sev=crit] .n{color:var(--crit)} .tile[data-sev=warn] .n{color:var(--high)}
 .tile[aria-pressed=true]{outline:2px solid var(--accent-2);outline-offset:-1px}
 .tile:has(.n[data-hot]){background:color-mix(in oklab,var(--crit) 8%,var(--panel));border-color:color-mix(in oklab,var(--crit) 30%,var(--line))}
-@container (max-width:640px){.tilegroups{gap:12px}.tile{min-width:64px;padding:7px 10px}}
+@container (max-width:760px){.tilegroups{justify-content:flex-start}}
+@container (max-width:640px){.tilegroups{gap:12px}.tile{min-width:60px;padding:6px 9px}}
 
 .tabbar{display:flex;gap:2px;margin-top:14px;border-bottom:1px solid var(--line)}
 .tab{appearance:none;background:none;border:0;color:var(--muted);font:inherit;font-weight:550;padding:10px 16px;cursor:pointer;position:relative}
@@ -451,10 +453,14 @@ a{color:var(--accent-2);text-decoration:none} a:hover{text-decoration:underline}
 @keyframes fade{from{opacity:0;transform:translateY(2px)}to{opacity:1}}
 
 h3{font-size:13.5px;font-weight:620;margin-bottom:12px}
-.repobar{margin-top:10px;font-size:12.5px;color:var(--muted);display:flex;gap:8px;align-items:center;flex-wrap:wrap}
-.repobar select{background:var(--panel);border:1px solid var(--line);color:var(--ink);border-radius:8px;padding:4px 10px;font:inherit;font-size:12.5px;accent-color:var(--accent)}
-.repobar select:focus{outline:2px solid var(--accent-2);outline-offset:1px}
-#repo-scope-note{color:var(--accent)}
+/* the global repo scope, top-right in the header chip row (next to Theme) */
+.repopick{appearance:none;background:var(--panel);border:1px solid var(--line);color:var(--ink);
+  border-radius:20px;padding:5px 26px 5px 12px;font:inherit;font-size:12px;cursor:pointer;max-width:200px;
+  background-image:linear-gradient(45deg,transparent 50%,var(--muted) 50%),linear-gradient(135deg,var(--muted) 50%,transparent 50%);
+  background-position:right 12px center,right 7px center;background-size:5px 5px,5px 5px;background-repeat:no-repeat}
+.repopick:hover{color:var(--ink);border-color:var(--accent-2)}
+.repopick:focus{outline:2px solid var(--accent-2);outline-offset:1px}
+.repopick[data-scoped]{border-color:color-mix(in oklab,var(--accent) 55%,var(--line));color:var(--accent)}
 .toolbar{display:flex;gap:10px;align-items:center;margin-bottom:12px;flex-wrap:wrap}
 .search{flex:1;min-width:200px;background:var(--panel-2);border:1px solid var(--line);color:var(--ink);border-radius:9px;padding:7px 12px;font:inherit;accent-color:var(--accent)}
 .search::placeholder{color:var(--muted)}
@@ -624,6 +630,7 @@ _CLIENT_JS = r"""
   }
   function renderEndpoints(list){
     list.forEach(function(e){
+      if(!matchesRepo(e.repo)) return;                    // global repo scope (APIs/Unknown tiles)
       if(!matchesQ((e.repo||"")+" "+(e.domain||"")+" "+(e.vendor||""))) return;
       var tr=document.createElement("tr"); tr.className="row";
       tr.innerHTML='<td>'+esc(e.repo)+'</td><td>'+esc(e.domain)+'</td><td>'+esc(e.vendor)+
@@ -639,7 +646,8 @@ _CLIENT_JS = r"""
   }
 
   function privateFor(){
-    return (DATA.private||[]).filter(function(p){ return matchesQ((p.repo||"")+" "+(p.source||"")); });
+    return (DATA.private||[]).filter(function(p){
+      return matchesRepo(p.repo) && matchesQ((p.repo||"")+" "+(p.source||"")); });   // Private tile honours the repo scope
   }
   function catalogFor(){
     return (DATA.catalog||[]).filter(function(cv){
@@ -818,8 +826,9 @@ _CLIENT_JS = r"""
       .forEach(function(k){ var o=document.createElement("option"); o.value=k; o.textContent=repoLabelOf(k); sel.appendChild(o); });
     sel.addEventListener("change", function(){
       state.repo=sel.value;
-      var note=document.getElementById("repo-scope-note");
-      if(note) note.textContent = state.repo ? ("· scoped to "+repoLabelOf(state.repo)) : "";
+      // reflect the active scope on the control itself (it shows the repo name; the accent
+      // border marks "not all repos" at a glance) — replaces the old inline scope note
+      if(state.repo) sel.setAttribute("data-scoped",""); else sel.removeAttribute("data-scoped");
       render(); renderSbom(); renderSarif();
     });
   }
