@@ -286,7 +286,8 @@
             pct: pctOf(ord), kind: kind,
             when: days === null ? "" : (days < 0 ? (Math.abs(days) + " days ago") : ("in " + days + " days")),
             statusLabel: kind === "crit" ? "past-due" : kind === "soon" ? "retires ≤ 6 months" : "upcoming",
-            pillClass: kind === "crit" ? "crit" : "up"
+            pillClass: kind                       // crit / soon / up — the pill tint matches the axis dot
+
           };
         });
 
@@ -392,7 +393,7 @@
       // ---- toggleTab: set the active primary tab (the metric-tile dimension), or clear it
       // back to null (OVERVIEW — no scope, the full ranked action queue) if it's already
       // active. Was toggleTile/`filter` pre-restructure; same toggle semantics. ----
-      toggleTab: function(k){ this.tab = (this.tab===k) ? null : k; },
+      toggleTab: function(k){ this.tab = (this.tab===k) ? null : k; this.sub = "summary"; },   // show the filtered rows on tab click
       cycleTheme: function(){ var m=["auto","light","dark"], i=(m.indexOf(this.theme)+1)%3; this.theme=m[i];
         document.documentElement.style.colorScheme = this.theme==="auto" ? "light dark" : this.theme;
         try{ localStorage.setItem("drift-theme", this.theme); }catch(e){} },

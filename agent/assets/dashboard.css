@@ -118,6 +118,7 @@ td{padding:9px 12px;border-bottom:1px solid color-mix(in oklab,var(--line) 60%,t
 .pill::before{content:"";width:6px;height:6px;border-radius:50%;background:currentColor}
 .pill.crit{color:var(--crit);background:color-mix(in oklab,var(--crit) 15%,transparent)}
 .pill.high{color:var(--high);background:color-mix(in oklab,var(--high) 15%,transparent)}
+.pill.soon{color:var(--high);background:color-mix(in oklab,var(--high) 15%,transparent)}
 .pill.med{color:var(--med);background:color-mix(in oklab,var(--med) 15%,transparent)}
 .pill.low{color:var(--low);background:color-mix(in oklab,var(--low) 15%,transparent)}
 .pill.sun{color:var(--sun);background:color-mix(in oklab,var(--sun) 15%,transparent)}

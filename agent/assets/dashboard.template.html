@@ -75,7 +75,8 @@
               <div class="trk" v-for="(pt, pi) in vg.items" :key="pi"
                    @mouseenter="showTip(pt, $event)" @mousemove="moveTip($event)"
                    @mouseleave="hideTip">
-                <div class="lab"><span class="vend">{{ pt.vendor }}</span> {{ pt.unit }}</div>
+                <div class="lab" :title="pt.vendor + ' ' + pt.unit">{{ pt.unit }}</div>   <!-- vendor is in the .vhead group header above -->
+
                 <div class="line">
                   <span class="pt" :class="pt.kind" :style="{left: pt.pct + '%'}">
                     <span class="d">{{ pt.date }}</span>
