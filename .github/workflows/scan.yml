@@ -119,10 +119,14 @@ jobs:
         env:
           GITLAB_TOKEN: ${{ secrets.GITLAB_TOKEN }}
         run: |
+          # The report link in every issue points at the PUBLIC cockpit (GitHub Pages) — the
+          # shareable main surface — not the private GitLab drift-ops readme. Derived from the
+          # repo slug: https://<owner>.github.io/<repo>/ . (publish-pages must be enabled — it is.)
+          PAGES_URL="https://${GITHUB_REPOSITORY%%/*}.github.io/${GITHUB_REPOSITORY##*/}/"
           python3 -m agent.cli deliver --config drift-ops/config/drift.yml \
             --state drift-ops/state \
             --run-url "${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}" \
-            --report-url "https://${GITLAB_HOST}/${DRIFT_OPS_PATH}"
+            --report-url "$PAGES_URL"
 
       - name: Publish the report to the drift-ops landing page (README)
         # So visiting the drift-ops repo on GitLab shows the latest scan (GitLab renders the
@@ -184,8 +188,10 @@ jobs:
         env:
           DRIFT_CHAT_WEBHOOK: ${{ secrets.GCHAT_WEBHOOK }}
         run: |
+          # same public cockpit link as the issues (not the private GitLab readme)
+          PAGES_URL="https://${GITHUB_REPOSITORY%%/*}.github.io/${GITHUB_REPOSITORY##*/}/"
           python3 -m agent.cli notify --state drift-ops/state \
-            --report-url "https://${GITLAB_HOST}/${DRIFT_OPS_PATH}" \
+            --report-url "$PAGES_URL" \
             --run-url "${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
 
       - name: Upload the report as a run artifact

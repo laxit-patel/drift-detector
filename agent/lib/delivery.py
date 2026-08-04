@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import hashlib
 import re
+import urllib.parse
 
 LABEL = "drift-detector"
 DEVOPS_LABEL = "drift:devops"
@@ -151,15 +152,65 @@ def issue_title(a: dict) -> str:
     return f"{_emoji(a)} [drift] {_label_of(a)}{tail}"
 
 
-def _footer(links: dict | None = None, *, draft: bool = False) -> str:
-    """The provenance line — 'what stemmed this': a link back to the scan run that filed it
-    and to the full report, so a reader can trace any issue/MR to its source."""
+# ---------------------------------------------------------------- "Open in Claude" deep-links
+# A one-click hand-off: the reader opens Claude Code on the web (claude.ai/code) with the finding
+# already in the prompt, so Claude has the full picture — the dying API, its call-sites, the dated
+# retirement, the recommended migration — without the human retyping any of it. The fleet repos
+# live on GitLab (not GitHub), so we pass the context IN the prompt rather than auto-connecting a
+# repo (the `repositories=` param only wires GitHub). The URL scheme is intentionally isolated in
+# these two helpers so it is a one-line change if claude.ai's deep-link format evolves.
+_CLAUDE_BASE = "https://claude.ai/code?prompt="
+
+
+def _claude_prompt(a: dict, display: str | None = None) -> str:
+    when = _when(a)
+    lines = ["Help me migrate off a dying third-party API that Drift Detector flagged.", "",
+             f"- API: {_label_of(a)}",
+             f"- Status: {a.get('status')}" + (f" — {when}" if when else ""),
+             f"- Repo: {display or a.get('repo')}"]
+    if a.get("recommendation"):
+        lines.append(f"- Recommendation: {a['recommendation']}")
+    sites = [f.get("loc") if isinstance(f, dict) else str(f) for f in (a.get("files") or [])[:12]]
+    if sites:
+        lines.append("- Call-sites:")
+        lines += [f"  - {s}" for s in sites]
+    if a.get("sources"):
+        lines.append("- Source: " + ", ".join(a["sources"]))
+    lines += ["", "Explain what's changing and the blast radius, then give me a step-by-step "
+              "migration plan for these call-sites."]
+    return "\n".join(lines)
+
+
+def _claude_url(a: dict, display: str | None = None) -> str:
+    return _CLAUDE_BASE + urllib.parse.quote(_claude_prompt(a, display))
+
+
+def _claude_prompt_repo(repo: str, actions: list) -> str:
+    lines = [f"Help me address the dying third-party API integrations Drift Detector flagged "
+             f"in {repo}.", ""]
+    for a in actions[:20]:
+        when = _when(a)
+        lines.append(f"- {_label_of(a)} — {a.get('status')}" + (f", {when}" if when else ""))
+    lines += ["", "Give me a prioritized migration plan across these findings, worst-first."]
+    return "\n".join(lines)
+
+
+def _claude_url_repo(repo: str, actions: list) -> str:
+    return _CLAUDE_BASE + urllib.parse.quote(_claude_prompt_repo(repo, actions))
+
+
+def _footer(links: dict | None = None, *, draft: bool = False, claude_url: str | None = None) -> str:
+    """The provenance + hand-off line: 'Open in Claude' (the finding, pre-loaded into Claude Code),
+    the public Cockpit (the shareable GitHub Pages report — the main surface now), and the scan run
+    that filed it (traceability). `links['report']` is the Cockpit URL; `links['run']` the CI run."""
     parts = ["Draft, filed by Drift Detector" if draft else "Filed by Drift Detector"]
+    if claude_url:
+        parts.append(f"🤖 [Open in Claude]({claude_url})")
     if links:
+        if links.get("report"):
+            parts.append(f"🔮 [open the cockpit]({links['report']})")
         if links.get("run"):
             parts.append(f"[scan run]({links['run']})")
-        if links.get("report"):
-            parts.append(f"[full report]({links['report']})")
     return "_" + " · ".join(parts) + " — updates in place on the next scan._"
 
 
@@ -176,7 +227,7 @@ def issue_body(a: dict, display: str | None = None, links: dict | None = None) -
         lines += ["Call-sites:", *sites, ""]
     if a.get("sources"):
         lines += ["Source(s): " + ", ".join(a["sources"]), ""]
-    lines += [_footer(links)]
+    lines += [_footer(links, claude_url=_claude_url(a, display))]
     return "\n".join(lines)
 
 
@@ -247,7 +298,7 @@ def migrations_md(repo: str, actions: list, links: dict | None = None) -> str:
         if a.get("sources"):
             out.append("Source(s): " + ", ".join(a["sources"]))
         out.append("")
-    out.append(_footer(links))
+    out.append(_footer(links, claude_url=_claude_url_repo(repo, actions)))
     return "\n".join(out)
 
 
@@ -269,7 +320,7 @@ def devops_repo_body(repo: str, actions: list, links: dict | None = None) -> str
         if a.get("sources"):
             out.append("Source(s): " + ", ".join(a["sources"]))
         out.append("")
-    out.append(_footer(links))
+    out.append(_footer(links, claude_url=_claude_url_repo(repo, actions)))
     return "\n".join(out)
 
 

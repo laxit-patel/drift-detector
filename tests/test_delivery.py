@@ -209,10 +209,12 @@ def test_dev_as_issues_is_idempotent_across_reruns():
 
 
 def test_issue_and_mr_bodies_link_back_to_the_run_and_report():
-    """Provenance ('what stemmed it'): every issue/MR footer links the scan run + report."""
-    links = {"run": "https://gh/run/1", "report": "https://git.x/root/ops"}
+    """Provenance + hand-off: every issue footer links the scan run + the public Cockpit
+    (`report` is now the GitHub Pages cockpit, relabelled from the old 'full report' readme)."""
+    links = {"run": "https://gh/run/1", "report": "https://laxit-patel.github.io/drift-detector/"}
     ib = delivery.issue_body(_cve(), "root/web", links)
-    assert "[scan run](https://gh/run/1)" in ib and "[full report](https://git.x/root/ops)" in ib
+    assert "[scan run](https://gh/run/1)" in ib
+    assert "🔮 [open the cockpit](https://laxit-patel.github.io/drift-detector/)" in ib
     mr = delivery.mr_description("g/ebayapi", [_sunset()], links)
     assert "[scan run](https://gh/run/1)" in mr and "Draft, filed by Drift Detector" in mr
 
@@ -813,3 +815,55 @@ def test_fetch_existing_does_not_fetch_dead_mrs():
     gl = _GL()
     got = delivery.fetch_existing(gl, "g/ops", ["g/r1", "g/r2"])
     assert got["mrs"] == {} and gl.mr_calls == 0                  # no wasted list_mrs I/O
+
+
+# --------------------------------------------- "Open in Claude" + Cockpit footer (issue hand-off)
+import urllib.parse as _uparse
+
+
+def test_issue_body_carries_claude_cockpit_and_scanrun_links():
+    a = _act(ref="eBay", unit="GetCategoryFeatures", status="DEPRECATED", date="2026-06-04",
+             recommendation="migrate to the Taxonomy API",
+             files=[{"loc": "src/Ebay/Cat.php:72", "href": "https://git.x/g/r/-/blob/a/src/Ebay/Cat.php#L72"}],
+             sources=["https://developer.ebay.com/x"])
+    links = {"report": "https://laxit-patel.github.io/drift-detector/",
+             "run": "https://github.com/laxit-patel/drift-detector/actions/runs/1"}
+    body = delivery.issue_body(a, "rushikesh/ebayapi", links)
+    # all three hand-off links present, cockpit relabelled (no 'full report'/readme wording)
+    assert "🤖 [Open in Claude](https://claude.ai/code?prompt=" in body
+    assert "🔮 [open the cockpit](https://laxit-patel.github.io/drift-detector/)" in body
+    assert "[scan run](https://github.com/laxit-patel/drift-detector/actions/runs/1)" in body
+    assert "full report" not in body
+
+
+def test_claude_url_prefills_the_finding_context():
+    a = _act(ref="eBay", unit="GetCategoryFeatures", status="DEPRECATED", date="2026-06-04",
+             recommendation="migrate to the Taxonomy API",
+             files=[{"loc": "src/Ebay/Cat.php:72", "href": "h"}],
+             sources=["https://developer.ebay.com/x"])
+    url = delivery._claude_url(a, "rushikesh/ebayapi")
+    assert url.startswith("https://claude.ai/code?prompt=")
+    prompt = _uparse.unquote(url.split("prompt=", 1)[1])
+    # the whole picture is in the prompt: api + status/date + repo + call-site + recommendation + source
+    assert "eBay GetCategoryFeatures" in prompt
+    assert "2026-06-04" in prompt and "DEPRECATED" in prompt
+    assert "rushikesh/ebayapi" in prompt
+    assert "src/Ebay/Cat.php:72" in prompt
+    assert "Taxonomy API" in prompt and "developer.ebay.com" in prompt
+    assert "migration plan" in prompt.lower()
+
+
+def test_footer_omits_claude_when_no_action_context():
+    # aggregate/maintainer bodies without a per-action url still render cleanly (no empty link)
+    foot = delivery._footer({"report": "https://x.github.io/y/", "run": "https://ci/1"})
+    assert "Open in Claude" not in foot
+    assert "🔮 [open the cockpit](https://x.github.io/y/)" in foot
+
+
+def test_claude_link_does_not_change_the_fingerprint():
+    # the hand-off link is body chrome — it must NOT perturb the idempotency marker
+    a = _act()
+    before = delivery.action_fingerprint(a)
+    body = delivery.issue_body(a, "g/r", {"report": "https://x/y", "run": "https://ci/1"})
+    assert before in body                                  # same marker as before the link existed
+    assert delivery.markers_in(body) == {before}
