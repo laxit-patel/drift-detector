@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="https://media1.tenor.com/m/1QMJcmOppoYAAAAd/mahoraga-makora.gif" alt="Drift Detector — Mahoraga, the Wheel of adaptation" width="320">
+  <img src="docs/media/mahoraga-makora.gif" alt="Drift Detector — Mahoraga, the Wheel of adaptation" width="320">
   <br><em>The scanner <b>adapts</b> to every integration shape it's shown — codename <b>Mahoraga, the Wheel</b> (see <a href="#detection-layers--what-it-can-see">Detection</a>).</em>
 </p>
 
@@ -24,6 +24,7 @@ tokens**; Claude only orchestrates.
 - **Runtime:** Python **stdlib + PyYAML only**, plus the **ast-grep** static binary (pinned).
 - **Scale:** ~9.6k production LOC, **832 tests** (~12s, no network — all I/O is injected).
 - **Determinism:** same `(inventory, audit, now)` → **byte-identical** output. No wall-clock in logic.
+- **Status:** this Python build is the **pilot** — the destination is a native **Rust** engine 🦀 (see the [roadmap](#whats-next-roadmap)).
 
 > This README is the **core reference** — pitch, quickstart, and the full architecture. For working
 > conventions see [CLAUDE.md](CLAUDE.md); for the plugin internals see [docs/PLUGIN.md](docs/PLUGIN.md).
@@ -232,8 +233,7 @@ flowchart LR
 > learns.)*
 
 <p align="center">
-  <img src="https://c.tenor.com/1YWBgZj5baUAAAAC/tenor.gif" alt="Mahoraga adapts" width="360">
-  <img src="https://media1.tenor.com/m/1QMJcmOppoYAAAAd/mahoraga-makora.gif" alt="Drift Detector — Mahoraga, the Wheel of adaptation" width="320">
+  <img src="docs/media/mahoraga-adapt.gif" alt="Mahoraga adapts" width="480">
   <br><em>“Nah, I'd adapt.” — every new integration shape turns the Wheel through the <code>absorb</code> gate.</em>
 </p>
 
@@ -354,19 +354,23 @@ and persisting state back.
 
 ## What's next (roadmap)
 
-- **The AI two-plane Cockpit** *(next design cycle)* — probabilistic leads shown *beside* certified
-  findings in one cockpit, with the certified/unverified **firewall as a structural invariant** (two
-  payloads; `verify` governs only the certified plane; an AI lead can never land in a certified tile).
+- **🦀 A native Rust engine — the destination.** *This Python build is the **pilot**.* It proves the
+  whole idea in production — the pipeline, the catalogs, the `verify` contract. The endgame is a
+  single, no-network **Rust** binary: Rust is the *only* language that links ast-grep natively (the
+  same crates the CLI uses — Go has no binding; the Node route puts PHP on a 0.0.x grammar). The YAML
+  catalogs port for free; the pipeline modules follow once they've held a quarter without structural
+  change. It's not a performance play (the scan already runs inside a Rust binary) — it's about
+  shipping **one hardened artifact**. See [CLAUDE.md](CLAUDE.md).
 - **Trend history** — the dashboard shows the latest run; week-over-week burn-down needs a multi-run
   archive (a real persistence layer, not faked from one run).
 - **Broader fleet access** — today only the repos the scanning token can *read* are covered; the rest
   are flagged blind. Granting the bot read access unlocks the full fleet.
 - **More idiom families / vendors** — each new integration shape turns the Wheel through the `absorb`
   gate (a reviewed catalog contribution).
-- **The Rust port (banked)** — Rust is the only language that links ast-grep natively; a rewrite is
-  the verified end-state, **not** current work. Trigger-gated (single no-network binary demand *or*
-  sold as a product) — see [CLAUDE.md](CLAUDE.md). There is **no performance case** (the scan is
-  already inside a Rust binary).
+- **AI — undecided.** The opt-in probabilistic cross-check ships, but whether AI becomes a
+  first-class plane (leads *beside* certified findings, behind a certified/unverified firewall) is
+  **still an open question.** The deterministic core is the product; AI stays an experiment until it
+  earns its keep.
 
 ---
 
@@ -415,5 +419,9 @@ docs/                     schema/ (the contract) · PLUGIN · EVAL · TECH_DEBT
 
 ---
 
+> 🦀 **This is the pilot.** The Python you're reading proves the idea end-to-end. The destination is
+> a single native **Rust** engine — same catalogs, same `verify` contract, one no-network binary.
+> *The Wheel keeps turning.*
+
 *Every finding is dated and sourced; every report is `verify`-certified; where it's blind, it says so.*
-🎡 **Know before it breaks.**
+🎡 **Know before it breaks.** · 🦀 *heading to Rust.*
