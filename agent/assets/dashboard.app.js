@@ -393,20 +393,58 @@
         if(navigator.clipboard) navigator.clipboard.writeText(text).then(done, done);
         else done();
       },
-      copyLabel: function(key){ return this.copyState[key] || "Copy"; }
+      copyLabel: function(key){ return this.copyState[key] || "Copy"; },
+
+      // ---- Task 7: deep-linkable filter state — scope ("repo"), filter ("tile") and tab
+      // round-trip through the URL query string so a delivered issue (e.g. "APIs, scoped to
+      // repo X, on the Summary tab") can link straight to that view. `q` (the free-text search
+      // box) is deliberately NOT written here: it's transient per-session input, not a "view"
+      // worth bookmarking, and syncing it would rewrite the address bar on every keystroke.
+      // Only non-default values are written, so the clean/default view keeps a clean URL, and
+      // history.replaceState (not pushState) is used so every filter click doesn't spam Back.
+      syncUrl: function(){
+        try{
+          var params = new URLSearchParams();
+          if(this.scope) params.set("repo", this.scope);
+          if(this.filter) params.set("tile", this.filter);
+          if(this.tab && this.tab !== "summary") params.set("tab", this.tab);
+          var qs = params.toString();
+          var url = location.pathname + (qs ? "?" + qs : "") + location.hash;
+          history.replaceState(null, "", url);
+        }catch(e){}
+      }
     },
     watch: {
       // any change to WHAT is shown (tile filter, repo scope, search text) closes every open
       // detail row — mirrors the vanilla render(), which rebuilt the whole <tbody> (and so
       // discarded every row's open/closed state) on every tile click / scope change / keystroke.
-      filter: function(){ this.expanded = {}; },
-      scope: function(){ this.expanded = {}; },
-      q: function(){ this.expanded = {}; }
+      // It also (filter/scope/tab only) re-syncs the URL — see the Task 7 note on syncUrl above.
+      filter: function(){ this.expanded = {}; this.syncUrl(); },
+      scope: function(){ this.expanded = {}; this.syncUrl(); },
+      q: function(){ this.expanded = {}; },
+      tab: function(){ this.syncUrl(); }
     },
     mounted: function(){
       try{ var s=localStorage.getItem("drift-theme"); if(s) this.theme=s; }catch(e){}
       document.documentElement.style.colorScheme = this.theme==="auto" ? "light dark" : this.theme;
       document.title = "Drift Detector — DevSecOps Cockpit · " + this.generated;
+
+      // ---- Task 7: seed scope/filter/tab from the URL on load. Every value is validated
+      // against the known-good option lists (repoOptions / tile keys / tab ids) before being
+      // assigned — an unknown or stale param (a repo that no longer exists, a typo'd tile,
+      // a garbage tab id) is silently ignored and the default view renders, never a throw.
+      try{
+        var params = new URLSearchParams(location.search);
+        var repo = params.get("repo");
+        if(repo && this.repoOptions.some(function(o){ return o.key === repo; })) this.scope = repo;
+        var tile = params.get("tile");
+        var knownTiles = [];
+        this.tileGroups.forEach(function(g){ g.tiles.forEach(function(t){ knownTiles.push(t.key); }); });
+        if(tile && knownTiles.indexOf(tile) > -1) this.filter = tile;
+        var tab = params.get("tab");
+        if(tab && this.tabs.some(function(t){ return t.id === tab; })) this.tab = tab;
+      }catch(e){}
+      this.syncUrl();
     }
   }).mount("#app");
 })();

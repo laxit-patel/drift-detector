@@ -632,3 +632,14 @@ def test_timeline_chart_is_svg_and_scope_aware():
     assert "timeline" in dr.APP_JS_SRC and "matchesRepo" in dr.APP_JS_SRC
     assert "<svg" in dr.TEMPLATE_SRC and "generated" in dr.APP_JS_SRC   # today-line from generated, not Date.now
     assert "Date.now" not in dr.APP_JS_SRC                              # determinism
+
+
+# ---- Task 7: deep-linkable filter state (URL <-> Vue state) ----
+
+def test_deep_link_state_sync_is_wired():
+    from agent.lib import dashboard_render as dr
+    js = dr.APP_JS_SRC
+    assert "location.search" in js or "URLSearchParams" in js
+    assert "replaceState" in js                     # updates URL without history spam
+    for key in ("repo", "tile", "tab"):
+        assert key in js, key                        # the three round-tripped params
