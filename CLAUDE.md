@@ -90,8 +90,6 @@ resurfaces; and the tests' *comments* (each pins a real shipped bug — keep the
 
 ## Branding
 
-Spirit/mascot: **Mahoraga — "the Wheel."** It names the tool's adaptation engine (the `absorb`
-gate + idiom families): the scanner adapts to every integration shape it's shown, then detects it
-deterministically — but only through the review gate, never autonomously. Tagline: *Know before it
-breaks.* Accent ember-crimson. (Retired the former "Ashen Oracle" alias + its relic-icon branding —
-it collided with the Mahoraga adaptation theme.)
+Tagline: *Know before it breaks.* Accent color: ember-crimson. Keep it plain and professional —
+**no mascot or codename** (earlier mascot/codename experiments were retired as too informal for a
+company tool).

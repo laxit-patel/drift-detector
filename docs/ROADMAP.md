@@ -26,7 +26,7 @@ the archived precursor.
 - **Broader fleet access** — the scanner only covers repos its token can *read*; the rest are
   flagged blind. Giving the bot read access across the fleet unlocks full coverage.
 - **More integration shapes** — each new vendor/API idiom is a reviewed catalog contribution
-  through the `absorb` gate (the adaptation engine — *the Wheel*).
+  through the `absorb` gate (the reviewed adaptation mechanism).
 - **AI — undecided.** An opt-in probabilistic cross-check exists, but whether AI becomes a
   first-class feature (leads shown *beside* certified findings, behind a strict
   certified/unverified firewall) is an open question. The deterministic core is the product; AI
@@ -34,4 +34,4 @@ the archived precursor.
 
 ---
 
-*The Wheel keeps turning.* 🦀 *heading to Rust.*
+🦀 *Heading to Rust.*

@@ -1,8 +1,3 @@
-<p align="center">
-  <img src="docs/media/mahoraga-makora.gif" alt="Drift Detector — Mahoraga, the Wheel of adaptation" width="320">
-  <br><em>The scanner <b>adapts</b> to every integration shape it's shown — codename <b>Mahoraga, the Wheel</b> (see <a href="#detection--what-it-can-see">Detection</a>).</em>
-</p>
-
 # Drift Detector
 
 > **Know before it breaks.**
@@ -190,14 +185,10 @@ flowchart LR
   SUN --> FIND
 ```
 
-It keeps up with new integration shapes through an **adaptation engine** — codename **Mahoraga, the
-Wheel**: the shapes it's taught (as reviewed catalog data, never code) it detects deterministically
-forever after; it never adapts on its own — every new shape passes a review gate first.
-
-<p align="center">
-  <img src="docs/media/mahoraga-adapt.gif" alt="Mahoraga adapts" width="440">
-  <br><em>“Nah, I'd adapt.” — every new integration shape turns the Wheel through the review gate.</em>
-</p>
+It keeps up with new integration shapes through a **reviewed adaptation mechanism**: a shape it's
+taught (as catalog data, never code) it detects deterministically forever after. It never adapts on
+its own — every new shape passes the `absorb` review gate first (sourced dates, no false endpoints,
+residue must shrink), so the tool learns without ever admitting an unverified finding.
 
 ### Delivery & the Cockpit
 
@@ -230,7 +221,7 @@ timeline**, and the drill-down list, published as a static site from the `drift-
 | Deterministic scan → inventory of packages, runtimes & API calls (`file:line`) | ✅ |
 | Security-hole (OSV) + end-of-life (endoflife.date) checks | ✅ |
 | **Retiring-vendor-API detection** + the curated, dated, sourced catalog | ✅ |
-| The adaptation engine (idiom families + review gate — *the Wheel*) | ✅ |
+| Reviewed adaptation (idiom families + the `absorb` intake gate) | ✅ |
 | `drift.json` + `verify` (the trust contract) | ✅ |
 | SBOM (CycloneDX/SPDX) + SARIF exports | ✅ |
 | The Cockpit dashboard (tiles, retirement timeline, deep-links) | ✅ |
@@ -244,7 +235,7 @@ Where it's headed next: **[docs/ROADMAP.md](docs/ROADMAP.md)**.
 
 ```
 bin/drift-scan       self-provisioning runner (fetches the pinned scan engine + a venv)
-agent/               the pipeline: scan · audit · run · deliver · absorb (the Wheel)
+agent/               the pipeline: scan · audit · run · deliver · absorb (catalog intake)
 agent/lib/           the pieces — engine, endpoint detection, OSV/EOL, ranking, delivery, verify, dashboard, config
 agent/*.yaml         the reviewed catalogs — vendors · vendor_sunsets · idioms · frameworks
 agent/assets/        the Cockpit — dashboard template + app + vendored runtime
@@ -266,4 +257,4 @@ Working conventions for contributors: **[CLAUDE.md](CLAUDE.md)**.
 ---
 
 *Every finding is dated and sourced; every report is `verify`-certified; where it's blind, it says so.*
-🎡 **Know before it breaks.**
+**Know before it breaks.**
