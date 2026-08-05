@@ -29,3 +29,5 @@ docs/results/
 .drift-fleet/
 
 .drift-fleet-bot/
+
+.pytest_cache/
