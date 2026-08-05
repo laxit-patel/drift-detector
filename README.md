@@ -151,7 +151,10 @@ packages, runtimes, and frameworks. Output: `inventory.json` (the map of what yo
   of retiring vendor APIs, matched against the API calls found in step ①. *This is the layer no
   other scanner has.*
 
-<!-- screenshot: the DevOps view (OSV CVEs + EOL grouped by rule) — re-add from a public demo scan -->
+<p align="center">
+  <img src="docs/screenshots/devops.png" alt="DevOps view — CVE and end-of-life findings grouped by rule" width="840">
+  <br><em>The <b>DevOps view</b> — package security holes (OSV CVEs) and end-of-life findings, grouped by rule, each with the exact upgrade.</em>
+</p>
 
 
 **③ one report** — everything becomes `drift.json`, the **single source of truth.** The
@@ -191,7 +194,10 @@ taught (as catalog data, never code) it detects deterministically forever after.
 its own — every new shape passes the `absorb` review gate first (sourced dates, no false endpoints,
 residue must shrink), so the tool learns without ever admitting an unverified finding.
 
-<!-- screenshot: integrations by vendor (which third-party APIs the code calls) — re-add from a public demo scan -->
+<p align="center">
+  <img src="docs/screenshots/vendors.png" alt="Integrations by vendor — which third-party APIs the code calls" width="840">
+  <br><em><b>Which third-party APIs your code calls</b>, by vendor — the layer no SBOM or CVE scanner has (a 33-repo fleet scan).</em>
+</p>
 
 
 ### Delivery & the Cockpit
@@ -205,7 +211,10 @@ not thirty tickets), split by audience, and filed **in each repo's own tracker**
 The **Cockpit** is the interactive dashboard — clickable tiles, a per-operation **retirement
 timeline**, and the drill-down list, published as a static site from the `drift-ops` repo.
 
-<!-- screenshot: the Retirement Timeline (vendor-API sunsets on a date axis) — re-add from a public demo scan -->
+<p align="center">
+  <img src="docs/screenshots/cockpit.png" alt="The cockpit — ownership/security/integration tiles over the vendor-API retirement timeline" width="840">
+  <br><em>The <b>cockpit</b> — ownership, security, and integration tiles over the <b>Retirement Timeline</b>: every vendor-API sunset on a date axis, past-due left of today.</em>
+</p>
 
 
 ---
