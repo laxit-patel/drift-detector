@@ -1,10 +1,12 @@
 # Publishing to PyPI
 
-`drift-detector` publishes to PyPI so a developer can run it with **no clone**:
+The package publishes to PyPI as **`drift-detector-scan`** (the plain `drift-detector` was blocked by
+PyPI's anti-typosquatting check; the name matches the GHCR image). A developer runs it with **no
+clone** — the console command is `drift-scan`:
 
 ```
-uvx drift-detector run --root .
-pipx install drift-detector
+uvx --from drift-detector-scan drift-scan run --root .
+pipx install drift-detector-scan     # then: drift-scan run --root .
 ```
 
 Releases are automated by `.github/workflows/publish.yml`, triggered on a `v*` tag. Auth is **PyPI
@@ -18,7 +20,7 @@ Because the project does not exist on PyPI yet, add a **pending publisher**:
 1. Sign in at <https://pypi.org> and go to **Your projects → Publishing** (or
    <https://pypi.org/manage/account/publishing/>).
 2. Under **Add a new pending publisher**, fill in:
-   - **PyPI project name**: `drift-detector`
+   - **PyPI project name**: `drift-detector-scan`
    - **Owner**: `laxit-patel`
    - **Repository name**: `drift-detector`
    - **Workflow name**: `publish.yml`
