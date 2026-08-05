@@ -15,7 +15,7 @@ build-backend = "setuptools.build_meta"
 # PyPI distribution name (matches the GHCR image + the registered trusted publisher). "drift-detector"
 # was blocked by PyPI's anti-typosquatting check; the console command stays `drift-scan`.
 name = "drift-detector-scan"
-version = "1.0.0"
+version = "1.1.0"
 description = "Deterministic, zero-LLM scanner for dying third-party API integrations: deprecated packages (CVE/EOL) and retired vendor APIs (sunsets), down to file:line."
 readme = "README.md"
 requires-python = ">=3.11"
