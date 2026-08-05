@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# Self-bootstrapping runner for the Drift Detector plugin.
+# Self-bootstrapping runner for Drift Detector.
 #
-# Provisions a plugin-local virtualenv (once) with the runtime deps, fetches the
+# Provisions a local virtualenv (once) with the runtime deps, fetches the
 # ast-grep scan engine (a static binary), then runs `agent.cli inventory-scan`. Designed to
 # work from ANY working directory a teammate invokes it in: the `agent` package
 # is made importable via PYTHONPATH (not cwd), catalog files resolve
@@ -13,31 +13,12 @@
 #   drift-scan [inventory-scan flags]   # e.g. --root --state --out-json --now
 set -euo pipefail
 
-# Plugin root: prefer the injected var; else derive from this script's location
-# (bin/ -> plugin root). Works whether installed (cache) or run in-repo.
-PLUGIN_ROOT="${CLAUDE_PLUGIN_ROOT:-}"
-if [ -z "$PLUGIN_ROOT" ]; then
-  PLUGIN_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-fi
+# Repo root, derived from this script's location (bin/ -> root). Run from any cwd.
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
-# Self-check: if this is a CACHED plugin build but NOT the installed one, say so. A stale
-# runner — an old pinned cron, or a locator that grabbed the wrong cache dir — otherwise
-# executes silently forever. Only warns from within the plugin cache, so in-repo dev is
-# quiet; never fatal (you may be running an old build on purpose).
-case "$PLUGIN_ROOT" in
-  */.claude/plugins/cache/*)
-    _reg="$HOME/.claude/plugins/installed_plugins.json"
-    if [ -f "$_reg" ] && command -v python3 >/dev/null 2>&1; then
-      _want="$(python3 -c "import json,sys;d=json.load(open(sys.argv[1]));e=d.get('plugins',{}).get('drift-detector@tops-tools') or [];print(e[0]['installPath'] if e else '')" "$_reg" 2>/dev/null || true)"
-      if [ -n "$_want" ] && [ "$_want" != "$PLUGIN_ROOT" ]; then
-        echo "drift-detector: ⚠ running $(basename "$PLUGIN_ROOT"), but $(basename "$_want") is installed — likely a stale build (old cron or mis-resolved locator). Use: $_want/bin/drift-scan" >&2
-      fi
-    fi ;;
-esac
-
-VENV="$PLUGIN_ROOT/.venv"
+VENV="$ROOT/.venv"
 MARKER="$VENV/.drift-deps-ok"
-REQ="$PLUGIN_ROOT/requirements-plugin.txt"
+REQ="$ROOT/requirements-plugin.txt"
 PYVER="3.12"   # tomllib needs >=3.11
 
 _UV_HINT='  • uv (recommended — also provides Python, no system packages needed):
@@ -51,7 +32,7 @@ _UV_HINT='  • uv (recommended — also provides Python, no system packages nee
 if [ "${1:-}" = "doctor" ]; then
   set +e
   echo "drift-detector · doctor"
-  echo "  plugin root : $PLUGIN_ROOT"
+  echo "  root        : $ROOT"
   ready=0
   if command -v uv >/dev/null 2>&1; then
     echo "  uv          : $(uv --version 2>/dev/null) — ok (provisions Python)"
@@ -77,7 +58,7 @@ if [ "${1:-}" = "doctor" ]; then
   fi
   if [ -f "$MARKER" ]; then
     # report the engine the scanner will ACTUALLY resolve, not just what pip installed
-    eng="$(env PYTHONPATH="$PLUGIN_ROOT${PYTHONPATH:+:$PYTHONPATH}" "$VENV/bin/python" -c \
+    eng="$(env PYTHONPATH="$ROOT${PYTHONPATH:+:$PYTHONPATH}" "$VENV/bin/python" -c \
           'from agent.lib.scan_util import resolve_engine; print(resolve_engine())' 2>/dev/null)"
     if [ -n "$eng" ]; then
       case "$(basename "$eng")" in
@@ -96,9 +77,9 @@ if [ "${1:-}" = "doctor" ]; then
     # optional scan-readiness pre-flight for a folder (private-source packages needing access)
     if [ -n "${2:-}" ] && [ -f "$MARKER" ]; then
       echo
-      env PYTHONPATH="$PLUGIN_ROOT${PYTHONPATH:+:$PYTHONPATH}" "$VENV/bin/python" -m agent.cli preflight --root "$2" || true
+      env PYTHONPATH="$ROOT${PYTHONPATH:+:$PYTHONPATH}" "$VENV/bin/python" -m agent.cli preflight --root "$2" || true
       echo
-      env PYTHONPATH="$PLUGIN_ROOT${PYTHONPATH:+:$PYTHONPATH}" "$VENV/bin/python" -m agent.cli recommend --root "$2" || true
+      env PYTHONPATH="$ROOT${PYTHONPATH:+:$PYTHONPATH}" "$VENV/bin/python" -m agent.cli recommend --root "$2" || true
     fi
     exit 0
   fi
@@ -174,8 +155,8 @@ if [ ! -x "$VENV/bin/ast-grep" ]; then
   fi
 fi
 
-# Run from the caller's cwd (so relative paths resolve), with the plugin on the
+# Run from the caller's cwd (so relative paths resolve), with the agent package on the
 # import path. The venv's python finds ast-grep next to it
 # (agent.lib.scan_util.resolve_engine checks dirname(sys.executable)).
-exec env PYTHONPATH="$PLUGIN_ROOT${PYTHONPATH:+:$PYTHONPATH}" \
+exec env PYTHONPATH="$ROOT${PYTHONPATH:+:$PYTHONPATH}" \
   "$VENV/bin/python" -m agent.cli "$SUB" "$@"

@@ -49,8 +49,8 @@ These are what make the tool trustworthy. Breaking one is a defect even if tests
 - **Run it:** `./bin/drift-scan run --root <path|url> --state <dir> --now $(date +%F)` then
   `./bin/drift-scan verify --state <dir>`. `plan` previews without scanning;
   `catalog-check` re-checks live vendor sources against the catalog.
-- **Layout:** `agent/` runtime · `agent/lib/` the pieces · `commands/` the slash-command
-  promptfiles · `bin/drift-scan` the bootstrapping runner · catalogs are the `*.yaml` under
+- **Layout:** `agent/` runtime · `agent/lib/` the pieces · `bin/drift-scan` the runner ·
+  `docs/drift-absorb.md` the catalog-intake doctrine · catalogs are the `*.yaml` under
   `agent/`.
 
 ## Adding a vendor

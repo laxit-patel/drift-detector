@@ -201,3 +201,35 @@ auto-applied. **Relationship:** often *cheaper and more durable* than the vendor
 enhancement — a one-time code cleanup vs. a permanent detection special-case. Bank alongside
 vendor-scoped idioms; when both are on the table, prefer fixing in-house code over teaching the
 scanner a workaround.
+
+---
+
+## Go GitLab-native (move the CI runner from GitHub Actions to GitLab CI)
+
+**Status:** decided in principle (Fable-5 reviewed), **deferred pending a Tops-provided GitLab
+runner.** If a runner is available → do it; if not, the current GitHub-Actions + two-repo setup
+is the accepted fallback.
+
+**Why.** The tool code runs on GitHub Actions only because it gave a free runner; the fleet,
+config, and state all live on GitLab (`git.topsdemo.in`). Once the repo is private the free-runner
+argument weakens (metered), and a self-hosted GitLab runner has no minute quota. Moving the runner
+to GitLab CI would: kill the cross-host `GITLAB_TOKEN` PAT, remove the GitHub→GitLab egress /
+reachability dependency, and make the private Cockpit **free** on GitLab Pages (satisfies the
+"cockpit → GitLab Pages" decision natively).
+
+**Do NOT merge the two repos.** The Fable-5 review was explicit: keeping `drift-ops` (state/config)
+separate from the tool code is load-bearing — ephemeral compute still needs a durable state store;
+merging regresses the scan job to `contents: write` (it could rewrite the scanner), mirrors the
+`file:line` vuln index to GitHub SaaS, worsens the state-push race (two writers), and sabotages the
+documented Rust-rewrite hybrid (which needs state independent of implementation). The genuine
+simplification is **one host (GitLab), two repos** — not one repo.
+
+**Where it plugs in.** The container is already built + tested for this (`docs/CONTAINER.md`,
+`.github/workflows/container.yml`, `tests/test_container.py`, pinned to `bin/drift-scan`'s engine
+version). Port `.github/workflows/scan.yml` → a GitLab `.gitlab-ci.yml` scheduled job; publish the
+Cockpit via GitLab Pages from `drift-ops`; set `PUBLISH_PAGES=false` and retire the GitHub Pages job.
+Cheap tightening while there: gitignore `audit.json` / `chart.html` / `rules.generated.yaml` in
+`drift-ops` (derived artifacts, ~30% of per-run state churn).
+
+**Fallback (no runner):** stay on GitHub Actions, keep two repos, just publish the Cockpit to GitLab
+Pages from the persist step — a ~2-line change, strictly better than merging.

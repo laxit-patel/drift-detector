@@ -27,3 +27,5 @@ docs/results/
 
 # local full-fleet scan state
 .drift-fleet/
+
+.drift-fleet-bot/

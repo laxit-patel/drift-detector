@@ -7,7 +7,7 @@ Everything else already exists in the repo. Read the "WHAT IS NOT HERE" block at
 that is your entire RAG/MCP/embeddings/multi-agent wishlist, mapped to "not needed, and why".
 
 Pieces that ALREADY EXIST (zero new work):
-  • commands/drift-absorb.md  — the prompt. A markdown promptfile. (Kevin.)
+  • docs/drift-absorb.md  — the prompt. A markdown promptfile. (Kevin.)
   • `drift-scan absorb`       — the gate. Deterministic. Refuses unsourced/invented/false claims.
   • the shape verdict         — the classifier. Already labels repos KNOWN / UNKNOWN+reasons.
 The ONLY new thing is the ~40 lines below that connect them.
@@ -20,7 +20,7 @@ from claude_agent_sdk import query, ClaudeAgentOptions   # pip install claude-ag
 # ── the ONLY AI step: read the repo, write staged YAML. Nothing else. ──────────────
 async def ai_read_and_stage(repo_path: str, staging_dir: str) -> None:
     opts = ClaudeAgentOptions(
-        system_prompt=open("commands/drift-absorb.md").read(),   # the promptfile — EXISTS
+        system_prompt=open("docs/drift-absorb.md").read(),   # the promptfile — EXISTS
         # locked down: it may READ code and WRITE ONLY into the staging dir. Nothing else.
         allowed_tools=["Read", "Grep", "Glob", f"Edit({staging_dir}/**)"],
         permission_mode="dontAsk",     # unlisted tools are DENIED, never prompted

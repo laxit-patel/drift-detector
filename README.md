@@ -249,7 +249,7 @@ agent/lib/           the pieces — engine, endpoint detection, OSV/EOL, ranking
 agent/*.yaml         the reviewed catalogs — vendors · vendor_sunsets · idioms · frameworks
 agent/assets/        the Cockpit — dashboard template + app + vendored runtime
 .github/workflows/   scan.yml (the scheduled run)
-docs/                ROADMAP.md · PLUGIN.md · EVAL.md · schema/ (the drift.json contract)
+docs/                ROADMAP.md · drift-absorb.md (catalog-intake doctrine) · EVAL.md · schema/ (the contract)
 ```
 
 Working conventions for contributors: **[CLAUDE.md](CLAUDE.md)**.
