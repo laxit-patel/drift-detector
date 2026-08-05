@@ -118,11 +118,12 @@ server**; the only network call is the audit step (to public CVE/EOL databases).
 **Install-free** — with [uv](https://docs.astral.sh/uv/) (or `pipx`), no clone needed:
 
 ```
-uvx --from git+https://github.com/laxit-patel/drift-detector drift-scan \
-    run --root ~/code/my-project --state /tmp/out --now $(date +%F)
+uvx --from drift-detector-scan drift-scan run --root ~/code/my-project --state /tmp/out --now $(date +%F)
+# or:  pipx install drift-detector-scan   →   drift-scan run --root .
 ```
 
-The scan engine (ast-grep) comes along as a pinned dependency — nothing else to install.
+The scan engine (ast-grep) comes along as a pinned dependency — nothing else to install. (The
+command is `drift-scan`; the PyPI package is [`drift-detector-scan`](https://pypi.org/project/drift-detector-scan/).)
 
 **Or clone and run** — `bin/drift-scan` provisions its own Python venv + the engine on first run:
 
