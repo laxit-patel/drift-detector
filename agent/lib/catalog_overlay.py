@@ -24,6 +24,7 @@ VENDORS = "vendors.local.yaml"
 IDIOMS = "idioms.local.yaml"
 SUNSETS = "sunsets.local.yaml"
 ATTESTATIONS = "attestations.local.yaml"
+SDK_PROFILES = "sdk_profiles.local.yaml"   # client-scoped SDK profiles live in the overlay, not the package
 
 
 def overlay_dir() -> str | None:

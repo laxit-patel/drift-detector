@@ -65,6 +65,30 @@ def test_idioms_layer_the_overlay_and_share_the_dup_check(monkeypatch, tmp_path)
     assert got[-1]["id"] == "acme-overlay"
 
 
+def test_sdk_profiles_layer_the_overlay_baseline_first(monkeypatch, tmp_path):
+    # client-scoped SDK profiles belong in the overlay (drift-ops), not the package — so moving
+    # them there is loss-less: the loader reads baseline + overlay identically.
+    from agent.lib.sdk_profiles import load as load_profiles
+    base = load_profiles()
+    _overlay(monkeypatch, tmp_path, catalog_overlay.SDK_PROFILES, [
+        {"repo": "grp/acme-sdk", "vendor": "Acme", "source": "https://acme.test/docs",
+         "versions": [{"version": "2026-01", "evidence": ["src/AcmeClient.php:12"]}]}])
+    got = load_profiles()
+    assert len(got) == len(base) + 1
+    assert got[-1]["repo"] == "grp/acme-sdk"                  # appended last
+
+
+def test_overlay_sdk_profile_runs_the_same_validation(monkeypatch, tmp_path):
+    # an overlay entry is validated exactly like a package one — a malformed absorbed profile
+    # is an error, never a silent skip (a dropped profile is a silent gap).
+    import pytest
+    from agent.lib.sdk_profiles import load as load_profiles, ProfileError
+    _overlay(monkeypatch, tmp_path, catalog_overlay.SDK_PROFILES,
+             [{"repo": "grp/x", "vendor": "X", "source": "s"}])   # missing required `versions`
+    with pytest.raises(ProfileError):
+        load_profiles()
+
+
 def test_overlay_idiom_colliding_with_baseline_id_is_rejected(monkeypatch, tmp_path):
     dup = load_idioms()[0]["id"]                              # an id already in the baseline
     _overlay(monkeypatch, tmp_path, catalog_overlay.IDIOMS, [

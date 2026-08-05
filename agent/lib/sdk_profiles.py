@@ -15,7 +15,7 @@ import os
 
 import yaml
 
-from agent.lib import scope_edges
+from agent.lib import catalog_overlay, scope_edges
 
 _DEFAULT = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
                         "sdk_profiles.yaml")
@@ -30,6 +30,11 @@ def load(path: str | None = None) -> list:
         raw = yaml.safe_load(fh) or []
     if not isinstance(raw, list):
         raise ProfileError("sdk_profiles must be a YAML list")
+    # a default load layers the writable overlay (baseline first); each overlay entry runs the
+    # SAME validation below, so a malformed absorbed profile is an error, not a skip. This is
+    # where CLIENT-SCOPED profiles live in production (drift-ops/catalog/), never the package.
+    if path is None:
+        raw = list(raw) + catalog_overlay.load_list(catalog_overlay.SDK_PROFILES)
     for i, p in enumerate(raw):
         where = f"sdk_profile #{i} ({p.get('repo') if isinstance(p, dict) else p!r})"
         if not isinstance(p, dict):
