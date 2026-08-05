@@ -104,11 +104,17 @@ def test_no_internal_host_is_hardcoded_in_the_public_workflow():
 
 def test_third_party_actions_are_sha_pinned():
     """A mutable `@v4` tag can be moved to point at malicious code (supply-chain). Every
-    third-party action must be pinned to a full 40-hex commit SHA. Guards against a bare
-    `uses: actions/checkout@v4` slipping back in."""
-    uses = re.findall(r"uses:\s*([^\s#]+)", WF_TEXT)
-    third_party = [u for u in uses if "/" in u and not u.startswith("./")]
-    assert third_party                                    # there ARE external actions to pin
-    for u in third_party:
-        ref = u.split("@", 1)[1] if "@" in u else ""
-        assert re.fullmatch(r"[0-9a-f]{40}", ref), f"{u} is not pinned to a 40-hex SHA"
+    third-party action in EVERY workflow must be pinned to a full 40-hex commit SHA. Guards
+    against a bare `uses: actions/checkout@v4` slipping back in — checked tree-wide, because
+    container.yml once shipped with unpinned `@v3`/`@v6` tags while scan.yml was pinned."""
+    workflows = sorted((ROOT / ".github" / "workflows").glob("*.yml"))
+    assert workflows                                      # there ARE workflow files
+    unpinned = []
+    for wf in workflows:
+        for u in re.findall(r"uses:\s*([^\s#]+)", wf.read_text()):
+            if "/" not in u or u.startswith("./"):
+                continue                                  # local action, not third-party
+            ref = u.split("@", 1)[1] if "@" in u else ""
+            if not re.fullmatch(r"[0-9a-f]{40}", ref):
+                unpinned.append(f"{wf.name}: {u}")
+    assert not unpinned, "third-party actions not pinned to a 40-hex SHA:\n" + "\n".join(unpinned)
