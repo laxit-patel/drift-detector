@@ -2,8 +2,6 @@
 
 Deferred work that is understood but deliberately not built yet. Each entry says what it is,
 why it's deferred, and where it would plug in — so picking it up later doesn't start cold.
-(The big one — the Rust port — lives in `CLAUDE.md`, not here, because it has its own trigger
-gate.)
 
 ---
 
@@ -220,9 +218,9 @@ reachability dependency, and make the private Cockpit **free** on GitLab Pages (
 **Do NOT merge the two repos.** The Fable-5 review was explicit: keeping `drift-ops` (state/config)
 separate from the tool code is load-bearing — ephemeral compute still needs a durable state store;
 merging regresses the scan job to `contents: write` (it could rewrite the scanner), mirrors the
-`file:line` vuln index to GitHub SaaS, worsens the state-push race (two writers), and sabotages the
-documented Rust-rewrite hybrid (which needs state independent of implementation). The genuine
-simplification is **one host (GitLab), two repos** — not one repo.
+`file:line` vuln index to GitHub SaaS, worsens the state-push race (two writers), and couples the
+portable tool to this deployment's private state (which a future reimplementation would want kept
+separate). The genuine simplification is **one host (GitLab), two repos** — not one repo.
 
 **Where it plugs in.** The container is already built + tested for this (`docs/CONTAINER.md`,
 `.github/workflows/container.yml`, `tests/test_container.py`, pinned to `bin/drift-scan`'s engine

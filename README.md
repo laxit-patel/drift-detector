@@ -37,7 +37,7 @@ see, it says so instead of reporting a false all-clear.
 - **Trustworthy by construction:** same inputs → identical output; every report is machine-verified
   before it's shown.
 
-> Where it's going (the Rust rewrite, the longer-term plan): **[docs/ROADMAP.md](docs/ROADMAP.md)**.
+> Where it's headed: **[docs/ROADMAP.md](docs/ROADMAP.md)**.
 
 ---
 
@@ -48,12 +48,10 @@ You don't operate it hands-on. You **configure it once** and it runs itself on a
 ```mermaid
 flowchart TD
   SCHED["⏰ Schedule — GitHub Actions<br/>(free cloud compute, no server)"] --> RUN["drift-detector: one run"]
-  OPS[("drift-ops — a private Git repo<br/>config · fleet list · saved state")]
-  OPS -->|"read config + last run's state"| RUN
+  RUN <-->|"read config + state,<br/>write state back"| OPS[("drift-ops — private Git repo<br/>config · fleet list · saved state")]
   RUN -->|"clone + scan"| FLEET["your fleet of repos"]
-  RUN -->|"one ticket per problem, assigned"| ISSUES["issues, in each repo"]
+  RUN -->|"one ticket per problem"| ISSUES["issues, in each repo"]
   RUN -->|"publish"| COCKPIT["the Cockpit — dashboard"]
-  RUN -->|"write updated state back"| OPS
 ```
 
 Two moving parts, clear roles:
