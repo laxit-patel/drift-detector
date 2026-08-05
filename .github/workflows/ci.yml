@@ -1,9 +1,11 @@
 # Run the test suite on every PR and every push to master — the merge gate.
 #
-# The suite is hermetic: no network, no ast-grep binary (tests/astgrep_fake.py injects the
-# engine), stdlib + PyYAML + jsonschema only. So it is fast and deterministic, and it runs the
-# no-internal-identifiers guard (tests/test_no_internal_identifiers.py) — the invariant that
-# keeps the public tree free of the internal host and client repo names — on every change.
+# Most of the suite is hermetic (tests/astgrep_fake.py injects the engine), but a few integration
+# tests (e.g. test_zero_repos_is_not_clean) run the REAL scan path, so CI installs the pinned
+# ast-grep engine — the same version bin/drift-scan fetches, so CI scans as production does. The
+# suite runs the no-internal-identifiers guard (tests/test_no_internal_identifiers.py) — the
+# invariant that keeps the public tree free of the internal host and client repo names — on every
+# change, so a leak can never merge.
 name: ci
 
 on:
@@ -24,8 +26,10 @@ jobs:
         with:
           python-version: "3.12"
 
-      - name: Install test deps
-        run: python -m pip install -q pytest "PyYAML>=6.0" jsonschema
+      - name: Install test deps + the pinned scan engine
+        # ast-grep-cli ships the same binary bin/drift-scan fetches; pin the SAME version
+        # (AST_GREP_VERSION in bin/drift-scan) so the integration tests scan byte-identically.
+        run: python -m pip install -q pytest "PyYAML>=6.0" jsonschema "ast-grep-cli==0.44.1"
 
       - name: Run tests (incl. the no-internal-identifiers guard)
         run: python -m pytest -q
