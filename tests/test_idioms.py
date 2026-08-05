@@ -23,7 +23,7 @@ def test_path_constant_is_a_known_family():
 
 def test_to_rules_compiles_path_constant_to_a_vendor_bound_literal_rule():
     inst = {"id": "catch-api-paths", "family": "path-constant",
-            "repo": "akshit.tops/catchapi", "vendor": "Catch", "pathRegex": r"^/api/",
+            "repo": "example-org/catchapi", "vendor": "Catch", "pathRegex": r"^/api/",
             "evidence": "src/CatchApi/GetOrders.php:9"}
     docs = idioms.to_rules(inst, _literal_rule, ["php", "js"])
     assert [d["id"] for d in docs] == ["catch-api-paths@php", "catch-api-paths@js"]

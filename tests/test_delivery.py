@@ -828,7 +828,7 @@ def test_issue_body_carries_claude_cockpit_and_scanrun_links():
              sources=["https://developer.ebay.com/x"])
     links = {"report": "https://laxit-patel.github.io/drift-detector/",
              "run": "https://github.com/laxit-patel/drift-detector/actions/runs/1"}
-    body = delivery.issue_body(a, "rushikesh/ebayapi", links)
+    body = delivery.issue_body(a, "example-org/ebayapi", links)
     # all three hand-off links present, cockpit relabelled (no 'full report'/readme wording)
     assert "🤖 [Open in Claude](https://claude.ai/code?prompt=" in body
     assert "📊 [open the cockpit](https://laxit-patel.github.io/drift-detector/)" in body
@@ -841,13 +841,13 @@ def test_claude_url_prefills_the_finding_context():
              recommendation="migrate to the Taxonomy API",
              files=[{"loc": "src/Ebay/Cat.php:72", "href": "h"}],
              sources=["https://developer.ebay.com/x"])
-    url = delivery._claude_url(a, "rushikesh/ebayapi")
+    url = delivery._claude_url(a, "example-org/ebayapi")
     assert url.startswith("https://claude.ai/code?prompt=")
     prompt = _uparse.unquote(url.split("prompt=", 1)[1])
     # the whole picture is in the prompt: api + status/date + repo + call-site + recommendation + source
     assert "eBay GetCategoryFeatures" in prompt
     assert "2026-06-04" in prompt and "DEPRECATED" in prompt
-    assert "rushikesh/ebayapi" in prompt
+    assert "example-org/ebayapi" in prompt
     assert "src/Ebay/Cat.php:72" in prompt
     assert "Taxonomy API" in prompt and "developer.ebay.com" in prompt
     assert "migration plan" in prompt.lower()

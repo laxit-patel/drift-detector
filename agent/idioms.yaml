@@ -27,34 +27,34 @@
   family: url-assembly
   language: php
   base: "$A->getHost()"
-  evidence: "chetan/amazonspapi src/Api/OrdersApi20260101.php:46"
+  evidence: "example-org/amazonspapi src/Api/OrdersApi20260101.php:46"
   note: Generated SP-API clients — $url = $this->config->getHost() . $resource_path.
 
 - id: php-serviceurl-property
   family: url-assembly
   language: php
   base: "$A->serviceUrl"
-  evidence: "rushikesh/ebayapi src/Ebay/FetchReturnOrders.php:72"
+  evidence: "example-org/ebayapi src/Ebay/FetchReturnOrders.php:72"
   note: eBay Post-Order client — $service_url = $this->serviceUrl . '/post-order/v2/'.
 
 - id: xml-request-root
   family: operation-marker
   marker: "<[A-Z][A-Za-z0-9]{2,}Request\\b"
-  evidence: "rushikesh/ebayapi src/Ebay/EbayCategoryFieldsFeature.php:72"
+  evidence: "example-org/ebayapi src/Ebay/EbayCategoryFieldsFeature.php:72"
   note: SOAP/XML APIs name the operation in the request root element.
 
 - id: ebay-session-call-name
   family: operation-marker
   language: php
   pattern: "getEbaySession($NAME, $$$)"
-  evidence: "rushikesh/ebayapi src/Ebay/EbayCategoryFieldsFeature.php:24"
+  evidence: "example-org/ebayapi src/Ebay/EbayCategoryFieldsFeature.php:24"
   note: The call name passed to the session helper becomes X-EBAY-API-CALL-NAME.
 
 - id: php-serviceurl-append
   family: url-append
   language: php
   target: serviceURL
-  evidence: "rushikesh/ebayapi src/Ebay/EbayOrderReturn.php:35"
+  evidence: "example-org/ebayapi src/Ebay/EbayOrderReturn.php:35"
   note: >-
     eBay Post-Order clients assign the base then append the path two statements later
     ($serviceURL = $this->API_ENDPOINT; ... $serviceURL .= $params['url'];), which the
@@ -64,86 +64,5 @@
   family: url-assembly
   language: php
   base: "$A->API_ENDPOINT"
-  evidence: "rushikesh/ebayapi src/Ebay/src/Ebay_post_order_api.php:64"
+  evidence: "example-org/ebayapi src/Ebay/src/Ebay_post_order_api.php:64"
   note: eBay Post-Order procedural client — $url = $this->API_ENDPOINT . "post-order/v2/...".
-
-- id: catch-api-paths
-  family: path-constant
-  repo: akshit.tops/catchapi
-  vendor: Catch
-  pathRegex: '^/api/'
-  evidence: "akshit.tops/catchapi src/CatchApi/GetOrders.php:9"
-  note: >-
-    Catch (catch.com.au) marketplace wrapper. Host injected at runtime
-    ($config['host_name']); operations are per-class $API_URL constants
-    ("/api/orders", "/api/offers", …) assembled in CatchApi::curlOption
-    ($this->HOST_NAME . $url). No host literal, so repo-scoped + vendor-bound.
-
-- id: magento-api-paths
-  family: path-constant
-  repo: shubhTops/magento_api
-  vendor: Magento
-  pathRegex: 'V1/'
-  evidence: "shubhTops/magento_api src/Magento/GetOrders.php:9"
-  note: >-
-    Magento / Adobe Commerce REST. Host injected at runtime ($this->ENDPOINT);
-    base assembles $this->ENDPOINT . '/rest/' . $url, and each operation class pins
-    $API_URL = "V1/orders/" etc. (also "all/V1/..." for store-scoped). No host literal
-    (self-hosted per merchant), so repo-scoped + vendor-bound on the V1/ marker.
-
-- id: mysale-api-paths
-  family: path-constant
-  repo: shubhTops/mysaleapi
-  vendor: MySale
-  pathRegex: 'v1/'
-  evidence: "shubhTops/mysaleapi src/Mysale/GetProductList.php:12"
-  note: >-
-    MySale Marketplace. Base URL injected via init($config['base_url']); operations are
-    per-class $apiXxx constants ("v1/merchant-products", "v1/orders/new", …). No host
-    literal, so repo-scoped + vendor-bound on the v1/ marker.
-
-- id: marketplacer-myer-paths
-  family: path-constant
-  repo: shubhTops/myerapi
-  vendor: Marketplacer
-  pathRegex: 'api/v2/|api/auth'
-  evidence: "shubhTops/myerapi src/Myer/GetProductList.php:9"
-  note: >-
-    Marketplacer (Myer runs on it). Host injected via config['source_url']; operations are
-    "api/v2/client/adverts", "api/v2/taxons", "/api/auth/login". Repo-scoped + vendor-bound.
-
-- id: mirakl-bunnings-paths
-  family: path-constant
-  repo: akshit.tops/bunnings
-  vendor: Mirakl
-  pathRegex: '^/api/'
-  evidence: "akshit.tops/bunnings src/Bunnings/GetOrders.php:9"
-  note: >-
-    Mirakl (Bunnings Marketplace runs on it — doc comments cite *.mirakl.net). Host injected
-    via init($config); operations are "/api/offers", "/api/products/imports", "/api/orders".
-    Repo-scoped + vendor-bound.
-
-- id: virtualstock-harveynorman-paths
-  family: path-constant
-  repo: root/harveynorman
-  vendor: Virtualstock
-  pathRegex: 'format=json'
-  evidence: "root/harveynorman src/HarveyNorman/HarveyNormanOrder.php:13"
-  note: >-
-    Harvey Norman marketplace on Virtualstock 'The Edge'. Host injected at runtime; the
-    version prefix (API_VERSION '/api/v4', RESTAPI_VERSION '/restapi/v4') is prepended to
-    per-class URI consts ("/orders/?format=json", "/categories/?format=json", …) in
-    hitApi(self::API_VERSION . $path). The distinctive ?format=json suffix marks the
-    operation constants (a bare ^/ would strip to '/' and match every path fleet-wide).
-
-- id: bigcommerce-v2-jilesh
-  family: path-constant
-  repo: jilesh/bigcommerce-api
-  vendor: BigCommerce
-  pathRegex: '/v2'
-  version: v2
-  evidence: "jilesh/bigcommerce-api src/Root/Client.php:54"
-  note: >-
-    Legacy BigCommerce V2 client — $path_prefix '/api/v2' + $stores_prefix '/stores/%s/v2'
-    (Root/Client.php:54,66), alongside a V3 migration in src/BigCommerce/V3. Pins version=v2 so
-    the deprecated-no-date V2 sunset flags exactly the v2 call-sites.

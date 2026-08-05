@@ -191,7 +191,7 @@ def test_path_constant_bound_vendor_is_not_treated_as_invented():
     """A path-constant instance introduces its bound vendor by design (a config-injected host
     classified nothing before). That vendor is the REVIEWED binding, not an invented call —
     the gate must allow it while every OTHER new-vendor stays forbidden."""
-    staged = [{"id": "catch-api-paths", "family": "path-constant", "repo": "akshit.tops/catchapi",
+    staged = [{"id": "catch-api-paths", "family": "path-constant", "repo": "example-org/catchapi",
                "vendor": "Catch", "pathRegex": r"^/api/", "evidence": "src/CatchApi/GetOrders.php:9"}]
     scan = _scanner(
         before={"endpoints": [], "residue": {"pathLiterals": [], "pathConstants": []}},
@@ -204,7 +204,7 @@ def test_path_constant_bound_vendor_is_not_treated_as_invented():
 def test_path_constant_that_sweeps_unclaimed_sites_is_rejected():
     """The guard against the bug: an over-broad pathRegex (^/ ) sweeps constants the reviewer
     never named. Even for a bound vendor, an unclaimed site fails the gate."""
-    staged = [{"id": "catch-broad", "family": "path-constant", "repo": "akshit.tops/catchapi",
+    staged = [{"id": "catch-broad", "family": "path-constant", "repo": "example-org/catchapi",
                "vendor": "Catch", "pathRegex": r"^/", "evidence": "a.php:9"}]
     scan = _scanner(
         before={"endpoints": [], "residue": {"pathLiterals": [], "pathConstants": []}},
@@ -217,7 +217,7 @@ def test_path_constant_that_sweeps_unclaimed_sites_is_rejected():
 def test_path_constant_that_grows_pathconstant_residue_is_rejected():
     """Surfacing a path constant the instance cannot attribute is a net-new blind spot —
     residue.pathConstants counts toward the residue-must-shrink guard."""
-    staged = [{"id": "catch-api-paths", "family": "path-constant", "repo": "akshit.tops/catchapi",
+    staged = [{"id": "catch-api-paths", "family": "path-constant", "repo": "example-org/catchapi",
                "vendor": "Catch", "pathRegex": r"^/api/", "evidence": "a.php:9"}]
     scan = _scanner(
         before={"endpoints": [], "residue": {"pathLiterals": [], "pathConstants": []}},

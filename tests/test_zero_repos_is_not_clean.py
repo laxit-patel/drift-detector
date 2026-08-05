@@ -13,7 +13,7 @@ from agent.lib.repo_discovery import diagnose_root
 
 
 def test_url_is_diagnosed_as_a_url_not_silently_dropped():
-    r = diagnose_root("https://git.topsdemo.in/chetan/amazonspapi")
+    r = diagnose_root("https://git.example.com/example-org/amazonspapi")
     assert r and "URL" in r
 
 

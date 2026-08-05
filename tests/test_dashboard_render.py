@@ -222,9 +222,9 @@ def test_permalink_gitlab_dash_blob_shape():
 
 def test_permalink_self_hosted_gitlab_via_env(monkeypatch):
     from agent.lib.dashboard_render import _permalink
-    monkeypatch.setenv("DRIFT_GITLAB_HOSTS", "git.topsdemo.in")
-    assert _permalink("https://git.topsdemo.in/rushikesh/ebayapi", "SHA", "src/config/ebay.php:39") == \
-        "https://git.topsdemo.in/rushikesh/ebayapi/-/blob/SHA/src/config/ebay.php#L39"
+    monkeypatch.setenv("DRIFT_GITLAB_HOSTS", "git.example.com")
+    assert _permalink("https://git.example.com/example-org/ebayapi", "SHA", "src/config/ebay.php:39") == \
+        "https://git.example.com/example-org/ebayapi/-/blob/SHA/src/config/ebay.php#L39"
 
 
 def test_permalink_unknown_host_and_missing_bits_are_none(monkeypatch):
@@ -456,14 +456,14 @@ def test_covered_private_dep_is_excluded_from_the_tile_and_surfaced_separately()
     coveredDeps projection. Fixes the dashboard listing amazonspapi/ebayapi as unreachable."""
     from agent.lib.dashboard_render import _build_projection
     inv = _inv_with_private([
-        {"repo": "channelwiz", "packages": [], "repositories": ["https://git.x/akshit/catchapi.git"],
-         "covered": ["https://git.x/chetan/amazonspapi.git"]},
+        {"repo": "marketplacehub", "packages": [], "repositories": ["https://git.x/akshit/catchapi.git"],
+         "covered": ["https://git.x/example-org/amazonspapi.git"]},
     ])
     proj = _build_projection(inv, {"actions": []})
     assert proj["counts"]["private"] == 1                       # only the blind one counts
     assert [r["source"] for r in proj["private"]] == ["https://git.x/akshit/catchapi.git"]
-    assert proj["coveredDeps"] == [{"repo": "channelwiz",
-                                    "source": "https://git.x/chetan/amazonspapi.git"}]
+    assert proj["coveredDeps"] == [{"repo": "marketplacehub",
+                                    "source": "https://git.x/example-org/amazonspapi.git"}]
 
 
 def test_dashboard_names_covered_deps_as_scanned_not_unreachable():
@@ -471,11 +471,11 @@ def test_dashboard_names_covered_deps_as_scanned_not_unreachable():
     # (coveredDeps names the dependency edge, not a blind spot) is what this task owns.
     from agent.lib.dashboard_render import build_payload
     inv = _inv_with_private([
-        {"repo": "channelwiz", "packages": [], "repositories": [],
-         "covered": ["https://git.x/chetan/amazonspapi.git"]}])
+        {"repo": "marketplacehub", "packages": [], "repositories": [],
+         "covered": ["https://git.x/example-org/amazonspapi.git"]}])
     payload = build_payload(inv, {"generated": "2026-07-29", "actions": []})
-    assert payload["coveredDeps"] == [{"repo": "channelwiz",
-                                       "source": "https://git.x/chetan/amazonspapi.git"}]
+    assert payload["coveredDeps"] == [{"repo": "marketplacehub",
+                                       "source": "https://git.x/example-org/amazonspapi.git"}]
 
 
 def test_dark_is_the_default_theme():
@@ -490,20 +490,20 @@ def test_permalink_self_hosted_gitlab_via_config_not_env(monkeypatch):
     gitlab_hosts — no CI env var needed. Env stays a fallback/override."""
     from agent.lib.dashboard_render import _permalink
     monkeypatch.delenv("DRIFT_GITLAB_HOSTS", raising=False)
-    assert _permalink("https://git.topsdemo.in/rushikesh/ebayapi", "SHA", "src/x.php:39",
-                      gitlab_hosts={"git.topsdemo.in"}) == \
-        "https://git.topsdemo.in/rushikesh/ebayapi/-/blob/SHA/src/x.php#L39"
+    assert _permalink("https://git.example.com/example-org/ebayapi", "SHA", "src/x.php:39",
+                      gitlab_hosts={"git.example.com"}) == \
+        "https://git.example.com/example-org/ebayapi/-/blob/SHA/src/x.php#L39"
 
 
 def test_build_payload_threads_config_gitlab_host_into_hrefs(monkeypatch):
     from agent.lib.dashboard_render import build_payload
     monkeypatch.delenv("DRIFT_GITLAB_HOSTS", raising=False)
-    inv = {"repos": [{"path": "r", "remote_url": "https://git.topsdemo.in/g/r", "head_sha": "S",
+    inv = {"repos": [{"path": "r", "remote_url": "https://git.example.com/g/r", "head_sha": "S",
                       "endpoints": []}]}
     audit = {"actions": [{"repo": "r", "kind": "sunset", "files": ["src/x.php:5"], "vendor": "V"}]}
-    proj = build_payload(inv, audit, gitlab_hosts={"git.topsdemo.in"})
+    proj = build_payload(inv, audit, gitlab_hosts={"git.example.com"})
     hrefs = [f["href"] for a in proj["actions"] for f in a["files"]]
-    assert hrefs == ["https://git.topsdemo.in/g/r/-/blob/S/src/x.php#L5"]
+    assert hrefs == ["https://git.example.com/g/r/-/blob/S/src/x.php#L5"]
 
 
 # ---- Task 4: the reactive Summary table — filters + row drill-down + repo scope ----

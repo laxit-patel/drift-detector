@@ -269,7 +269,7 @@
   note: WFS inventory (GET). Legacy since 2025-09-03; vendor states sunset "2026" with no specific day, so no date is invented.
 
 # ── AU/NZ marketplaces (MyDeal, THE ICONIC, TheMarket, Kogan) — RESEARCHED 2026-07-29, NO ENTRY.
-# Detected in channelwiz/channelwiz-api (catalogued for detection in vendors.yaml). Retirement
+# Detected in marketplacehub/marketplacehub-api (catalogued for detection in vendors.yaml). Retirement
 # research found NO sourced, catalogable sunset date for any, so nothing is added — no source =
 # no entry (a borrowed or invented date is worse than none). Accessibility DIFFERS per vendor
 # (corrected after a direct check — do not re-lump them as "all behind login"):

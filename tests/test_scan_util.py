@@ -56,14 +56,14 @@ def test_plain_https_strips_dot_git():
 
 def test_https_with_embedded_token_is_stripped():
     # THE load-bearing case: a CI clone URL carrying a token must lose it.
-    out = normalize_remote("https://oauth2:glpat-SECRET@git.topsdemo.in/rushikesh/ebayapi.git")
-    assert out == "https://git.topsdemo.in/rushikesh/ebayapi"
+    out = normalize_remote("https://oauth2:glpat-SECRET@git.example.com/example-org/ebayapi.git")
+    assert out == "https://git.example.com/example-org/ebayapi"
     assert "glpat-SECRET" not in out and "@" not in out
 
 
 def test_self_hosted_gitlab_host_preserved():
-    assert normalize_remote("git@git.topsdemo.in:rushikesh/ebayapi.git") == \
-        "https://git.topsdemo.in/rushikesh/ebayapi"
+    assert normalize_remote("git@git.example.com:example-org/ebayapi.git") == \
+        "https://git.example.com/example-org/ebayapi"
 
 
 def test_garbage_and_empty_return_none():

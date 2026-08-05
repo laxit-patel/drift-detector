@@ -8,11 +8,11 @@ _PAYLOAD = {"generated": "2026-07-27", "counts": {
     "byOwner": {"devops": {"fixes": 0, "review": 0}, "developer": {"fixes": 18, "review": 2}}},
     "actions": [
         {"ref": "eBay", "unit": "GetCategorySpecifics", "status": "DEPRECATED",
-         "date": "2022-04-22", "repoLabel": "rushikesh/ebayapi"},
+         "date": "2022-04-22", "repoLabel": "example-org/ebayapi"},
         {"ref": "Amazon SP-API", "unit": "/catalog/v0", "status": "DEPRECATED",
-         "date": "2026-06-30", "repoLabel": "chetan/amazonspapi"},
+         "date": "2026-06-30", "repoLabel": "example-org/amazonspapi"},
         {"ref": "eBay", "unit": "GetItem", "status": "REVIEW", "date": "2027-01-01",
-         "repoLabel": "rushikesh/ebayapi"}]}
+         "repoLabel": "example-org/ebayapi"}]}
 
 
 def _card(payload=_PAYLOAD, **kw):
@@ -32,7 +32,7 @@ def test_do_this_first_lists_action_required_with_clean_repo():
     assert _card()["sections"][1]["header"] == "Do this first"
     # only DEPRECATED actions, clean repo name in the bottom label
     assert any("GetCategorySpecifics" in w["decoratedText"]["text"] for w in widgets)
-    assert any("rushikesh/ebayapi" in w["decoratedText"]["bottomLabel"] for w in widgets)
+    assert any("example-org/ebayapi" in w["decoratedText"]["bottomLabel"] for w in widgets)
     assert all("GetItem" not in w["decoratedText"]["text"] for w in widgets)   # REVIEW excluded
 
 

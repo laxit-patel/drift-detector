@@ -196,21 +196,21 @@ def test_coverage_sdkmediated_lists_repos_with_sdks():
 
 def test_private_source_that_is_a_fleet_member_is_marked_covered_not_unreachable():
     """A repo's private composer dep that is ITSELF a scanned fleet repo is NOT a blind spot —
-    it's read as its own repo. The dashboard listed channelwiz's amazonspapi/ebayapi deps under
+    it's read as its own repo. The dashboard listed marketplacehub's amazonspapi/ebayapi deps under
     'couldn't crawl' even though the fleet scans them; the rollup must reconcile against the
     scanned set (by git identity) so covered deps drop out of `repositories` into `covered`."""
     from agent.inventory_scan import _rollup_coverage
     repos = [
-        {"path": "channelwiz", "remote_url": "https://git.x/grp/channelwiz.git",
+        {"path": "marketplacehub", "remote_url": "https://git.x/grp/marketplacehub.git",
          "endpoints": [], "residue": {"pathLiterals": [], "sinks": []},
          "privateSources": {"packages": [], "repositories": [
-             "https://git.x/chetan/amazonspapi.git",     # IN fleet (scanned below)
+             "https://git.x/example-org/amazonspapi.git",     # IN fleet (scanned below)
              "https://git.x/akshit/catchapi.git"]}},      # NOT in fleet → still a blind spot
-        {"path": "amazonspapi", "remote_url": "https://git.x/chetan/amazonspapi.git",
+        {"path": "amazonspapi", "remote_url": "https://git.x/example-org/amazonspapi.git",
          "endpoints": [], "residue": {"pathLiterals": [], "sinks": []}},
     ]
     coverage = {"reposScanned": 2, "reposErrored": [], "manifestsUnparsed": []}
     _rollup_coverage(coverage, repos, discovered_count=2)
-    ps = next(p for p in coverage["privateSources"] if p["repo"] == "channelwiz")
+    ps = next(p for p in coverage["privateSources"] if p["repo"] == "marketplacehub")
     assert ps["repositories"] == ["https://git.x/akshit/catchapi.git"]   # only the blind one
-    assert ps["covered"] == ["https://git.x/chetan/amazonspapi.git"]     # the fleet member
+    assert ps["covered"] == ["https://git.x/example-org/amazonspapi.git"]     # the fleet member

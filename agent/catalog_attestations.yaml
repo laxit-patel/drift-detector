@@ -78,8 +78,8 @@
   note: >-
     Fetched Microsoft Graph's canonical deprecation-policy page this session. It states
     verbatim: "Currently, no versions of Microsoft Graph are deprecated or unsupported."
-    v1.0 (graph.microsoft.com/v1.0 — what channelwiz calls for Socialite login + Azure
+    v1.0 (graph.microsoft.com/v1.0 — what marketplacehub calls for Socialite login + Azure
     service) is the current GA version, nothing retiring. Individual GA APIs carry 24
     months' notice via the changelog (developer.microsoft.com/graph/changelog); none of
     the retiring surfaces (Azure AD Graph on graph.windows.net, EWS, the Security legacy
-    Alerts API) are on graph.microsoft.com, so channelwiz's usage is unaffected.
+    Alerts API) are on graph.microsoft.com, so marketplacehub's usage is unaffected.

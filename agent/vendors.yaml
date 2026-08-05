@@ -23,7 +23,7 @@
 - { vendor: Virtualstock,      techKey: api:virtualstock,        domains: [virtualstock.com] }  # Harvey Norman marketplace (Virtualstock 'The Edge')
 - { vendor: Rakuten,           techKey: api:rakuten,             domains: [rakuten.com, rms.rakuten.co.jp] }
 # AU/NZ marketplaces — DETECTION ONLY (host match; default version format). Evidence: seen as
-# live API hosts in channelwiz/channelwiz-api's marketplace controllers (sandbox/preprod/api
+# live API hosts in marketplacehub/marketplacehub-api's marketplace controllers (sandbox/preprod/api
 # subdomains). These are UNAUDITED — no retirement list has been checked yet, so a scan will
 # name the integration but must NOT imply its versions are current. Retirements enter later,
 # each from a fetched source (never invent a date). Harvey Norman is used here too but its host

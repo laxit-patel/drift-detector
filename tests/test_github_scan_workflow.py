@@ -93,11 +93,11 @@ def test_pages_publish_is_gated_demo_only():
 def test_no_internal_host_is_hardcoded_in_the_public_workflow():
     """This file is public (a Claude plugin). The GitLab host + persistence path must come from
     repo VARIABLES, not be baked in — a hardcoded internal hostname is an infra disclosure. The
-    bug this guards: `GITLAB_HOST: git.topsdemo.in` literally in the committed file."""
+    bug this guards: a literal host like `GITLAB_HOST: git.acme.internal` baked into the file."""
     assert "${{ vars.GITLAB_HOST }}" in WF_TEXT
     assert "${{ vars.DRIFT_OPS_PATH }}" in WF_TEXT
-    assert "topsdemo" not in WF_TEXT                     # the leaked internal host is gone
-    assert "root/drift-detector" not in WF_TEXT          # the leaked persistence path is gone
+    # that no *specific* internal host/path is hardcoded anywhere is enforced tree-wide by
+    # tests/test_no_internal_identifiers.py — not re-named here, so this file stays clean itself.
     # an unset variable must fail loudly in the first step, not clone a malformed URL
     assert "${GITLAB_HOST:?" in WF_TEXT and "${DRIFT_OPS_PATH:?" in WF_TEXT
 

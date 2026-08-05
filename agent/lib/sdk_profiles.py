@@ -54,7 +54,7 @@ def _matches(repo_record: dict, profile_repo: str) -> bool:
     identity's path suffix (a fleet clone's remote_url carries the real project path), with the
     clone-folder name as a fallback for a locally-scanned checkout."""
     # case-insensitive: scope_edges.identity() lowercases the path, so a mixed-case org
-    # (shubhTops/foo-sdk) must still match its profile repo — the same bug fixed in
+    # (example-org/foo-sdk) must still match its profile repo — the same bug fixed in
     # endpoints._repo_in_scope, masked here only because the one shipped profile is lowercase.
     suf = profile_repo.lower()
     iden = scope_edges.identity(repo_record.get("remote_url") or "")

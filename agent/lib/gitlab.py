@@ -71,7 +71,7 @@ def expand_group(url: str, *, token: str | None = None, fetch=None) -> list | No
     sees no projects under it".
 
     Why membership, not the group endpoint: `/groups/:id/projects` 404s for a USER namespace
-    (verified: git.topsdemo.in/chetan is a user, not a group), and a client's repos live
+    (verified: git.example.com/example-org is a user, not a group), and a client's repos live
     under both. `/projects?membership=true` returns exactly what the token can actually
     clone — group-inherited, user-owned, and direct-member — which is the honest set: you
     cannot miss a repo you have access to. We scope it to the namespace by path prefix.

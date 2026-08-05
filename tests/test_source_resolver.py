@@ -23,7 +23,7 @@ def _make_repo(path, filename="OrdersApi.php"):
 
 
 # --------------------------------------------------------------------- url classification
-@pytest.mark.parametrize("u", ["https://git.topsdemo.in/chetan/amazonspapi",
+@pytest.mark.parametrize("u", ["https://git.example.com/example-org/amazonspapi",
                                "http://x/y", "git@github.com:o/r.git", "ssh://g/r",
                                "git://h/r"])
 def test_urls_are_recognised(u):
@@ -36,9 +36,9 @@ def test_local_paths_are_not_urls(p):
 
 
 def test_slug_is_stable_and_disambiguates_shared_basenames():
-    a = sr.slug("https://git.topsdemo.in/chetan/amazonspapi")
+    a = sr.slug("https://git.example.com/example-org/amazonspapi")
     b = sr.slug("https://github.com/other/amazonspapi")
-    assert a == sr.slug("https://git.topsdemo.in/chetan/amazonspapi")   # stable
+    assert a == sr.slug("https://git.example.com/example-org/amazonspapi")   # stable
     assert a != b and "amazonspapi" in a                                # disambiguated
     assert "/" not in a and ":" not in a                                # fs-safe
 
@@ -138,7 +138,7 @@ def test_token_is_passed_to_git_but_never_written_to_argv_or_disk(tmp_path, monk
 
     monkeypatch.setattr(_sp, "run", fake_run)
     monkeypatch.setenv("GITLAB_TOKEN", "glpat-SECRETVALUE123")
-    ok, _ = sr._default_clone("https://git.topsdemo.in/chetan/amazonspapi.git",
+    ok, _ = sr._default_clone("https://git.example.com/example-org/amazonspapi.git",
                               str(tmp_path / "dest"))
     assert ok
     argv = " ".join(captured["cmd"])
@@ -240,9 +240,9 @@ def test_a_non_group_url_falls_back_to_single_repo_clone(tmp_path):
 
 
 def test_group_and_explicit_member_resolve_once_not_twice(tmp_path):
-    """SHIPPED BUG (verify caught it): a fleet listing BOTH the `channelwiz` group AND
-    `channelwiz/channelwiz-api` (a member of it) resolved channelwiz-api twice — the group
-    yields `…/channelwiz-api.git`, the explicit entry `…/channelwiz-api`, which slug to
+    """SHIPPED BUG (verify caught it): a fleet listing BOTH the `marketplacehub` group AND
+    `marketplacehub/marketplacehub-api` (a member of it) resolved marketplacehub-api twice — the group
+    yields `…/marketplacehub-api.git`, the explicit entry `…/marketplacehub-api`, which slug to
     different clone dirs, so the abs-dir dedupe missed them. Result: the repo scanned twice
     and drift.md rendered two identical findings rows. Dedupe by canonical git identity."""
     import pathlib
@@ -252,13 +252,13 @@ def test_group_and_explicit_member_resolve_once_not_twice(tmp_path):
         return (True, "")
 
     def fake_expand(url):
-        if url.rstrip("/").endswith("/channelwiz"):
-            return [{"url": "https://git.x/channelwiz/channelwiz-api.git",
-                     "archived": False, "path": "channelwiz/channelwiz-api"}]
+        if url.rstrip("/").endswith("/marketplacehub"):
+            return [{"url": "https://git.x/marketplacehub/marketplacehub-api.git",
+                     "archived": False, "path": "marketplacehub/marketplacehub-api"}]
         return None
 
     out = sr.resolve_sources(
-        ["https://git.x/channelwiz", "https://git.x/channelwiz/channelwiz-api"],
+        ["https://git.x/marketplacehub", "https://git.x/marketplacehub/marketplacehub-api"],
         str(tmp_path / "s"), clone=fake_clone, expand_group=fake_expand)
     assert not out["errors"], out["errors"]
     assert len(out["projects"]) == 1, out["projects"]     # one repo, not two

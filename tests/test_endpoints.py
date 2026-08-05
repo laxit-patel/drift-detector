@@ -363,7 +363,7 @@ def test_same_loc_dedup_is_order_independent(tmp_path):
 
 
 def test_au_nz_marketplaces_are_classified_not_unknown():
-    """AU/NZ marketplaces catalogued for detection (channelwiz-api evidence). A URL literal on
+    """AU/NZ marketplaces catalogued for detection (marketplacehub-api evidence). A URL literal on
     each host must classify to the vendor, not fall through to Unknown."""
     from agent.lib.vendors import load_vendors
     from agent.lib import classify_url
@@ -382,9 +382,9 @@ def test_au_nz_marketplaces_are_classified_not_unknown():
 # paths would mis-tag another marketplace), sink-guarded (must actually make HTTP calls).
 _CATCH = Vendor("Catch", "api:catch", ("catch.com.au",), DEFAULT_VERSION_REGEX)
 _CATCH_INST = {"id": "catch-api-paths", "family": "path-constant",
-               "repo": "akshit.tops/catchapi", "vendor": "Catch", "pathRegex": r"^/api/",
+               "repo": "example-org/catchapi", "vendor": "Catch", "pathRegex": r"^/api/",
                "evidence": "src/CatchApi/GetOrders.php:9"}
-_CATCH_REMOTE = "git@git.topsdemo.in:akshit.tops/catchapi.git"
+_CATCH_REMOTE = "git@git.example.com:example-org/catchapi.git"
 
 
 def _pc(path, line, text, vendor="Catch", check="catch-api-paths"):
@@ -427,7 +427,7 @@ def test_path_constant_is_repo_scoped(tmp_path):
     ms = [_pc("src/Bunnings/GetProducts.php", 9, 'protected $API_URL = "/api/offers";'),
           _sink("src/Bunnings/Bunnings.php", 25)]
     out = scan_endpoints(ms, str(tmp_path), [_CATCH],
-                         idioms=[_CATCH_INST], repo_id="git@git.topsdemo.in:akshit.tops/bunnings.git")
+                         idioms=[_CATCH_INST], repo_id="git@git.example.com:example-org/bunnings.git")
     assert [e for e in out["endpoints"] if e["classified"]] == []
     assert any(r["loc"] == "src/Bunnings/GetProducts.php:9"
                for r in out["residue"].get("pathConstants", []))
@@ -441,26 +441,26 @@ def test_path_constant_ignored_when_no_idioms_passed(tmp_path):
 
 
 def test_repo_in_scope_is_case_insensitive():
-    """scope_edges.identity() lowercases the path, so a mixed-case org (shubhTops/magento_api)
-    must still match its instance suffix. A shipped bug: Catch (akshit.tops, already lowercase)
-    worked, Magento (shubhTops) silently fell to residue."""
+    """scope_edges.identity() lowercases the path, so a mixed-case org (example-org/magento_api)
+    must still match its instance suffix. A shipped bug: Catch (example-org, already lowercase)
+    worked, Magento (example-org) silently fell to residue."""
     from agent.lib.endpoints import _repo_in_scope
-    assert _repo_in_scope("https://git.topsdemo.in/shubhTops/magento_api", "shubhTops/magento_api")
-    assert _repo_in_scope("git@git.topsdemo.in:shubhTops/magento_api.git", "shubhTops/magento_api")
+    assert _repo_in_scope("https://git.example.com/example-org/magento_api", "example-org/magento_api")
+    assert _repo_in_scope("git@git.example.com:example-org/magento_api.git", "example-org/magento_api")
     # a different repo must NOT match
-    assert not _repo_in_scope("https://git.topsdemo.in/shubhTops/other_api", "shubhTops/magento_api")
+    assert not _repo_in_scope("https://git.example.com/example-org/other_api", "example-org/magento_api")
 
 
 def test_path_constant_can_pin_a_version(tmp_path):
     """An optional `version` on the instance stamps the attributed endpoints — so a wrapper that
     uses a DEPRECATED API version (BigCommerce v2 constants) attributes at version=v2, and a
     version-scoped sunset can then flag it. Without it, path-constants are version-less."""
-    inst = {"id": "bc-v2", "family": "path-constant", "repo": "jilesh/bigcommerce-api",
+    inst = {"id": "bc-v2", "family": "path-constant", "repo": "example-org/bigcommerce-api",
             "vendor": "Catch", "pathRegex": r"/v2", "version": "v2", "evidence": "x:1"}
     ms = [_pc("src/Root/Client.php", 54, "private static $path_prefix = '/api/v2';",
               check="bc-v2"),
           _sink("src/Root/Client.php", 90)]
     out = scan_endpoints(ms, str(tmp_path), [_CATCH],
-                         idioms=[inst], repo_id="git@x:jilesh/bigcommerce-api.git")
+                         idioms=[inst], repo_id="git@x:example-org/bigcommerce-api.git")
     eps = [e for e in out["endpoints"] if e["classified"]]
     assert eps and eps[0]["version"] == "v2"

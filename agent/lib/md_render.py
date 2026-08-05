@@ -43,7 +43,7 @@ def _table(headers: list, rows: list) -> list:
 
 
 def _repo(a: dict) -> str:
-    """Display name for a repo: the clean project path (repoLabel, e.g. chetan/amazonspapi)
+    """Display name for a repo: the clean project path (repoLabel, e.g. example-org/amazonspapi)
     the projection stamps, else the raw repo path."""
     return a.get("repoLabel") or a.get("repo") or ""
 

@@ -31,8 +31,8 @@ carrying its own config block:
 
     fleet:
       - driver: gitlab
-        host: git.topsdemo.in
-        group: chetan            # API-expanded to member repos
+        host: git.example.com
+        group: example-org            # API-expanded to member repos
         auth: GITLAB_TOKEN       # env-var name (matches config-v2 auth style)
       - driver: github
         org: acme-inc
@@ -100,7 +100,7 @@ the entry that was missing.
 **Today.** The concat/url-assembly idiom attribution (`agent/lib/endpoints.py`, the
 single-classified-vendor guard) only auto-attributes host-less path literals when the repo has
 EXACTLY ONE classified vendor — the guard exists so an idiom never attributes a call to the
-wrong API. Consequence: a multi-vendor client app (channelwiz is 9-vendor) can never absorb via
+wrong API. Consequence: a multi-vendor client app (marketplacehub is 9-vendor) can never absorb via
 idioms; its assembled-URL calls stay in residue. The obvious upgrade is idioms scoped to a
 vendor (this `$client->getHost()` pattern is the *Shopify* wrapper's) so the guard can attribute
 per-idiom instead of per-repo. `pathSignature` (host-independent, vendor-declared,
@@ -109,7 +109,7 @@ a vendor-scoped idiom is the same idea applied to assembly patterns instead of p
 
 **Why deferred — fleet access beats teaching the scanner.** The probe's own EDGES output shows
 the residue-producing calls in multi-vendor apps route through in-house wrapper repos
-(akshit.tops/shopify-api, shubhtops/koganapi, shubhtops/mydeal, … — one vendor each). Scan the
+(example-org/shopify-api, example-org/koganapi, example-org/mydeal, … — one vendor each). Scan the
 wrappers as fleet members and the existing single-vendor idiom attribution works inside each of
 them unchanged — no new mechanism, and the client app's calls are seen where they actually live.
 That is an *access ask* (add the repos to the fleet), not an engineering project, and it also
@@ -209,7 +209,7 @@ runner.** If a runner is available → do it; if not, the current GitHub-Actions
 is the accepted fallback.
 
 **Why.** The tool code runs on GitHub Actions only because it gave a free runner; the fleet,
-config, and state all live on GitLab (`git.topsdemo.in`). Once the repo is private the free-runner
+config, and state all live on GitLab (`git.example.com`). Once the repo is private the free-runner
 argument weakens (metered), and a self-hosted GitLab runner has no minute quota. Moving the runner
 to GitLab CI would: kill the cross-host `GITLAB_TOKEN` PAT, remove the GitHub→GitLab egress /
 reachability dependency, and make the private Cockpit **free** on GitLab Pages (satisfies the

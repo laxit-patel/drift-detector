@@ -151,10 +151,8 @@ packages, runtimes, and frameworks. Output: `inventory.json` (the map of what yo
   of retiring vendor APIs, matched against the API calls found in step ①. *This is the layer no
   other scanner has.*
 
-<p align="center">
-  <img src="docs/screenshots/devops.png" alt="DevOps view — CVE and end-of-life findings grouped by rule" width="840">
-  <br><em>The <b>DevOps view</b> — package security holes (OSV CVEs) and end-of-life findings, grouped by rule, each with the exact upgrade.</em>
-</p>
+<!-- screenshot: the DevOps view (OSV CVEs + EOL grouped by rule) — re-add from a public demo scan -->
+
 
 **③ one report** — everything becomes `drift.json`, the **single source of truth.** The
 human-readable `drift.md`, the Cockpit dashboard, the SBOM, and the filed issues are all
@@ -193,10 +191,8 @@ taught (as catalog data, never code) it detects deterministically forever after.
 its own — every new shape passes the `absorb` review gate first (sourced dates, no false endpoints,
 residue must shrink), so the tool learns without ever admitting an unverified finding.
 
-<p align="center">
-  <img src="docs/screenshots/vendors.png" alt="Integrations by vendor — which third-party APIs the code calls" width="840">
-  <br><em><b>Which third-party APIs your code calls</b>, by vendor — the layer no SBOM or CVE scanner has (a 32-repo fleet scan).</em>
-</p>
+<!-- screenshot: integrations by vendor (which third-party APIs the code calls) — re-add from a public demo scan -->
+
 
 ### Delivery & the Cockpit
 
@@ -209,10 +205,8 @@ not thirty tickets), split by audience, and filed **in each repo's own tracker**
 The **Cockpit** is the interactive dashboard — clickable tiles, a per-operation **retirement
 timeline**, and the drill-down list, published as a static site from the `drift-ops` repo.
 
-<p align="center">
-  <img src="docs/screenshots/retirements.png" alt="Retirement timeline — vendor-API sunsets on a date axis" width="840">
-  <br><em>The <b>Retirement Timeline</b> — every vendor-API sunset on a date axis, past-due left of today; hover a row for the repo + exact date.</em>
-</p>
+<!-- screenshot: the Retirement Timeline (vendor-API sunsets on a date axis) — re-add from a public demo scan -->
+
 
 ---
 

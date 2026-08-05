@@ -105,8 +105,8 @@ def _build_projection(inventory: dict, audit: dict, gitlab_hosts=frozenset()) ->
     actions = [_project_action(a) for a in _actions_of(audit)]
     for a in actions:
         rm = repo_meta.get(a["repo"], {})
-        # display by the clean project path (chetan/amazonspapi), not the internal clone slug
-        # (chetan-amazonspapi-f5043548). `repo` stays the stable identity for fingerprints.
+        # display by the clean project path (example-org/amazonspapi), not the internal clone slug
+        # (example-org-amazonspapi-f5043548). `repo` stays the stable identity for fingerprints.
         a["repoLabel"] = _repo_label(rm.get("remote_url"), a["repo"])
         a["files"] = [{"loc": loc,
                        "href": _permalink(rm.get("remote_url"), rm.get("head_sha"), loc, gitlab_hosts)}

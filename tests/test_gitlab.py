@@ -35,12 +35,12 @@ def test_expands_a_namespace_into_its_accessible_projects():
 
 
 def test_works_for_a_user_namespace_not_only_a_group():
-    """The real case: git.x/chetan is a USER namespace (group endpoint would 404). The
+    """The real case: git.x/example-org is a USER namespace (group endpoint would 404). The
     membership list still finds its projects."""
-    pages = {1: (200, [_proj("chetan/amazonspapi")], "")}
-    out = gitlab.expand_group("https://git.x/chetan", token="t",
+    pages = {1: (200, [_proj("example-org/amazonspapi")], "")}
+    out = gitlab.expand_group("https://git.x/example-org", token="t",
                               fetch=_api(project_check=404, membership_pages=pages))
-    assert [p["path"] for p in out] == ["chetan/amazonspapi"]
+    assert [p["path"] for p in out] == ["example-org/amazonspapi"]
 
 
 def test_paginates_fully():
@@ -83,11 +83,11 @@ def test_a_real_namespace_the_token_sees_no_projects_in_is_empty_not_none():
 
 
 def test_a_404_project_with_no_children_returns_none_not_empty_group():
-    """The demo bug: rushikesh/ebayapinew 404s as a project and is NOT a group, but empty
+    """The demo bug: example-org/ebayapinew 404s as a project and is NOT a group, but empty
     membership made expand_group return [] — so the resolver reported 'group has no active
     projects' instead of the honest 'could not access this repo'. It must return None so the
     caller clones the URL directly and surfaces git's real not-found/no-access error."""
-    out = gitlab.expand_group("https://git.x/rushikesh/ebayapinew",
+    out = gitlab.expand_group("https://git.x/example-org/ebayapinew",
                               fetch=_api(project_check=404, membership_pages={1: (200, [], "")},
                                          group_check=404))
     assert out is None

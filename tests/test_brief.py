@@ -61,11 +61,11 @@ def test_output_is_byte_identical():
 
 
 def test_clean_repo_name_from_remote_url():
-    inv = _inv("channelwiz-channelwiz-ed5f4fd4")
-    inv["repos"] = [{"path": "channelwiz-channelwiz-ed5f4fd4",
-                     "remote_url": "https://git.x/channelwiz/channelwiz.git"}]
-    md = brief.build_brief(inv, "channelwiz-channelwiz-ed5f4fd4")
-    assert "`channelwiz/channelwiz`" in md                  # clean path, not the clone slug
+    inv = _inv("marketplacehub-marketplacehub-ed5f4fd4")
+    inv["repos"] = [{"path": "marketplacehub-marketplacehub-ed5f4fd4",
+                     "remote_url": "https://git.x/marketplacehub/marketplacehub.git"}]
+    md = brief.build_brief(inv, "marketplacehub-marketplacehub-ed5f4fd4")
+    assert "`marketplacehub/marketplacehub`" in md                  # clean path, not the clone slug
     assert "ed5f4fd4" not in md
 
 

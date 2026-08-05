@@ -9,16 +9,9 @@
 # call-site match. New entries: open the wrapper, read the pinned version(s), cite the line.
 #
 # RULES:
-#   • `repo`: the dependency's project path (host-independent suffix, e.g. akshit.tops/shopify-api).
+#   • `repo`: the dependency's project path (host-independent suffix, e.g. example-org/shopify-api).
 #   • `vendor`: must match a name the audit can date (agent/vendors.yaml + a lifecycle/sunset rule).
 #   • each `versions[]` entry needs a `version` string AND an `evidence` file:line you opened.
 #   • `source`: where the versions were read (this session), never a remembered value.
 
-- repo: akshit.tops/shopify-api
-  vendor: Shopify
-  versions:
-    - { version: "2025-01", evidence: "src/GraphQL.php:19" }                        # $version default
-    - { version: "2024-07", evidence: "src/Shopify/Admin2024_07/ShopifyApi.php:28" }
-    - { version: "2023-07", evidence: "src/Shopify/Admin2023_07/ShopifyApi.php:28" }
-    - { version: "2023-04", evidence: "src/Shopify/Admin2023_04/ShopifyApi.php:28" }
-  source: "wrapper source — hardcoded $apiVersion / $version defaults, read 2026-07-30"
+[]

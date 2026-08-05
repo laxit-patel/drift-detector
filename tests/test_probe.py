@@ -37,7 +37,7 @@ def test_unreachable_source_is_an_open_hole_and_trips_the_gate():
 
 
 def test_missing_private_dep_trips_the_gate_with_a_dep_gap_id():
-    edges = [{"repo": "channelwiz", "present": [],
+    edges = [{"repo": "marketplacehub", "present": [],
               "missing": [{"url": "https://git.x/akshit/catchapi.git",
                            "id": "git.x/akshit/catchapi"}]}]
     r = probe.assess(_facts(edges=edges))
@@ -66,12 +66,12 @@ def test_accepted_hole_is_acknowledged_not_open():
 
 
 def test_edges_show_present_and_missing_split():
-    edges = [{"repo": "channelwiz",
-              "present": [{"url": "u1", "id": "git.x/chetan/amazonspapi"}],
-              "missing": [{"url": "u2", "id": "git.x/hiral/neto"}]}]
+    edges = [{"repo": "marketplacehub",
+              "present": [{"url": "u1", "id": "git.x/example-org/amazonspapi"}],
+              "missing": [{"url": "u2", "id": "git.x/example-org/neto"}]}]
     r = probe.assess(_facts(edges=edges))
-    assert "✓ in fleet: git.x/chetan/amazonspapi" in r["text"]
-    assert "✗ MISSING : git.x/hiral/neto" in r["text"]
+    assert "✓ in fleet: git.x/example-org/amazonspapi" in r["text"]
+    assert "✗ MISSING : git.x/example-org/neto" in r["text"]
 
 
 def test_render_is_byte_identical():
@@ -100,14 +100,14 @@ def test_cli_probe_trips_gate_on_a_private_dep(tmp_path, capsys):
 
 
 def test_markdown_summary_has_scope_table_covered_and_blind():
-    edges = [{"repo": "channelwiz",
-              "present": [{"url": "u", "id": "git.x/chetan/amazonspapi"}],
-              "missing": [{"url": "u2", "id": "git.x/hiral/neto"}]}]
+    edges = [{"repo": "marketplacehub",
+              "present": [{"url": "u", "id": "git.x/example-org/amazonspapi"}],
+              "missing": [{"url": "u2", "id": "git.x/example-org/neto"}]}]
     r = probe.assess(_facts(edges=edges))
     md = r["markdown"]
     assert "## Drift probe" in md
     assert "| Repo | Covered (in fleet) | Blind (not in fleet) |" in md
-    assert "| channelwiz | amazonspapi | neto |" in md          # short names in the table
+    assert "| marketplacehub | amazonspapi | neto |" in md          # short names in the table
     assert "1 repo(s) in scope" in md and "KNOWN" in md
 
 

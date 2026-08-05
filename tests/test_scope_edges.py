@@ -17,16 +17,16 @@ def test_identity_empty_for_non_urls():
 
 
 def test_missing_splits_present_from_referenced_but_absent():
-    # channelwiz declares two private deps; only amazonspapi is a fleet member.
-    consumers = [{"repo": "channelwiz", "deps": [
-        "https://git.x/chetan/amazonspapi.git",
+    # marketplacehub declares two private deps; only amazonspapi is a fleet member.
+    consumers = [{"repo": "marketplacehub", "deps": [
+        "https://git.x/example-org/amazonspapi.git",
         "https://git.x/akshit/catchapi.git",
     ]}]
-    fleet = {"git.x/chetan/amazonspapi"}          # catchapi is NOT in the fleet
+    fleet = {"git.x/example-org/amazonspapi"}          # catchapi is NOT in the fleet
     rows = se.find_missing(consumers, fleet)
     assert len(rows) == 1
     r = rows[0]
-    assert [e["id"] for e in r["present"]] == ["git.x/chetan/amazonspapi"]
+    assert [e["id"] for e in r["present"]] == ["git.x/example-org/amazonspapi"]
     assert [e["id"] for e in r["missing"]] == ["git.x/akshit/catchapi"]
 
 

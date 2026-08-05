@@ -31,14 +31,14 @@ _FAMILY_DOCS = [
      "method) rather than a URL path — the eBay Trading shape.",
      "`marker`: a regex over string literals, OR `pattern`: an ast-grep pattern.",
      '{id: ebay-trading, family: operation-marker, language: php, marker: '
-     '"X-EBAY-API-CALL-NAME", evidence: "rushikesh/ebayapi src/Ebay/X.php:72"}'),
+     '"X-EBAY-API-CALL-NAME", evidence: "example-org/ebayapi src/Ebay/X.php:72"}'),
     ("path-constant",
      "path constants in a config-injected wrapper (host injected at runtime, generic paths) — "
      "repo-scoped and vendor-bound, since there is no host literal to infer the vendor from.",
      "`repo`: the wrapper's project suffix; `vendor`: the bound vendor (must exist in "
      "vendors.yaml); `pathRegex`: which string literals are operation paths.",
-     '{id: catch-api-paths, family: path-constant, repo: "akshit.tops/catchapi", '
-     'vendor: Catch, pathRegex: "^/api/", evidence: "akshit.tops/catchapi '
+     '{id: catch-api-paths, family: path-constant, repo: "example-org/catchapi", '
+     'vendor: Catch, pathRegex: "^/api/", evidence: "example-org/catchapi '
      'src/CatchApi/GetOrders.php:9"}'),
 ]
 
@@ -52,7 +52,7 @@ def _shape_of(inventory: dict, repo: str) -> dict | None:
 
 def _display_name(inventory: dict, repo: str) -> str:
     """The clean project path (group/repo) for a repo, from its remote_url — so a fleet clone
-    slug like `channelwiz-channelwiz-ed5f4fd4` reads as `channelwiz/channelwiz`. Falls back to
+    slug like `marketplacehub-marketplacehub-ed5f4fd4` reads as `marketplacehub/marketplacehub`. Falls back to
     the repo key (already clean for a locally-scanned folder)."""
     for r in inventory.get("repos", []):
         if r.get("path") == repo:

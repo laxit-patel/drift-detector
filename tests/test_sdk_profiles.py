@@ -6,7 +6,7 @@ from agent.lib import sdk_profiles
 
 
 _PROFILE = [{
-    "repo": "akshit.tops/shopify-api", "vendor": "Shopify",
+    "repo": "example-org/shopify-api", "vendor": "Shopify",
     "versions": [{"version": "2025-01", "evidence": "src/GraphQL.php:19"},
                  {"version": "2023-04", "evidence": "src/Shopify/Admin2023_04/ShopifyApi.php:28"}],
     "source": "wrapper source, read 2026-07-30",
@@ -28,8 +28,8 @@ def test_load_rejects_missing_source(tmp_path):
 
 
 def test_endpoints_for_matches_repo_by_remote_identity_and_emits_per_version():
-    repo = {"path": "akshit.tops-shopify-api-abc",
-            "remote_url": "https://git.topsdemo.in/akshit.tops/shopify-api.git", "endpoints": []}
+    repo = {"path": "example-org-shopify-api-abc",
+            "remote_url": "https://git.example.com/example-org/shopify-api.git", "endpoints": []}
     eps = sdk_profiles.endpoints_for(repo, _PROFILE)
     assert {e["version"] for e in eps} == {"2025-01", "2023-04"}
     e = next(e for e in eps if e["version"] == "2025-01")
@@ -47,8 +47,8 @@ def test_synthetic_endpoint_feeds_the_audit_lifecycle_join_into_retired_findings
     """End to end: a profiled Shopify wrapper's synthetic endpoints become retired-version
     sunset findings via the SAME lifecycle join a scanned endpoint uses — at the const's line."""
     from agent.audit import _lifecycle_findings
-    repo = {"path": "akshit.tops/shopify-api",
-            "remote_url": "https://git.topsdemo.in/akshit.tops/shopify-api.git",
+    repo = {"path": "example-org/shopify-api",
+            "remote_url": "https://git.example.com/example-org/shopify-api.git",
             "endpoints": []}
     repo["endpoints"] = sdk_profiles.endpoints_for(repo, _PROFILE)
     findings = _lifecycle_findings(repo, "2026-07-30")        # Shopify computed-lifecycle branch
@@ -60,20 +60,22 @@ def test_synthetic_endpoint_feeds_the_audit_lifecycle_join_into_retired_findings
     assert by_ver["2023-04"]["files"] == ["src/Shopify/Admin2023_04/ShopifyApi.php:28"]
 
 
-def test_shipped_profile_file_loads_and_is_valid():
-    profs = sdk_profiles.load()              # the real agent/sdk_profiles.yaml
-    assert any(p["repo"] == "akshit.tops/shopify-api" for p in profs)
+def test_package_ships_no_client_profiles_they_live_in_the_overlay():
+    # client SDK profiles carry private repo identities, so the PUBLIC package ships NONE — they
+    # live in the drift-ops overlay (proven in test_catalog_overlay). The file stays a valid empty
+    # list, and the loader still layers whatever the overlay holds on top.
+    assert sdk_profiles.load() == []
 
 
 def test_matches_is_case_insensitive_for_mixed_case_orgs():
-    """scope_edges.identity() lowercases the path, so a mixed-case org (shubhTops/foo-sdk) must
+    """scope_edges.identity() lowercases the path, so a mixed-case org (example-org/foo-sdk) must
     still match its profile repo. Same latent bug fixed in endpoints._repo_in_scope — the one
-    shipped profile (akshit.tops, already lowercase) had masked it."""
+    shipped profile (example-org, already lowercase) had masked it."""
     from agent.lib.sdk_profiles import _matches
-    rec = {"remote_url": "https://git.topsdemo.in/shubhTops/foo-sdk.git", "path": "x"}
-    assert _matches(rec, "shubhTops/foo-sdk")
+    rec = {"remote_url": "https://git.example.com/example-org/foo-sdk.git", "path": "x"}
+    assert _matches(rec, "example-org/foo-sdk")
     # a different repo must NOT match
-    assert not _matches({"remote_url": "https://git.topsdemo.in/shubhTops/bar-sdk.git"},
-                        "shubhTops/foo-sdk")
+    assert not _matches({"remote_url": "https://git.example.com/example-org/bar-sdk.git"},
+                        "example-org/foo-sdk")
     # local-checkout fallback (clone folder {org}-{repo}-{hash}) also case-insensitive
-    assert _matches({"path": "shubhTops-foo-sdk"}, "shubhTops/foo-sdk")
+    assert _matches({"path": "example-org-foo-sdk"}, "example-org/foo-sdk")
