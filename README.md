@@ -41,9 +41,42 @@ see, it says so instead of reporting a false all-clear.
 
 ---
 
-## How it works — the one model
+## Use it locally (CLI)
 
-You don't operate it hands-on. You **configure it once** and it runs itself on a schedule.
+Point it at any folder — a single project or a directory of many. **No token, no config, no
+server**; the only network call is the audit step (to public CVE/EOL databases).
+
+**Install-free** — with [uv](https://docs.astral.sh/uv/) (or `pipx`), no clone needed:
+
+```
+uvx --from drift-detector-scan drift-scan run --root ~/code/my-project --state /tmp/out --now $(date +%F)
+# or:  pipx install drift-detector-scan   →   drift-scan run --root .
+```
+
+The scan engine (ast-grep) comes along as a pinned dependency — nothing else to install. (The
+command is `drift-scan`; the PyPI package is [`drift-detector-scan`](https://pypi.org/project/drift-detector-scan/).)
+
+**Or clone and run** — `bin/drift-scan` provisions its own Python venv + the engine on first run:
+
+```
+git clone https://github.com/laxit-patel/drift-detector && cd drift-detector
+./bin/drift-scan run    --root ~/code/my-project --state /tmp/out --now $(date +%F)
+./bin/drift-scan verify --state /tmp/out
+```
+
+Either way, open `/tmp/out/dashboard.html` in a browser (or read `drift.md` in the terminal). Exit
+codes make it CI-friendly: `0` ok · `2` error · `3` found problems · `4` couldn't scan / verify.
+
+<p align="center">
+  <img src="docs/screenshots/cli.png" alt="Install-free CLI run across several projects, then a self-consistency verify" width="840">
+  <br><em>Install-free on real projects — one <code>uvx</code> command across several repos, then <code>verify</code> confirms the report is self-consistent.</em>
+</p>
+
+---
+
+## Run it in CI (a fleet, on a schedule)
+
+The CLI above is the hands-on way for a single developer. For **continuous, fleet-wide** coverage it also runs itself on a schedule — you **configure it once** and it reports without anyone invoking it.
 
 ```mermaid
 flowchart TD
@@ -108,38 +141,7 @@ delivery:
 
 Re-runs **update tickets in place** (never duplicates); a fixed problem **closes its own ticket.**
 
----
-
-## Run it on your own code
-
-Point it at any folder — a single project or a directory of many. **No token, no config, no
-server**; the only network call is the audit step (to public CVE/EOL databases).
-
-**Install-free** — with [uv](https://docs.astral.sh/uv/) (or `pipx`), no clone needed:
-
-```
-uvx --from drift-detector-scan drift-scan run --root ~/code/my-project --state /tmp/out --now $(date +%F)
-# or:  pipx install drift-detector-scan   →   drift-scan run --root .
-```
-
-The scan engine (ast-grep) comes along as a pinned dependency — nothing else to install. (The
-command is `drift-scan`; the PyPI package is [`drift-detector-scan`](https://pypi.org/project/drift-detector-scan/).)
-
-**Or clone and run** — `bin/drift-scan` provisions its own Python venv + the engine on first run:
-
-```
-git clone https://github.com/laxit-patel/drift-detector && cd drift-detector
-./bin/drift-scan run    --root ~/code/my-project --state /tmp/out --now $(date +%F)
-./bin/drift-scan verify --state /tmp/out
-```
-
-Either way, open `/tmp/out/dashboard.html` in a browser (or read `drift.md` in the terminal). Exit
-codes make it CI-friendly: `0` ok · `2` error · `3` found problems · `4` couldn't scan / verify.
-
-<p align="center">
-  <img src="docs/screenshots/cli.png" alt="Install-free CLI run across several projects, then a self-consistency verify" width="840">
-  <br><em>Install-free on real projects — one <code>uvx</code> command across several repos, then <code>verify</code> confirms the report is self-consistent.</em>
-</p>
+**Setting it up (one-time).** In the GitHub repo that runs the schedule, set two repo **Variables** — `GITLAB_HOST` and `DRIFT_OPS_PATH` (your `drift-ops` repo path) — and one **Secret**, `GITLAB_TOKEN` (a bot token with `api` + `write_repository`). The schedule, fleet, and delivery all read from `drift-ops/config/drift.yml` — nothing else to wire.
 
 ---
 
