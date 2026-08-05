@@ -110,18 +110,30 @@ Re-runs **update tickets in place** (never duplicates); a fixed problem **closes
 
 ---
 
-## Try it locally (optional)
+## Run it on your own code
 
-To evaluate it on a folder of repos without any of the scheduled/fleet setup:
+Point it at any folder — a single project or a directory of many. **No token, no config, no
+server**; the only network call is the audit step (to public CVE/EOL databases).
+
+**Install-free** — with [uv](https://docs.astral.sh/uv/) (or `pipx`), no clone needed:
 
 ```
-./bin/drift-scan run    --root ~/some/repos --state /tmp/out --now $(date +%F)   # scan → dashboard
-./bin/drift-scan verify --state /tmp/out                                         # the trust check
+uvx --from git+https://github.com/laxit-patel/drift-detector drift-scan \
+    run --root ~/code/my-project --state /tmp/out --now $(date +%F)
 ```
 
-`bin/drift-scan` provisions its own Python venv + the scan engine on first run. Open
-`/tmp/out/dashboard.html` in a browser. (Exit codes: `0` ok · `2` error · `3` found problems · `4`
-couldn't scan / couldn't verify.)
+The scan engine (ast-grep) comes along as a pinned dependency — nothing else to install.
+
+**Or clone and run** — `bin/drift-scan` provisions its own Python venv + the engine on first run:
+
+```
+git clone https://github.com/laxit-patel/drift-detector && cd drift-detector
+./bin/drift-scan run    --root ~/code/my-project --state /tmp/out --now $(date +%F)
+./bin/drift-scan verify --state /tmp/out
+```
+
+Either way, open `/tmp/out/dashboard.html` in a browser (or read `drift.md` in the terminal). Exit
+codes make it CI-friendly: `0` ok · `2` error · `3` found problems · `4` couldn't scan / verify.
 
 ---
 
