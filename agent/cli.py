@@ -591,20 +591,17 @@ def _cmd_absorb(args) -> int:
             print(f"    {p}", file=sys.stderr)
         return 3
 
-    # promote to the writable OVERLAY when $DRIFT_CATALOG_DIR is set (the container / drift-ops
-    # case — the package files are read-only there); otherwise append to the package catalogs
-    # (a developer running the plugin in-repo). Either way it's a reviewed YAML diff.
-    from agent.lib import catalog_overlay
-    overlay = catalog_overlay.overlay_dir()
-    if overlay:
-        os.makedirs(overlay, exist_ok=True)
-        idioms_dest = os.path.join(overlay, catalog_overlay.IDIOMS)
-        sunsets_dest = os.path.join(overlay, catalog_overlay.SUNSETS)
-        where = f"the catalog overlay ({overlay})"
-    else:
-        idioms_dest = idioms_mod._DEFAULT
-        sunsets_dest = os.path.join(os.path.dirname(idioms_mod._DEFAULT), "vendor_sunsets.yaml")
-        where = "the catalogs"
+    # promote to the writable OVERLAY. $DRIFT_CATALOG_DIR when set (the container / drift-ops case,
+    # and the plugin, which exports ~/.drift/catalog); otherwise the user's persistent catalog home
+    # — NEVER the package, whose files are site-packages on a pip/uvx install and get wiped on the
+    # next upgrade (a silently-lost learned catalog). Either way it's a reviewed YAML diff.
+    from agent.lib import catalog_overlay, drift_home
+    overlay = catalog_overlay.overlay_dir() or drift_home.catalog_home()
+    os.makedirs(overlay, exist_ok=True)
+    idioms_dest = os.path.join(overlay, catalog_overlay.IDIOMS)
+    sunsets_dest = os.path.join(overlay, catalog_overlay.SUNSETS)
+    where = (f"the catalog overlay ({overlay})" if catalog_overlay.overlay_dir()
+             else f"{overlay} — set DRIFT_CATALOG_DIR to this to load it on the next scan")
     added = absorb.promote(args.staged, idioms_path=idioms_dest, sunsets_path=sunsets_dest)
     print(f"✓ absorbed: {added['idioms']} idiom(s), {added['sunsets']} sunset(s) — "
           f"verified against the repo, promoted to {where}")
