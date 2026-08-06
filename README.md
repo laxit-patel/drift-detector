@@ -15,12 +15,13 @@ It catches three kinds of rot:
 3. **Known security holes** — public vulnerabilities in the packages you depend on.
 
 **The main way to use it is a [Claude Code](https://docs.anthropic.com/en/docs/claude-code) plugin.**
-Install it, point Claude at your code, and it runs **two planes together**: a **deterministic scan**
+Install it, point Claude at your code, and it runs **two engines together**: a **deterministic scan**
 (the three above — dated, sourced, **zero AI tokens**) *and* an **AI cross-check** that surfaces
-integrations the rules can't yet see. You get one report in **two clearly-separated tiers** —
-**certified findings** (machine-verified) and **AI leads** (unverified, and never mixed into the
-certified ones). Where it *can't* see, it says so instead of reporting a false all-clear. *(It also
-runs headless on a schedule for fleets — filing a ticket per problem in the repo that has it.)*
+integrations the rules can't yet see. You get one report in **two clearly-separated tiers of trust** —
+**certified findings** (machine-verified) and **AI leads** (gate-validated but not yet in the catalog,
+and never mixed into the certified ones) — surfaced as **three planes** in one Cockpit (see below).
+Where it *can't* see, it says so instead of reporting a false all-clear. *(It also runs headless on a
+schedule for fleets — filing a ticket per problem in the repo that has it.)*
 
 ### The jargon, once (plain terms)
 
@@ -176,11 +177,16 @@ spends **zero AI tokens.** Only the "audit" step reaches the network (to public 
 ```mermaid
 flowchart LR
   SCAN["① scan<br/>find every integration<br/>(code + manifests)"] --> AUDIT["② audit<br/>check each against<br/>public databases"]
-  AUDIT --> REPORT["③ one report<br/>drift.json"]
+  AUDIT --> REPORT["③ certified report<br/>drift.json"]
   REPORT --> MD["drift.md"]
-  REPORT --> DASH["the Cockpit"]
+  REPORT --> DASH["the Cockpit<br/>3 planes"]
   REPORT --> ISS["GitLab issues"]
+  AI["AI plane · plugin<br/>shape blind repos → absorb gate"] -. "gate-validated → AI Frontier" .-> DASH
 ```
+
+The certified pipeline above is the deterministic, zero-token core. The **AI plane** (plugin only)
+runs alongside it — shaping repos the scan can't read on its own — and its results reach the Cockpit
+as the separate **AI Frontier** plane, gate-validated and never mixed into the certified numbers.
 
 **① scan** — the [ast-grep](https://ast-grep.github.io) engine (a pinned static binary) finds the
 third-party API calls in your source down to `file:line`, and manifest/lockfile parsing finds your
@@ -251,12 +257,22 @@ not thirty tickets), split by audience, and filed **in each repo's own tracker**
 (🚨 past-due · ⏳ upcoming · ☣️ end-of-life · 🛡️ security), a 📊 link to the Cockpit, and a 🤖
 **Open in Claude** link that pre-loads the finding so whoever picks it up gets full context.
 
-The **Cockpit** is the interactive dashboard — clickable tiles, a per-operation **retirement
-timeline**, and the drill-down list, published as a static site from the `drift-ops` repo.
+The **Cockpit** is the interactive dashboard, organized as **three planes** — in decreasing order
+of certainty, each with its own tiles and content:
+
+- **Supply Chain** — CVEs and end-of-life software, plus the **SBOM** and **SARIF** exports (which
+  live only here). The table-stakes supply-chain hygiene any SCA tool does.
+- **Vendor Drift** *(certified)* — the retiring-vendor-API layer: a per-operation **retirement
+  timeline** and the migration queue, proven to `file:line`. *The layer no other scanner has.*
+- **AI Frontier** *(shaped)* — call-sites an AI recovered from code the deterministic scan couldn't
+  read on its own, each re-checked and **gate-validated**, kept strictly out of the certified numbers.
+
+Tiles and totals count **certified** findings only; the AI Frontier is always its own plane (and
+shows an honest empty-state when no shaping ran). Published as a static site from the `drift-ops` repo.
 
 <p align="center">
-  <img src="docs/screenshots/cockpit.png" alt="The cockpit — ownership/security/integration tiles over the vendor-API retirement timeline" width="840">
-  <br><em>The <b>cockpit</b> — ownership, security, and integration tiles over the <b>Retirement Timeline</b>: every vendor-API sunset on a date axis, past-due left of today.</em>
+  <img src="docs/screenshots/cockpit.png" alt="The three-plane cockpit — Supply Chain, Vendor Drift, and AI Frontier over the vendor-API retirement timeline" width="840">
+  <br><em>The <b>three-plane cockpit</b> — <b>Supply Chain</b> (CVE/EOL + SBOM/SARIF), <b>Vendor Drift</b> (the certified <b>Retirement Timeline</b>, past-due left of today), and the <b>AI Frontier</b> (shaped, gate-validated).</em>
 </p>
 
 
