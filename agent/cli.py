@@ -119,6 +119,11 @@ def _cmd_run(args) -> int:
     for u in (out.get("rootsUnscannable") or []):
         print(f"⚠ skipped: {u['reason']}", file=sys.stderr)
 
+    # record where this run wrote, so `drift-scan clean --all` can later find the scattered
+    # <folder>/.drift-detector dirs without a $HOME-wide search. Best-effort; never fails a scan.
+    from agent.lib import cleanup as _cleanup
+    _cleanup.record_run(args.state)
+
     c = out["auditCounts"]                          # raw per-finding tallies (drive the CI gate)
     # DISPLAY the CANONICAL, post-dedup counts (what drift.json/the report shows), falling back to
     # the raw tallies if a caller didn't supply them — the raw ones over-report and contradict the
@@ -144,6 +149,50 @@ def _cmd_run(args) -> int:
             print(f"✗ gate: {c['DEPRECATED']} DEPRECATED finding(s) (excluding muted) — failing (exit 3)",
                   file=sys.stderr)
             return 3
+    return 0
+
+
+def _cmd_clean(args) -> int:
+    """Remove the tool's artifacts — scattered run outputs + ~/.drift caches. Keeps the absorbed
+    catalog unless --catalog. `--report` summarizes without deleting (the plugin polls this to
+    proactively offer a cleanup)."""
+    from agent.lib import cleanup
+
+    if getattr(args, "report", False):
+        pl = cleanup.plan(all_=True, state=None, include_catalog=False)
+        n, total = len(pl["targets"]), pl["total"]
+        print(f"reclaimable: {n} run output(s) · {cleanup.human_size(total)}")
+        print("CLUTTER " + json.dumps({"count": n, "bytes": total}))    # machine line for the plugin
+        return 0
+
+    if not args.all and not args.state:
+        print("clean: pass --state <dir> (one run) or --all (everything the tool recorded), "
+              "or --report to just summarize.", file=sys.stderr)
+        return 2
+    if args.state and not args.all and not cleanup.is_state_dir(args.state):
+        print(f"clean: refusing — '{args.state}' is not a drift state dir (no inventory.json/"
+              f"drift.json, not a .drift-detector). Nothing removed.", file=sys.stderr)
+        return 2
+
+    pl = cleanup.plan(all_=args.all, state=args.state, include_catalog=getattr(args, "catalog", False))
+    if not pl["targets"]:
+        print("nothing to clean.")
+        return 0
+    print(f"will remove {len(pl['targets'])} item(s) · {cleanup.human_size(pl['total'])}:")
+    for t in pl["targets"]:
+        print(f"  {cleanup.human_size(t['size']):>10}  {t['path']}")
+    for p in pl["preserved"]:
+        print(f"     (kept)  {p['path']}  — your absorbed catalog; pass --catalog to remove it too")
+    if not getattr(args, "yes", False):
+        try:
+            resp = input("proceed? [y/N] ").strip().lower()
+        except EOFError:
+            resp = "n"
+        if resp not in ("y", "yes"):
+            print("aborted — nothing removed.")
+            return 0
+    removed = cleanup.execute(pl["targets"])
+    print(f"✓ removed {len(removed)} item(s) · reclaimed {cleanup.human_size(pl['total'])}.")
     return 0
 
 
@@ -1128,6 +1177,15 @@ def main(argv: list[str]) -> int:
     pu = sub.add_parser("unschedule")
     pu.add_argument("--state", required=True)
     pu.set_defaults(func=_cmd_unschedule)
+
+    pcl = sub.add_parser("clean")         # remove the tool's artifacts — keeps the absorbed catalog
+    pcl.add_argument("--state", help="one run's state dir to remove (guardrailed to drift dirs)")
+    pcl.add_argument("--all", action="store_true",
+                     help="every run output the tool recorded + ~/.drift/{reports,eval} + ~/.drift-detector")
+    pcl.add_argument("--catalog", action="store_true", help="also remove ~/.drift/catalog (absorbed shapes)")
+    pcl.add_argument("--report", action="store_true", help="summarize reclaimable clutter, delete nothing")
+    pcl.add_argument("--yes", action="store_true", help="skip the confirmation prompt")
+    pcl.set_defaults(func=_cmd_clean)
 
     pmu = sub.add_parser("mute")
     pmu.add_argument("--state", required=True)

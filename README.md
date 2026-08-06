@@ -91,6 +91,16 @@ git clone https://github.com/laxit-patel/drift-detector && cd drift-detector
 Either way, open `/tmp/out/dashboard.html` in a browser (or read `drift.md` in the terminal). Exit
 codes make it CI-friendly: `0` ok · `2` error · `3` found problems · `4` couldn't scan / verify.
 
+**Tidy up when you're done** — one command removes everything the tool wrote (it records each run,
+so it finds the scattered `.drift-detector/` output folders for you), and it **keeps** your absorbed
+catalog unless you ask otherwise:
+
+```
+drift-scan clean --report        # what's reclaimable — deletes nothing
+drift-scan clean --all           # remove all run outputs + ~/.drift caches (keeps the catalog)
+drift-scan clean --state /tmp/out # just one run's output
+```
+
 <p align="center">
   <img src="docs/screenshots/cli.png" alt="Install-free CLI run across several projects, then a self-consistency verify" width="840">
   <br><em>Install-free on real projects — one <code>uvx</code> command across several repos, then <code>verify</code> confirms the report is self-consistent.</em>
