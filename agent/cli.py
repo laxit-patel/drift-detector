@@ -967,6 +967,35 @@ def _cmd_notify(args) -> int:
     return 0
 
 
+def _cmd_adhoc_report(args) -> int:
+    """Assemble the MIDDLE-tier artifact from a validated ad-hoc pass — the certified `drift.json`,
+    the ad-hoc re-scan's `drift.json`, the staged idioms + claims, and the gate's DELTA. Writes
+    `adhoc.json` + `adhoc.html` beside the certified report. `drift.json` is NEVER touched (sibling
+    document, exactly like the probabilistic artifact)."""
+    import json as _json
+    from agent import absorb as _absorb
+    from agent.lib import adhoc, adhoc_render
+    try:
+        certified = _json.load(open(os.path.join(args.state, "drift.json"), encoding="utf-8"))
+        adhoc_drift = _json.load(open(os.path.join(args.adhoc_state, "drift.json"), encoding="utf-8"))
+        gate = _json.load(open(args.gate_delta, encoding="utf-8"))
+    except (OSError, ValueError) as exc:
+        print(f"adhoc-report: bad input — {exc}", file=sys.stderr)
+        return 2
+    idioms = _absorb._load(os.path.join(args.staged, "idioms.yaml")) or []
+    claims = _absorb._load(os.path.join(args.staged, "claims.yaml")) or []
+    per = adhoc.compare(adhoc_drift, claims, gate, idioms, args.repo)
+    doc = adhoc.bundle(certified, [per], args.now)
+    with open(os.path.join(args.state, "adhoc.json"), "w", encoding="utf-8") as fh:
+        _json.dump(doc, fh, indent=2, sort_keys=True)
+    with open(os.path.join(args.state, "adhoc.html"), "w", encoding="utf-8") as fh:
+        fh.write(adhoc_render.render_adhoc(doc))
+    tier = "✗ over-broad (NOT validated)" if per["problems"] else "✓ gate-validated"
+    print(f"adhoc-report: {tier} · {per['attributedNew']} call-site(s) shaped · "
+          f"{per['datedCount']} dated by catalog → {args.state}/adhoc.html")
+    return 3 if per["problems"] else 0
+
+
 def main(argv: list[str]) -> int:
     p = argparse.ArgumentParser(prog="drift-detector")
     sub = p.add_subparsers(dest="cmd", required=True)
@@ -1004,6 +1033,15 @@ def main(argv: list[str]) -> int:
     pn.add_argument("--report-url")
     pn.add_argument("--run-url")
     pn.set_defaults(func=_cmd_notify)
+
+    par = sub.add_parser("adhoc-report")  # POC: the ad-hoc / gate-validated middle tier -> adhoc.{json,html}
+    par.add_argument("--state", required=True)          # certified state (drift.json + where output lands)
+    par.add_argument("--adhoc-state", required=True)    # the ad-hoc re-scan's state dir
+    par.add_argument("--staged", required=True)         # dir with idioms.yaml + claims.yaml
+    par.add_argument("--gate-delta", required=True)     # the DELTA json captured from `absorb --check`
+    par.add_argument("--repo", required=True)
+    par.add_argument("--now", required=True)
+    par.set_defaults(func=_cmd_adhoc_report)
 
     psb = sub.add_parser("sbom")          # SBOM: CycloneDX (+ CVE vulns) and/or SPDX
     psb.add_argument("--state", required=True)
