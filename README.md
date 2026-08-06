@@ -14,10 +14,13 @@ It catches three kinds of rot:
 2. **End-of-life software** — a runtime or framework version the maker no longer supports/patches.
 3. **Known security holes** — public vulnerabilities in the packages you depend on.
 
-It runs **on a schedule, by itself**. Each run it files a ticket for every problem it finds — in
-the repo that has it, assigned to the right person — and publishes an interactive dashboard.
-Nothing to babysit; every finding is **dated, sourced, and self-checked**, and where it *can't*
-see, it says so instead of reporting a false all-clear.
+**The main way to use it is a [Claude Code](https://docs.anthropic.com/en/docs/claude-code) plugin.**
+Install it, point Claude at your code, and it runs **two planes together**: a **deterministic scan**
+(the three above — dated, sourced, **zero AI tokens**) *and* an **AI cross-check** that surfaces
+integrations the rules can't yet see. You get one report in **two clearly-separated tiers** —
+**certified findings** (machine-verified) and **AI leads** (unverified, and never mixed into the
+certified ones). Where it *can't* see, it says so instead of reporting a false all-clear. *(It also
+runs headless on a schedule for fleets — filing a ticket per problem in the repo that has it.)*
 
 ### The jargon, once (plain terms)
 
@@ -31,17 +34,37 @@ see, it says so instead of reporting a false all-clear.
 | **SARIF** | A standard file format for code-scan results (GitHub code-scanning and VS Code read it). |
 | **the Cockpit** | The interactive dashboard the tool publishes each run. |
 
-- **How it runs:** cloud compute on a schedule — **no server to operate.**
-- **What it's made of:** Python (stdlib only) + the **ast-grep** code-search engine. **Zero AI/LLM
-  tokens** in the scan.
-- **Trustworthy by construction:** same inputs → identical output; every report is machine-verified
-  before it's shown.
+- **How you run it:** a **Claude Code plugin** (the main way) · a standalone **CLI** (`uvx`/`pipx`,
+  no clone) · or **headless on a schedule** for fleets — no server to operate.
+- **What it's made of:** the deterministic core is Python (stdlib + PyYAML) + the **ast-grep**
+  engine — **zero AI tokens**; the AI plane (in the plugin) adds *leads*, kept strictly separate.
+- **Trustworthy by construction:** same inputs → identical output; every certified report is
+  machine-verified before it's shown, and an AI lead can never enter it.
 
 > Where it's headed: **[docs/ROADMAP.md](docs/ROADMAP.md)**.
 
 ---
 
-## Use it locally (CLI)
+## Use it in Claude Code (the main way)
+
+Install the plugin, point it at a folder, and Claude runs the whole thing — separating the
+**certified truth** from the **AI's guesses**. In the Claude Code CLI:
+
+```
+/plugin marketplace add laxit-patel/drift-detector
+/plugin install drift-detector@tops-tools
+/drift-detector:drift-detector /path/to/a/folder          # one repo, or a folder of repos
+```
+
+One command runs **all three planes** — CVE/EOL and vendor-API sunsets (certified) plus an AI
+cross-check (leads) — then opens the **Cockpit** alongside a separate **AI · unverified** view.
+Anything Claude learns about how a new integration is shaped persists to `~/.drift/catalog` and
+makes every later run smarter. *(Needs [`uv`](https://docs.astral.sh/uv/); the plugin pulls the scan
+engine from PyPI — nothing else to install.)*
+
+---
+
+## Use it as a CLI
 
 Point it at any folder — a single project or a directory of many. **No token, no config, no
 server**; the only network call is the audit step (to public CVE/EOL databases).
