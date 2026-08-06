@@ -89,8 +89,9 @@ Issues found, ranked; **A and D fixed** (commit follows this note):
 - **E — MEDIUM (TODO).** `probabilistic.compare.norm()` collapses `Amazon MWS/Checkout/PA-API/SP-API`
   → `amazon`, hiding genuine `retired:yes` leads. Keep `norm()` for set-maths; dedupe the *actionable*
   `aiOnly` list on `(norm, host, endpoint)` and prefer `retired:yes` when collapsing.
-- **F — MEDIUM (TODO).** No duplicate-codebase detection: `amazonspapi-master` ≡ `gitlab-fleet/amazonspapi`
-  double-counted ~¼ of the headline. Fingerprint attributed endpoints; emit `duplicate-of`.
+- **F — MEDIUM (TODO).** No duplicate-codebase detection: a repo and a fleet-mirror copy of the same
+  code (two paths, identical trees) produced identical findings and double-counted ~¼ of the
+  headline. Fingerprint attributed endpoints; emit `duplicate-of`.
 - **I/J — LOW (TODO).** Unknown subcommand falls through to `inventory-scan`; no `--version`;
   `doctor` absent from the published package + false-alarms on system python 3.10 (uv provisions its
   own); empty `First call-site` column on package/EOL rows; inconsistent repo naming across artifacts
