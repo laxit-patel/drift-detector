@@ -251,11 +251,18 @@ def _blob_script(el_id: str, obj) -> str:
     return f'<script id="{el_id}" type="application/json">{raw}</script>'
 
 
-def render_payload(projection: dict, now: str, *, bundle: dict | None = None) -> str:
+def render_payload(projection: dict, now: str, *, bundle: dict | None = None,
+                   adhoc: dict | None = None, leads: dict | None = None) -> str:
     """Injector: CSS + the in-DOM Vue template + the data blobs + the vendored Vue runtime
     + the app skeleton. `now` is unused by the body (the page reads `projection["generated"]`,
     which `_build_projection` sets from the same `now` the caller audited with) — kept for
-    signature stability with callers (run.py, cli.py) that still pass it."""
+    signature stability with callers (run.py, cli.py) that still pass it.
+
+    `adhoc`/`leads` are the OPTIONAL AI-tier documents (drift-adhoc/v1, drift-leads/v1). They are
+    emitted as SEPARATE, id'd blobs after `drift-data`, which stays byte-identical — so
+    verify.check_blob_matches_payload (id-anchored, non-greedy) is unaffected: the mechanical proof
+    the AI tiers cannot touch the certified one. Absent (None) → the tab is hidden, not shown as "0"
+    ("cannot see" ≠ "clean" for the new tiers too)."""
     bundle = bundle or _empty_bundle()
     p = ['<!doctype html>', '<html lang="en">', '<head><meta charset="utf-8">',
          '<meta name="viewport" content="width=device-width, initial-scale=1">',
@@ -265,8 +272,12 @@ def render_payload(projection: dict, now: str, *, bundle: dict | None = None) ->
          '<script id="drift-data" type="application/json">' + _blob(projection) + "</script>",
          _blob_script("sbom-data", bundle["sbom"]),
          _blob_script("spdx-data", bundle["spdx"]),
-         _blob_script("sarif-data", bundle["sarif"]),
-         "<script>" + VUE_SRC + "</script>",
-         "<script>" + APP_JS_SRC + "</script>",
-         "</body></html>"]
+         _blob_script("sarif-data", bundle["sarif"])]
+    if adhoc is not None:
+        p.append(_blob_script("adhoc-data", adhoc))
+    if leads is not None:
+        p.append(_blob_script("leads-data", leads))
+    p += ["<script>" + VUE_SRC + "</script>",
+          "<script>" + APP_JS_SRC + "</script>",
+          "</body></html>"]
     return "\n".join(p)

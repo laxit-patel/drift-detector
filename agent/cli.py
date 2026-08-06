@@ -996,6 +996,39 @@ def _cmd_adhoc_report(args) -> int:
     return 3 if per["problems"] else 0
 
 
+def _cmd_render(args) -> int:
+    """Re-render dashboard.html from the state dir: the certified drift.json + optional AI-tier docs
+    (adhoc.json / leads.json). The certified `drift-data` blob is byte-identical to run.py's render,
+    so `verify` stays green — the AI tiers are strictly additive, never a change to the certified one.
+    This is the seam that lets the ad-hoc pass (a second scan) fold its tier into the ONE cockpit."""
+    import json as _json
+    from agent.lib.dashboard_render import build_bundle, render_payload
+
+    def _load(name, required=True):
+        try:
+            with open(os.path.join(args.state, name), encoding="utf-8") as fh:
+                return _json.load(fh)
+        except OSError:
+            if required:
+                raise
+            return None
+    try:
+        payload = _load("drift.json")
+        inv, audit = _load("inventory.json"), _load("audit.json")
+    except OSError as exc:
+        print(f"render: nothing to render — {exc}", file=sys.stderr)
+        return 2
+    adhoc = _load("adhoc.json", required=False)
+    leads = _load("leads.json", required=False)
+    html = render_payload(payload, args.now, bundle=build_bundle(inv, audit, args.now),
+                          adhoc=adhoc, leads=leads)
+    with open(os.path.join(args.state, "dashboard.html"), "w", encoding="utf-8") as fh:
+        fh.write(html)
+    tiers = "certified" + (" + shaped" if adhoc else "") + (" + leads" if leads else "")
+    print(f"render: dashboard.html rewritten ({tiers})")
+    return 0
+
+
 def main(argv: list[str]) -> int:
     p = argparse.ArgumentParser(prog="drift-detector")
     sub = p.add_subparsers(dest="cmd", required=True)
@@ -1042,6 +1075,11 @@ def main(argv: list[str]) -> int:
     par.add_argument("--repo", required=True)
     par.add_argument("--now", required=True)
     par.set_defaults(func=_cmd_adhoc_report)
+
+    prn = sub.add_parser("render")        # re-render dashboard.html from state + optional AI-tier docs
+    prn.add_argument("--state", required=True)
+    prn.add_argument("--now", required=True)
+    prn.set_defaults(func=_cmd_render)
 
     psb = sub.add_parser("sbom")          # SBOM: CycloneDX (+ CVE vulns) and/or SPDX
     psb.add_argument("--state", required=True)

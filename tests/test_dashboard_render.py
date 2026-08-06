@@ -724,3 +724,24 @@ def test_hero_is_contextual_with_honest_empty_state():
     assert "timeline.dated" in tmpl and "timeline.undated" in tmpl
     # XSS: vendor/domain names are scan-controlled — interpolated via {{ }}, never a raw sink
     assert "v-html" not in tmpl and "innerHTML" not in js
+
+
+def test_ai_tier_blobs_leave_certified_drift_data_byte_identical():
+    """The confidence-vs-firewall proof: folding the ad-hoc/leads tiers into the ONE cockpit adds
+    SEPARATE id'd blobs and leaves the certified `drift-data` blob byte-identical — so
+    check_blob_matches_payload (id-anchored, non-greedy) is untouched and the AI tiers can never
+    contaminate the certified one. Absent → the blob is not emitted at all (tab hidden, not '0')."""
+    import re
+    from agent.lib.dashboard_render import render_payload
+    proj = {"generated": "2026-08-06", "counts": {"fixes": 1, "review": 0}, "actions": []}
+
+    def drift_blob(html):
+        return re.search(r'<script id="drift-data" type="application/json">(.*?)</script>', html, re.S).group(1)
+
+    plain = render_payload(proj, "2026-08-06")
+    with_ai = render_payload(proj, "2026-08-06",
+                             adhoc={"schemaVersion": "drift-adhoc/v1", "byRepo": [{"repo": "r"}]},
+                             leads={"schemaVersion": "drift-leads/v1", "leads": []})
+    assert drift_blob(plain) == drift_blob(with_ai)                       # ← the headline assertion
+    assert 'id="adhoc-data"' not in plain and 'id="leads-data"' not in plain   # absent → not emitted
+    assert 'id="adhoc-data"' in with_ai and 'id="leads-data"' in with_ai       # present → additive blobs
