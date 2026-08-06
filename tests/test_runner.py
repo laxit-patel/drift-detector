@@ -1,7 +1,7 @@
-"""Guards the standalone runner (`bin/drift-scan`) and the intake doctrine
-(`docs/drift-absorb.md`) — the Claude-plugin scaffolding was stripped; the tool
-stands on its own now, but the runner's engine pin + subcommand dispatch and the
-absorb gate's guardrails are still load-bearing."""
+"""Guards the runner (`bin/drift-scan`), the intake doctrine (`docs/drift-absorb.md`), and the
+Claude-plugin surface (restored as the primary product in the AI-driven pivot). The runner's
+engine pin + subcommand dispatch, the absorb gate's guardrails, and the plugin's rewiring
+(persistent catalog + uvx runner + quarantined AI leads) are all load-bearing."""
 import os
 import stat
 from pathlib import Path
@@ -68,8 +68,23 @@ def test_absorb_doctrine_present_and_states_its_guardrails():
     assert "mr create" in cmd or "merge request" in cmd.lower()  # handed back to drift-ops
 
 
-def test_no_plugin_scaffolding_remains():
-    # the Claude-plugin surface was intentionally stripped (it moves to a separate future repo)
-    assert not (_ROOT / ".claude-plugin").exists()
-    assert not (_ROOT / "commands").exists()
-    assert not (_ROOT / "skills").exists()
+def test_plugin_scaffolding_present_and_wired():
+    """The Claude-plugin surface is the primary product again (the AI-driven pivot). Validate it's
+    present AND correctly rewired: persistent local catalog + the published package as the runner +
+    the AI cross-check kept quarantined (leads, separate artifact, `retired` a tri-state not a date)."""
+    import json
+    pj = _ROOT / ".claude-plugin" / "plugin.json"
+    mj = _ROOT / ".claude-plugin" / "marketplace.json"
+    assert pj.exists() and mj.exists()
+    plugin = json.loads(pj.read_text())
+    for rel in plugin.get("commands", []):                       # every listed command must exist
+        assert (_ROOT / rel.lstrip("./")).exists(), f"missing command file: {rel}"
+    main = (_ROOT / "commands" / "drift-detector.md").read_text()
+    # the two things the rewiring added: persistent catalog (so absorb survives upgrades) + uvx runner
+    assert 'DRIFT_CATALOG_DIR="${DRIFT_CATALOG_DIR:-$HOME/.drift/catalog}"' in main
+    assert "uvx --from drift-detector-scan drift-scan" in main
+    # the firewall, enforced in the promptfile: AI output is leads in a SEPARATE artifact, and a
+    # lead's `retired` is a tri-state — never a date (a date is a certified-tier claim only).
+    assert "AI · unverified" in main and "probabilistic.html" in main
+    assert '"yes"|"no"|"unknown"' in main and "NEVER a date" in main
+    assert not (_ROOT / "skills").exists()                       # command-based plugin, no skills/ dir

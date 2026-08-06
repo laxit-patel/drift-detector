@@ -1,0 +1,28 @@
+{
+  "name": "drift-detector",
+  "displayName": "Drift Detector",
+  "version": "0.14.0-beta",
+  "description": "Detect third-party integration drift across a folder of repos \u2014 code-level API/SDK/runtime usage (via ast-grep), operation-level vendor sunsets, CVE/EOL, and an interactive dashboard, with an honest verdict that says where it is blind. Deterministic + zero-token at the core; an opt-in AI cross-check surfaces leads the rules missed, kept strictly separate from the certified findings.",
+  "author": {
+    "name": "Tops Infosolutions Pvt Ltd",
+    "email": "driftdetector7@gmail.com"
+  },
+  "homepage": "https://github.com/laxit-patel/drift-detector",
+  "repository": "https://github.com/laxit-patel/drift-detector",
+  "license": "MIT",
+  "keywords": [
+    "drift",
+    "integration",
+    "api",
+    "ast-grep",
+    "dependencies",
+    "deprecation",
+    "sunset",
+    "coverage",
+    "inventory"
+  ],
+  "commands": [
+    "./commands/drift-detector.md",
+    "./commands/drift-deepen.md"
+  ]
+}
