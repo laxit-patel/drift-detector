@@ -96,6 +96,22 @@ def check_idioms(instances: list) -> list:
     return problems
 
 
+def check_claims_in_scope(claims: list, residue_locs) -> list:
+    """A claim must name a call-site the certified scan independently flagged as its OWN blind spot
+    — the residue (`file:line`s) the `brief` enumerated, derived deterministically BEFORE any agent
+    saw the code. A claim outside that set is expansion beyond the stated job.
+
+    Why this matters (the ad-hoc lane's sharpest risk): the gate's `unclaimed` check proves "every
+    attributed site was named", which in a human loop a reviewer reads. In an AUTONOMOUS loop nobody
+    does — an agent can scan first, read what an over-broad pattern attributed, then write
+    claims.yaml to match, and the gate passes on a rule nobody would approve. Bounding claims to the
+    scanner's own declared blind spots caps what a gamed claims file can cover. Weakening this check
+    is a P0 regression."""
+    scope = {str(loc).strip() for loc in (residue_locs or [])}
+    return [f"claim out of scope (not a blind spot the brief flagged): {c}"
+            for c in (claims or []) if str(c).strip() not in scope]
+
+
 def measure_against_repo(repo_abs: str, staged_idioms: list, claims: list, *, scan) -> dict:
     """Re-scan `repo_abs` with the staged idioms and MEASURE the proposal against its claims —
     the delta an iterating agent climbs (`absorb --check`), plus the gate problems.
