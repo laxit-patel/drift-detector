@@ -1,4 +1,5 @@
 ---
+name: drift-refresh
 description: Refresh the retirement catalog for vendors a machine can't re-fetch — drive the human through each portal/page, turn what they paste into sourced catalog entries, gate them, and attest the vendor CURRENT.
 argument-hint: <state-dir> [vendor-name]
 ---

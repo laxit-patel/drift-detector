@@ -23,6 +23,8 @@
   ],
   "commands": [
     "./commands/drift-detector.md",
-    "./commands/drift-deepen.md"
+    "./commands/drift-absorb.md",
+    "./commands/drift-deepen.md",
+    "./commands/drift-refresh.md"
   ]
 }

@@ -1,4 +1,5 @@
 ---
+name: drift-detector
 description: Keep third-party API integrations green — scan repos, audit for CVEs/EOL/vendor-API sunsets, deliver the report, and offer to run itself on a schedule.
 argument-hint: <folder|url> … | audit <folder> | schedule <folder> | unschedule <folder> | doctor
 ---

@@ -1,4 +1,5 @@
 ---
+name: drift-absorb
 description: Assimilate a repo the scanner cannot fully read — investigate its blind spots, teach the scanner its shape as verified, gated YAML, and hand it back for a human to merge.
 argument-hint: <folder> [repo-name]
 ---

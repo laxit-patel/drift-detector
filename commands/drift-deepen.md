@@ -1,4 +1,5 @@
 ---
+name: drift-deepen
 description: Deprecated alias — use /drift-absorb. Investigate and teach the scanner repos it can't fully read.
 argument-hint: <folder> [repo-name]
 ---
