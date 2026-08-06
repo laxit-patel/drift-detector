@@ -1,6 +1,7 @@
 """Scan a folder of clones -> the superset inventory IR (inventory.json) + INVENTORY.md."""
 from __future__ import annotations
 
+import hashlib
 import os
 
 from agent.lib import engine as engine_mod, ir_store, scan_util
@@ -117,6 +118,10 @@ def scan_folder(root, state_dir, now, *, engine=None, run=None, git=None, progre
     # matches) and scan_repo (which reads a path-constant match's repo scope + bound vendor).
     idiom_instances = idioms_mod.load_idioms()
     write_ruleset(vendors, rules_path, idiom_instances=idiom_instances)
+    # the per-repo cache key folds in this signature (the compiled ruleset = vendors + idioms), so
+    # adding/absorbing an idiom re-scans the repo instead of serving its stale pre-idiom record.
+    with open(rules_path, "rb") as _rf:
+        rules_sig = hashlib.sha256(_rf.read()).hexdigest()[:12]
 
     _p("resolving sources under " + ", ".join(str(r) for r in roots) + " …")
     # A checkout, a plain folder, or a git/GitLab URL (cloned into <state>/sources/) all
@@ -140,7 +145,7 @@ def scan_folder(root, state_dir, now, *, engine=None, run=None, git=None, progre
         tag = f"[{i + 1:>2}/{n}] {name}"
         try:
             sha = scan_util.git_meta(abs_, run=git)["head_sha"]
-            cached = ir_store.load_repo_cache(state_dir, name, sha) if sha else None
+            cached = ir_store.load_repo_cache(state_dir, name, sha, rules_sig) if sha else None
             if cached is not None:
                 _p(f"{tag}  cached (HEAD unchanged)")
                 cached = {**cached, "id": i + 1}
@@ -155,7 +160,7 @@ def scan_folder(root, state_dir, now, *, engine=None, run=None, git=None, progre
             record["shape"] = _shape_of(abs_, name, record, rule_kinds, attestations)
             repos.append(record)
             if sha:
-                ir_store.save_repo_cache(state_dir, name, sha, record)
+                ir_store.save_repo_cache(state_dir, name, sha, record, rules_sig)
             coverage["manifestsUnparsed"] += [{"repo": name, **u} for u in note["unparsed"]]
         except Exception as exc:            # no single repo aborts the scan
             _p(f"{tag}  ⚠ error: {exc}")

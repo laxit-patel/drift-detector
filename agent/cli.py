@@ -559,6 +559,12 @@ def _cmd_absorb(args) -> int:
     vendors = load_vendors()
     engine = scan_util.resolve_engine()
 
+    # a repo-scoped idiom is matched on the git IDENTITY, not the local checkout path — the gate
+    # MUST derive repo_id exactly as the scan pipeline does (scan_util.repo_scope_id), or an idiom
+    # scoped to `org/repo` silently never applies for a clone whose folder name differs, leaving
+    # attributedAfter == attributedBefore and every claim wrongly flagged "still unattributed".
+    repo_ident = scan_util.repo_scope_id(args.repo)
+
     def scan(extra_idioms):
         insts = idioms_mod.load_idioms() + list(extra_idioms or [])
         with tempfile.TemporaryDirectory() as td:
@@ -568,7 +574,7 @@ def _cmd_absorb(args) -> int:
         # pass the staged idioms + repo id so a path-constant instance (repo-scoped,
         # vendor-bound) is actually exercised by the gate, not silently ignored
         return scan_endpoints(res["matches"], args.repo, vendors,
-                              idioms=insts, repo_id=args.repo)
+                              idioms=insts, repo_id=repo_ident)
 
     m = absorb.measure_against_repo(args.repo, staged_idioms, claims, scan=scan)
 

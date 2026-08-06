@@ -1,5 +1,22 @@
 import pytest
+from agent.lib import scan_util
 from agent.lib.scan_util import git_meta, normalize_remote, resolve_engine
+
+
+def test_repo_scope_id_uses_git_identity_not_local_path():
+    # REGRESSION (absorb-gate bug): a repo-scoped idiom is matched on the git remote identity, so
+    # the gate and the scan pipeline must derive repo_id the SAME way. The gate used to pass the
+    # local checkout path — which _repo_in_scope can't key on — so an idiom scoped to `org/repo`
+    # silently never applied for a clone dir named differently (double-break_spapi-php).
+    ident = scan_util.repo_scope_id(
+        "/home/ci/clones/double-break_spapi-php",
+        {"remote_url": "github.com/double-break/spapi-php"})
+    assert ident == "github.com/double-break/spapi-php"      # identity, NOT the local path
+
+
+def test_repo_scope_id_falls_back_to_path_without_remote():
+    # a local checkout with no remote: best-effort fall back to the path (unchanged behavior).
+    assert scan_util.repo_scope_id("/tmp/x/foo", {"remote_url": None}) == "/tmp/x/foo"
 
 
 def test_git_meta_from_injected_run():

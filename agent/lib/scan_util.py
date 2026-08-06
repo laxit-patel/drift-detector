@@ -53,6 +53,20 @@ def git_meta(repo_abs: str, *, run=_default_git) -> dict:
     }
 
 
+def repo_scope_id(repo_abs: str, meta: dict | None = None, *, git=_default_git) -> str:
+    """The identity a repo-SCOPED idiom (path-constant, sdk-profile) is matched against.
+
+    It MUST be the git remote identity (`endpoints._repo_in_scope` keys on the remote's
+    host/path suffix), falling back to the local path only when there is no remote. The scan
+    pipeline (`repo_scan`) and the absorb gate (`cli._cmd_absorb`) must derive it the SAME way —
+    a gate that passed the raw local checkout path instead saw `_repo_in_scope` return False for
+    a clone whose folder name differs from `org/repo` (`double-break_spapi-php` vs
+    `spapi-php`), so the idiom silently never applied and `attributedAfter == attributedBefore`.
+    Pass `meta` when git_meta was already computed to avoid a second subprocess."""
+    m = meta if meta is not None else git_meta(repo_abs, run=git)
+    return m.get("remote_url") or repo_abs
+
+
 def resolve_engine(engine: str = "ast-grep") -> str:
     """Locate the ast-grep binary (static, no runtime). bin/drift-scan fetches it
     into the venv on first run; $DRIFT_ENGINE or PATH also work."""
