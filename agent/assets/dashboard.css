@@ -37,6 +37,37 @@ a{color:var(--accent-2);text-decoration:none} a:hover{text-decoration:underline}
   border-radius:20px;padding:5px 12px;font:inherit;font-size:12px;cursor:pointer}
 .themebtn:hover{color:var(--ink);border-color:var(--accent-2)}
 .headline{font-size:15px;text-wrap:balance;margin:10px 0} .headline .big{font-weight:680} .dot{color:var(--crit)}
+.ownstat{margin-left:6px;font-size:12.5px;color:var(--muted);border-left:1px solid var(--line);padding-left:10px}
+
+/* ---- TOP-LEVEL PLANES: Supply Chain / Vendor Drift / AI Frontier. Each plane carries its own
+   accent (--pa) — amber for supply-chain, ember for the flagship drift plane, blue matching the
+   SHAPED badge for AI — differentiated by hue AND the left rail + tag, never hue alone. ---- */
+.planes{display:flex;gap:10px;margin:12px 0 8px;flex-wrap:wrap}
+.plane{--pa:var(--accent);appearance:none;flex:1;min-width:230px;text-align:left;cursor:pointer;
+  background:var(--panel);border:1px solid var(--line);border-left:3px solid color-mix(in oklab,var(--pa) 55%,var(--line));
+  border-radius:12px;padding:11px 14px;font:inherit;color:var(--ink);
+  transition:border-color .12s,background .12s,box-shadow .12s,opacity .12s}
+.plane[data-plane="supply"]{--pa:var(--high)}
+.plane[data-plane="drift"]{--pa:var(--accent)}
+.plane[data-plane="ai"]{--pa:var(--accent-2)}
+.plane[data-on="0"]{opacity:.72}
+.plane:hover{opacity:1;border-color:color-mix(in oklab,var(--pa) 45%,var(--line));background:var(--panel-2)}
+.plane[data-on="1"]{opacity:1;border-color:color-mix(in oklab,var(--pa) 60%,var(--line));background:var(--panel-2);
+  box-shadow:inset 0 0 0 1px color-mix(in oklab,var(--pa) 28%,transparent),0 4px 16px color-mix(in oklab,var(--pa) 13%,transparent)}
+.plane:focus-visible{outline:2px solid var(--pa);outline-offset:2px}
+.pl-top{display:flex;align-items:center;gap:8px}
+.pl-name{font-size:14px;font-weight:660;letter-spacing:-.01em}
+.pl-tag{font:700 9px/1 var(--mono);letter-spacing:.08em;padding:2px 5px;border-radius:4px;
+  color:var(--pa);border:1px solid color-mix(in oklab,var(--pa) 45%,var(--line));white-space:nowrap}
+.pl-n{margin-left:auto;font-size:18px;font-weight:700;color:var(--pa)}
+.pl-blurb{display:block;margin-top:5px;font-size:11.5px;line-height:1.45;color:var(--muted)}
+@container (max-width:760px){.plane{min-width:100%}}
+
+/* plane-intro hero (Supply Chain / AI Frontier get a headline card, not the timeline —
+   the timeline is CERTIFIED-only and belongs to the Vendor Drift plane). */
+.planehero{padding:8px 0 2px;max-width:66ch}
+.planehero p{font-size:13.5px;line-height:1.7;color:var(--muted)}
+.planehero b{color:var(--ink);font-weight:600}
 
 /* ---- PRIMARY TABS = the metric tiles (cockpit IA) ---- */
 .tabstrip{display:flex;gap:8px 20px;flex-wrap:wrap;align-items:flex-end;
@@ -173,8 +204,11 @@ dialog .db{padding:16px 18px} dialog .x{margin-left:auto;background:none;border:
 /* ---- Task 3: alt hero for non-timeline dimensions (apis/unknown vendor breakdown) — ported
    from docs/design/2026-08-04-cockpit-mockup.html's `.mini`/`.bar`. ---- */
 .mini{display:flex;gap:10px;flex-wrap:wrap;margin-top:12px}
-.bar{flex:1;min-width:180px;background:var(--panel-2);border:1px solid var(--line);border-radius:10px;padding:12px 14px}
-.bar .bn{font-size:22px;font-weight:700} .bar .bl{font-size:11.5px;color:var(--muted)}
+.bar{flex:1;min-width:180px;max-width:100%;overflow:hidden;background:var(--panel-2);border:1px solid var(--line);border-radius:10px;padding:12px 14px}
+/* hostnames have no spaces, so normal wrapping can't break them — they clipped out of the card.
+   overflow-wrap:anywhere lets long hosts (sellercentral.amazon.com) wrap inside the tile. */
+.bar .bn{font-size:19px;font-weight:700;line-height:1.2;overflow-wrap:anywhere;word-break:break-word}
+.bar .bl{font-size:11.5px;color:var(--muted);margin-top:2px}
 .bar .track{height:8px;border-radius:5px;background:var(--track);margin-top:8px;overflow:hidden}
 .bar .fill{height:100%;border-radius:5px}
 
@@ -202,6 +236,14 @@ td.orig { width:1%; }
 /* the AI-tier lead-in: confident ("validated · absorb to keep"), NOT a warning */
 .tierlead { border-left:3px solid var(--accent-2); background:rgba(61,125,224,.09);
             padding:10px 14px; border-radius:6px; margin:12px 0; font-size:13px; line-height:1.6; }
+/* plain-language tier key under the tabs — one row per tier, badge left, plain gloss right,
+   so a non-specialist reads what "certified"/"shaped" mean without the jargon. */
+.tierlegend{display:flex;flex-direction:column;gap:8px;margin:10px 0 4px;padding:12px 14px;
+  background:var(--panel-2);border:1px solid var(--line);border-radius:8px}
+.tierlegend .tk{display:flex;gap:10px;align-items:baseline;font-size:12.5px;line-height:1.55;color:var(--muted)}
+.tierlegend .tk .orig{flex:none}
+.tierlegend .tk b{color:var(--ink);font-weight:600}
+.tierlegend a{color:var(--accent-2)}
 /* the ONE bottom disclaimer — calm, ends on strength (verify) */
 .tierkey { font-size:13px; color:var(--muted); padding:16px 0; line-height:1.8;
            border-top:1px solid var(--line); margin-top:10px; }

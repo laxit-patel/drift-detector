@@ -120,10 +120,11 @@ def test_owner_tiles_and_filter_split_the_two_streams():
     data = _blob(html)
     assert data["counts"]["byOwner"] == {"devops": {"fixes": 1, "review": 0},
                                          "developer": {"fixes": 1, "review": 0}}
-    # the Ownership tile group is wired in the Vue app skeleton (App.tileGroups), keyed
-    # "devops"/"developer" — and its math mirrors the old server-side `_own` lambda: the
+    # Ownership is cross-cutting (it spans all three planes), so it's a HEADER stat now
+    # (App.ownStats), not a tile of its own — but the two delivery streams are still split
+    # devops vs developer, and the math still mirrors the old server-side `_own` lambda: the
     # byOwner sub-dict's lowercase "fixes"/"review" keys, not the finding-status literals.
-    assert 'key:"devops"' in dr.APP_JS_SRC and 'key:"developer"' in dr.APP_JS_SRC
+    assert 'own("devops")' in dr.APP_JS_SRC and 'own("developer")' in dr.APP_JS_SRC
     assert "v.fixes" in dr.APP_JS_SRC and "v.review" in dr.APP_JS_SRC
     # each projected action carries its owner
     owners = {a["ref"]: a["owner"] for a in data["actions"]}

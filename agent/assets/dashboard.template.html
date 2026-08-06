@@ -18,9 +18,26 @@
     </div>
     <p class="headline"><span class="dot">●</span>
       <span class="big">{{ counts.fixes }} fixes needed</span> ·
-      {{ counts.reposAffected }} of {{ counts.reposScanned }} repos affected</p>
-    <!-- PRIMARY TABS = the metric tiles: counts bind to the SAME tileGroups/counts payload
-         the old tile-grid read, just rendered as a tab strip instead of a grid of buttons. -->
+      {{ counts.reposAffected }} of {{ counts.reposScanned }} repos affected
+      <span class="ownstat" title="Who owns the remediation — cross-cutting across all three planes">{{ ownStats.devops }} DevOps
+        · {{ ownStats.developer }} Developer</span></p>
+    <!-- TOP-LEVEL PLANES: Supply Chain / Vendor Drift / AI Frontier. Three cockpits in
+         ascending uniqueness, descending certainty — each owns its own tiles, hero and
+         content. Switching plane (switchPlane) resets the tile filter and content view. -->
+    <div class="planes" role="tablist" aria-label="Cockpit planes">
+      <button class="plane" v-for="pd in planeDefs" :key="pd.key" role="tab"
+              :data-plane="pd.key" :data-on="plane === pd.key ? '1' : '0'"
+              :aria-pressed="plane === pd.key" @click="switchPlane(pd.key)">
+        <span class="pl-top">
+          <span class="pl-name">{{ pd.label }}</span>
+          <span class="pl-tag" :data-plane="pd.key">{{ pd.tag }}</span>
+          <span class="pl-n">{{ pd.n }}</span>
+        </span>
+        <span class="pl-blurb">{{ pd.blurb }}</span>
+      </button>
+    </div>
+    <!-- PRIMARY TABS = the ACTIVE plane's metric tiles: counts bind to the SAME tileGroups/counts
+         payload the old tile-grid read, just scoped to the current plane and rendered as a strip. -->
     <div class="tabstrip" role="tablist">
       <div class="tgroup" v-for="g in tileGroups" :key="g.title">
         <span class="tglbl">{{ g.title }}</span>
@@ -110,6 +127,29 @@
         <p class="empty" v-else>No {{ tab === 'unknown' ? 'unclassified' : 'classified' }}
           endpoints found<template v-if="scope"> for {{ repoLabelOf(scope) }}</template>.</p>
       </template>
+      <!-- Supply Chain plane intro: the familiar SCA/CVE story, pointing at the SBOM/SARIF tabs. -->
+      <template v-else-if="heroMode === 'supply'">
+        <div class="planehero">
+          <p>Everything a standard supply-chain scan flags — <b>{{ counts.critical }} critical</b>
+             advisor{{ counts.critical === 1 ? 'y' : 'ies' }} and <b>{{ counts.eol }} end-of-life</b>
+             component{{ counts.eol === 1 ? '' : 's' }} — with machine-readable <b>SBOM</b> and
+             <b>SARIF</b> exports for your pipeline in the tabs below. The findings your DevOps
+             tooling already speaks.</p>
+        </div>
+      </template>
+      <!-- AI Frontier plane intro: confident framing of the shaped tier (badge, not banner). -->
+      <template v-else-if="heroMode === 'ai'">
+        <div class="planehero">
+          <p v-if="hasShaped"><b>{{ shapedCount }} call-site{{ shapedCount === 1 ? '' : 's' }}</b> across
+             <b>{{ shapedRepos }} repo{{ shapedRepos === 1 ? '' : 's' }}</b> the deterministic scan
+             couldn't see on its own — an AI shaped them and the tool re-checked every one against
+             the code. Real locations, dated from the same reviewed catalog; not saved to your
+             catalog yet. Full list below — <b>“Absorb” to keep them.</b></p>
+          <p v-else>The frontier for repos the deterministic scan can't read on its own. When an AI
+             shapes one and the tool re-checks it, the recovered call-sites land here — gate-validated,
+             dated from the reviewed catalog. <b>No shaping pass has run on this scan yet.</b></p>
+        </div>
+      </template>
       <!-- honest empty-state (CLAUDE.md principle 1: "cannot see" != "clean") — a zero here
            is only meaningful because the scan could READ these repos; an unaudited or
            unscannable source would say so in Coverage below, not show a clean zero. -->
@@ -131,21 +171,39 @@
     <br><span class="pill" :class="tip.pillClass">{{ tip.statusLabel }}</span>
   </div>
 
-  <!-- SUB-TABS: replace the old top-level tab bar (Summary/Retirement timeline/SBOM/SARIF).
-       The timeline retires as a top-level tab here — it becomes the hero in Task 2. -->
-  <div class="subbar" id="subbar" role="tablist">
+  <!-- SUB-TABS, scoped to the active plane. Supply Chain adds SBOM + SARIF (they live ONLY
+       here, so they never clutter the other planes). Vendor Drift shows just its content view.
+       AI Frontier has no sub-tabs — the shaped list IS its content — so the bar is hidden. -->
+  <div class="subbar" id="subbar" role="tablist" v-if="plane !== 'ai'">
     <button class="subtab" role="tab" :data-on="sub === 'summary' ? '1' : '0'"
-            @click="sub = 'summary'">Summary</button>
-    <button class="subtab" role="tab" v-if="hasShaped" :data-on="sub === 'shaped' ? '1' : '0'"
-            @click="sub = 'shaped'">Shaped <span class="tcount">{{ shapedCount }}</span></button>
-    <button class="subtab" role="tab" :data-on="sub === 'sbom' ? '1' : '0'"
-            @click="sub = 'sbom'">SBOM</button>
-    <button class="subtab" role="tab" :data-on="sub === 'sarif' ? '1' : '0'"
-            @click="sub = 'sarif'">SARIF</button>
+            @click="sub = 'summary'">{{ plane === 'drift' ? 'Retiring integrations' : 'Findings' }}</button>
+    <template v-if="plane === 'supply'">
+      <button class="subtab" role="tab" :data-on="sub === 'sbom' ? '1' : '0'"
+              @click="sub = 'sbom'">SBOM</button>
+      <button class="subtab" role="tab" :data-on="sub === 'sarif' ? '1' : '0'"
+              @click="sub = 'sarif'">SARIF</button>
+    </template>
+  </div>
+  <!-- plain-language key: what CERTIFIED vs SHAPED mean, for a non-specialist. Shown on the
+       Vendor Drift + AI planes (where the distinction is live); Supply Chain has neither tier. -->
+  <div class="tierlegend" v-if="plane !== 'supply' && hasShaped">
+    <div class="tk">
+      <span class="orig" data-origin="certified">CERTIFIED</span>
+      <span><b>The tool found and proved these itself.</b> A known rule matched the code, and the
+        retirement date has a cited source. This plane, its tiles and the timeline show <b>only</b>
+        these — the numbers you can trust without a second look. <b>({{ counts.fixes }})</b></span>
+    </div>
+    <div class="tk">
+      <span class="orig" data-origin="shaped">SHAPED</span>
+      <span><b>An AI spotted these; the tool re-checked every location.</b> Real call-sites, in code
+        the tool couldn't read on its own — but the rule isn't saved to your catalog yet, so they
+        stay in the <a href="#" @click.prevent="switchPlane('ai')"><b>AI Frontier</b> plane</a>
+        until you keep them. <b>({{ shapedCount }})</b></span>
+    </div>
   </div>
 
   <div id="main">
-    <section v-show="sub === 'summary'" class="panel active">
+    <section v-show="plane !== 'ai' && sub === 'summary'" class="panel active">
       <div class="subbar">
         <button class="tab" :class="{active: sumView === 'prev'}"
                 @click="sumView = 'prev'">Preview</button>
@@ -161,17 +219,15 @@
       <table id="panel">
         <tbody>
           <tr v-if="mode === 'catalog' && rows.length">
-            <td colspan="6" class="intro">Vendors this code calls whose retirement list nobody
+            <td colspan="5" class="intro">Vendors this code calls whose retirement list nobody
               has checked. Zero findings for these is UNAUDITED, not clean.</td>
           </tr>
           <tr v-if="mode === 'private' && rows.length">
-            <td colspan="6" class="intro">Sub-dependencies the scan couldn't crawl — private or
+            <td colspan="5" class="intro">Sub-dependencies the scan couldn't crawl — private or
               unreachable.</td>
           </tr>
           <template v-for="(row, idx) in rows" :key="mode + '-' + idx">
             <tr class="row" @click="onRowClick(idx)">
-              <td class="orig" data-origin="certified"
-                  title="Catalog rule + a retirement date with a cited source.">CERTIFIED</td>
               <template v-if="mode === 'actions'">
                 <td>{{ row.repoLabel || row.repo }}</td>
                 <td>{{ actionLabel(row) }}</td>
@@ -258,30 +314,40 @@
       </div>
       </div>
     </section>
-    <section v-show="sub === 'shaped'" class="panel active" v-if="hasShaped">
-      <div class="tierlead">
-        <b>Shaped this run.</b> Call-sites detected by a shape written for this repo and
-        <b>validated against it</b> by the absorb gate — the call-sites are real; the shape isn't in
-        your catalog yet. Dates come from the same reviewed sunset catalog. <b>Absorb to keep it.</b>
+    <section v-show="plane === 'ai'" class="panel active">
+      <!-- honest empty-state when NO shaping pass ran: this plane is always present, but a
+           genuine "no shapes" is said plainly, never rendered as a clean zero. -->
+      <div v-if="!hasShaped" class="planehero">
+        <p><b>No shaping pass has run on this scan.</b> The AI Frontier fills in when an AI shapes
+           a repo the deterministic scan couldn't read — attributing real call-sites the tool then
+           re-checks. Run <code>/drift-absorb</code> on the UNKNOWN repos to shape them, then
+           re-scan and they'll appear here, gate-validated.</p>
       </div>
-      <table id="panel">
-        <tbody>
-          <tr v-if="!shaped.length">
-            <td colspan="5" class="intro">The shaping pass ran and attributed no new call-sites this
-              scan. (An empty result here is real — the pass looked; it did not find a new shape.)</td>
-          </tr>
-          <tr class="row" v-for="(sh, si) in shaped" :key="'sh' + si">
-            <td class="orig" data-origin="shaped"
-                title="Detected this run by a shape written for this repo and validated against it. Not saved to your catalog.">SHAPED</td>
-            <td>{{ sh.repo }}</td>
-            <td>{{ sh.ref }} <span class="op" v-if="sh.op">{{ sh.op }}</span></td>
-            <td>{{ sh.date || '— attributed, not dated' }}</td>
-            <td class="loc">{{ sh.loc }}</td>
-          </tr>
-        </tbody>
-      </table>
+      <template v-else>
+        <div class="tierlead">
+          <b>Found by AI, re-checked by the tool.</b> These are real call-sites in code the tool
+          couldn't read on its own — an AI pointed them out, and the tool then confirmed each one is
+          really there. The retirement dates come from the same reviewed catalog as everything else.
+          They're not saved yet, so they live here rather than in your certified numbers —
+          <b>“Absorb” to keep them permanently.</b>
+        </div>
+        <table id="panel">
+          <tbody>
+            <tr v-if="!shaped.length">
+              <td colspan="4" class="intro">The shaping pass ran and attributed no new call-sites this
+                scan. (An empty result here is real — the pass looked; it did not find a new shape.)</td>
+            </tr>
+            <tr class="row" v-for="(sh, si) in shaped" :key="'sh' + si">
+              <td>{{ sh.repo }}</td>
+              <td>{{ sh.ref }} <span class="op" v-if="sh.op">{{ sh.op }}</span></td>
+              <td>{{ sh.date || '— attributed, not dated' }}</td>
+              <td class="loc">{{ sh.loc }}</td>
+            </tr>
+          </tbody>
+        </table>
+      </template>
     </section>
-    <section v-show="sub === 'sbom'" class="panel active">
+    <section v-show="plane === 'supply' && sub === 'sbom'" class="panel active">
       <div class="subbar">
         <button class="tab" :class="{active: sbomView === 'prev'}"
                 @click="sbomView = 'prev'">Preview</button>
@@ -330,7 +396,7 @@
       </div>
     </section>
 
-    <section v-show="sub === 'sarif'" class="panel active">
+    <section v-show="plane === 'supply' && sub === 'sarif'" class="panel active">
       <div class="subbar">
         <button class="tab" :class="{active: sarifView === 'prev'}"
                 @click="sarifView = 'prev'">Preview</button>
@@ -430,14 +496,14 @@
       </details>
     </section>
     <section class="tierkey">
-      <b>How to read this report.</b>
-      <span class="orig" data-origin="certified">CERTIFIED</span> rows come from the reviewed catalog
-      — a detection rule plus a retirement date with a cited source.
-      <span class="orig" data-origin="shaped">SHAPED</span> rows were detected this run by a shape
-      written for this repo and validated against it; the call-sites are real, the shape isn't in your
-      catalog yet.
-      <span class="orig" data-origin="lead">LEAD</span> rows are AI suggestions — no validation, no
-      dates. <b>Tiles and totals count CERTIFIED rows only.</b>
+      <b>How to read this report.</b> The three planes are three tiers of certainty.
+      <span class="orig" data-origin="certified">CERTIFIED</span> — the <b>Supply Chain</b> and
+      <b>Vendor Drift</b> planes — comes from the reviewed catalog: a detection rule plus a retirement
+      date with a cited source.
+      <span class="orig" data-origin="shaped">SHAPED</span> — the <b>AI Frontier</b> plane — was
+      detected this run by a shape written for a repo the scan couldn't read on its own and validated
+      against it; the call-sites are real, the shape isn't in your catalog yet.
+      <b>Tiles and totals count CERTIFIED only.</b>
       <div class="verifyline"><code>drift.json</code> is the certified record, and
         <code>drift-scan verify</code> checks every number on this page against it.</div>
     </section>
