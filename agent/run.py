@@ -71,6 +71,10 @@ def run_pipeline(roots, state_dir, now, *, pull=False,
     _write(os.path.join(state_dir, "chart.html"), render_chart(payload, now))
 
     return {"scope": doc.get("scope", {}), "auditCounts": audit["counts"],
+            # the CANONICAL, post-dedup counts the report shows (drift.json → counts). The banner
+            # must print THESE, not the raw per-finding audit counts, or the first number a user
+            # sees (and the one `verify` does not cover) contradicts the report.
+            "counts": payload.get("counts", {}),
             "coverage": audit.get("coverage", {}),
             # from the SCAN, not the audit — why any root yielded no repo
             "rootsUnscannable": (doc.get("coverage", {}) or {}).get("rootsUnscannable", [])}

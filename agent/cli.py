@@ -119,15 +119,28 @@ def _cmd_run(args) -> int:
     for u in (out.get("rootsUnscannable") or []):
         print(f"⚠ skipped: {u['reason']}", file=sys.stderr)
 
-    c = out["auditCounts"]
-    print(f"✓ scan+audit: 🔴 {c.get('DEPRECATED', 0)} action-required · 🟠 {c.get('REVIEW', 0)} review")
+    c = out["auditCounts"]                          # raw per-finding tallies (drive the CI gate)
+    # DISPLAY the CANONICAL, post-dedup counts (what drift.json/the report shows), falling back to
+    # the raw tallies if a caller didn't supply them — the raw ones over-report and contradict the
+    # report the user then reads (a fresh scan run always supplies canonical `counts`).
+    cc = out.get("counts") or {}
+    fixes = cc.get("fixes", c.get("DEPRECATED", 0))
+    review = cc.get("review", c.get("REVIEW", 0))
+    print(f"✓ scan+audit: 🔴 {fixes} action-required · 🟠 {review} review")
+    # A degraded run (an audit source unreachable) must NEVER read as clean — surface it LOUDLY on
+    # every run, not just under the CI gate. 'Couldn't check' is not 'clean' (principle 1).
+    cov = out.get("coverage", {})
+    if cov.get("osvErrors") or cov.get("eolErrors"):
+        print(f"⚠ DEGRADED: {cov.get('osvErrors', 0)} CVE + {cov.get('eolErrors', 0)} EOL source "
+              f"check(s) failed this run — some findings are UNCONFIRMED (served from cache or "
+              f"skipped), and absent ones are NOT proven clean. Re-run with network access.",
+              file=sys.stderr)
     if getattr(args, "fail_on_deprecated", False):
-        cov = out.get("coverage", {})
         if cov.get("osvErrors") or cov.get("eolErrors"):
             print("✗ gate: audit sources (OSV/endoflife) were unreachable — cannot certify clean "
                   "(exit 4). Re-run with network access.", file=sys.stderr)
             return 4                       # 'couldn't check' is NOT 'clean'
-        if c.get("DEPRECATED", 0) > 0:
+        if c.get("DEPRECATED", 0) > 0:     # gate on the raw signal: ANY deprecated finding fails
             print(f"✗ gate: {c['DEPRECATED']} DEPRECATED finding(s) (excluding muted) — failing (exit 3)",
                   file=sys.stderr)
             return 3
