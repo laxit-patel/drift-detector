@@ -8,19 +8,23 @@ opts in via `absorb`.
 
 ## Status: mechanism + pipeline proven end-to-end
 
-Fable-5 designed; built per the plan. Acceptance run on `walmart-api` (a real UNKNOWN,
-config-driven-url repo, 8 blind `/v3/` paths):
+Fable-5 designed; built per the plan. Acceptance run on `amazon-sp-api-php` (a real UNKNOWN,
+config-driven-url SP-API SDK, 105 blind paths) — the **full payoff, including dating**:
 
 | Check | Result |
 |---|---|
-| Baseline verdict | `UNKNOWN` (8 blind path literals) |
-| `absorb --check` (the gate) | attributed **1 → 9 (+8)**, 8/8 claims met, ✓ passes |
-| Ephemeral re-scan | **9 Walmart endpoints attributed** the certified scan never saw |
-| `adhoc-report` | `adhoc.json` (`drift-adhoc/v1`, hash-bound) + `adhoc.html` (amber, "gate-validated (this run)") |
+| Baseline verdict | `UNKNOWN` (105 blind path literals) |
+| AI shape | one `path-constant` idiom: `^/catalog/v0` → Amazon SP-API |
+| `absorb --check` (the gate) | attributed **5 → 8 (+3)**, 3/3 claims met, ✓ passes |
+| Ephemeral re-scan | 3 `/catalog/v0` call-sites attributed the certified scan never saw |
+| **Dated by the catalog** | **Amazon SP-API `/catalog/v0` → RETIRES 2026-06-30** (sourced, human-curated) |
+| `adhoc-report` | `adhoc.json` (`drift-adhoc/v1`, hash-bound) + `adhoc.html` (amber, "AI-shaped · gate-validated (this run)") |
 | **Certified `drift.json` sha** | **UNCHANGED** — the middle tier cannot contaminate the certified tier |
 
-*(0 dated here only because walmart-api's paths aren't Walmart's specific retiring operations —
-attribution is the mechanism; dating is a catalog path-match on top.)*
+This is the whole thesis on one repo: **AI supplied the *where* (3 blind call-sites), the reviewed
+catalog supplied the *when* (2026-06-30)** — an unreviewed shape surfaced a dated finding it could
+never have invented. (A prior run on `walmart-api` proved attribution alone: 8 shaped, 0 dated,
+because its paths aren't Walmart's retiring operations.)
 
 ## What was built
 - `agent/lib/adhoc.py` — `compare()` (restrict shaped actions to claimed locs, surface gate problems)
