@@ -7,6 +7,9 @@
   // byte-for-byte what those commands would produce. Read-only, so markRaw skips Vue's deep
   // reactivity conversion (these can be large and never mutate).
   var SBOM = blob("sbom-data"), SPDX = blob("spdx-data"), SARIF = blob("sarif-data");
+  // the AI-SHAPED tier (drift-adhoc/v1) — a SEPARATE, optional blob. null when the ad-hoc pass
+  // never ran: the tab is then HIDDEN, not shown as "0" ("cannot see" ≠ "clean", extended here).
+  var ADHOC = document.getElementById("adhoc-data") ? blob("adhoc-data") : null;
   // generic scan methodology (Sources / Versions / Parked tiers / catalog note) is boilerplate,
   // identical every scan — it goes to its own "methodology" footer, NOT mixed into the
   // data-specific coverage warnings (unaudited vendors, unreachable sources, …).
@@ -36,6 +39,7 @@
       return {
         DATA: DATA, counts: C,
         SBOM: Vue.markRaw(SBOM), SPDX: Vue.markRaw(SPDX), SARIF: Vue.markRaw(SARIF),
+        ADHOC: ADHOC ? Vue.markRaw(ADHOC) : null,
         generated: DATA.generated || "",
         scope: "",            // global repo scope ("" = all)
         tab: null,             // active PRIMARY tab = the metric-tile dimension (cockpit IA);
@@ -109,6 +113,24 @@
         if(this.mode==="catalog")   return this.catalogFor();
         return this.actionsFor();
       },
+
+      // ---- the AI-SHAPED tier: gate-validated this run, not yet in the catalog. Loop var is `sh`
+      // (NOT a/e/p/cv/row) so check_accessor_coverage's certified-row union is not widened. ----
+      hasShaped: function(){ return !!this.ADHOC; },
+      shaped: function(){
+        // params rp/act (NOT r/a) — a/e/p/cv/row are check_accessor_coverage's tracked accessors,
+        // and reusing them here would demand the shaped-record fields on the CERTIFIED sample.
+        var out = [];
+        ((this.ADHOC && this.ADHOC.byRepo) || []).forEach(function(rp){
+          (rp.shaped || []).forEach(function(act){
+            var f = (act.files || [])[0];
+            out.push({ repo: rp.repo, ref: act.ref, op: act.operation || "",
+                       date: act.date || "", loc: (f && f.loc) || f || "" });
+          });
+        });
+        return out;
+      },
+      shapedCount: function(){ return this.shaped.length; },
 
       // ---- JSON views: drift.json / CycloneDX / SPDX / SARIF, pretty-printed for the
       // read-only "view / copy" panels. Same DATA/SBOM/SPDX/SARIF the tables above render

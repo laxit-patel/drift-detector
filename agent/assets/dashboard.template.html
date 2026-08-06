@@ -136,6 +136,8 @@
   <div class="subbar" id="subbar" role="tablist">
     <button class="subtab" role="tab" :data-on="sub === 'summary' ? '1' : '0'"
             @click="sub = 'summary'">Summary</button>
+    <button class="subtab" role="tab" v-if="hasShaped" :data-on="sub === 'shaped' ? '1' : '0'"
+            @click="sub = 'shaped'">Shaped <span class="tcount">{{ shapedCount }}</span></button>
     <button class="subtab" role="tab" :data-on="sub === 'sbom' ? '1' : '0'"
             @click="sub = 'sbom'">SBOM</button>
     <button class="subtab" role="tab" :data-on="sub === 'sarif' ? '1' : '0'"
@@ -159,15 +161,17 @@
       <table id="panel">
         <tbody>
           <tr v-if="mode === 'catalog' && rows.length">
-            <td colspan="5" class="intro">Vendors this code calls whose retirement list nobody
+            <td colspan="6" class="intro">Vendors this code calls whose retirement list nobody
               has checked. Zero findings for these is UNAUDITED, not clean.</td>
           </tr>
           <tr v-if="mode === 'private' && rows.length">
-            <td colspan="5" class="intro">Sub-dependencies the scan couldn't crawl — private or
+            <td colspan="6" class="intro">Sub-dependencies the scan couldn't crawl — private or
               unreachable.</td>
           </tr>
           <template v-for="(row, idx) in rows" :key="mode + '-' + idx">
             <tr class="row" @click="onRowClick(idx)">
+              <td class="orig" data-origin="certified"
+                  title="Catalog rule + a retirement date with a cited source.">CERTIFIED</td>
               <template v-if="mode === 'actions'">
                 <td>{{ row.repoLabel || row.repo }}</td>
                 <td>{{ actionLabel(row) }}</td>
@@ -253,6 +257,29 @@
         </div>
       </div>
       </div>
+    </section>
+    <section v-show="sub === 'shaped'" class="panel active" v-if="hasShaped">
+      <div class="tierlead">
+        <b>Shaped this run.</b> Call-sites detected by a shape written for this repo and
+        <b>validated against it</b> by the absorb gate — the call-sites are real; the shape isn't in
+        your catalog yet. Dates come from the same reviewed sunset catalog. <b>Absorb to keep it.</b>
+      </div>
+      <table id="panel">
+        <tbody>
+          <tr v-if="!shaped.length">
+            <td colspan="5" class="intro">The shaping pass ran and attributed no new call-sites this
+              scan. (An empty result here is real — the pass looked; it did not find a new shape.)</td>
+          </tr>
+          <tr class="row" v-for="(sh, si) in shaped" :key="'sh' + si">
+            <td class="orig" data-origin="shaped"
+                title="Detected this run by a shape written for this repo and validated against it. Not saved to your catalog.">SHAPED</td>
+            <td>{{ sh.repo }}</td>
+            <td>{{ sh.ref }} <span class="op" v-if="sh.op">{{ sh.op }}</span></td>
+            <td>{{ sh.date || '— attributed, not dated' }}</td>
+            <td class="loc">{{ sh.loc }}</td>
+          </tr>
+        </tbody>
+      </table>
     </section>
     <section v-show="sub === 'sbom'" class="panel active">
       <div class="subbar">
@@ -401,6 +428,18 @@
             <b>{{ c.repo }}</b>: {{ c.bits.join(" · ") }}</div>
         </div>
       </details>
+    </section>
+    <section class="tierkey">
+      <b>How to read this report.</b>
+      <span class="orig" data-origin="certified">CERTIFIED</span> rows come from the reviewed catalog
+      — a detection rule plus a retirement date with a cited source.
+      <span class="orig" data-origin="shaped">SHAPED</span> rows were detected this run by a shape
+      written for this repo and validated against it; the call-sites are real, the shape isn't in your
+      catalog yet.
+      <span class="orig" data-origin="lead">LEAD</span> rows are AI suggestions — no validation, no
+      dates. <b>Tiles and totals count CERTIFIED rows only.</b>
+      <div class="verifyline"><code>drift.json</code> is the certified record, and
+        <code>drift-scan verify</code> checks every number on this page against it.</div>
     </section>
     <section id="methodology" class="coverage">
       <details class="grp" v-if="methodologyNotes.length">
