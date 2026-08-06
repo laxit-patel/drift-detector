@@ -26,6 +26,17 @@ def _loc_set(claims) -> set:
     return {str(c).strip() for c in (claims or []) if str(c).strip()}
 
 
+def _action_locs(files) -> set:
+    """The `file:line`s an action touches. A drift.json action's `files` is a list of either
+    `{href, loc}` dicts (vendor/sunset actions) or plain `"file:line"` strings — handle both."""
+    out = set()
+    for f in (files or []):
+        loc = f.get("loc") if isinstance(f, dict) else f
+        if loc:
+            out.add(str(loc).strip())
+    return out
+
+
 def compare(adhoc_drift: dict, claims: list, gate_delta: dict, idioms: list, repo: str) -> dict:
     """The middle-tier projection for ONE repo, restricted to the claimed blind spots.
 
@@ -42,7 +53,7 @@ def compare(adhoc_drift: dict, claims: list, gate_delta: dict, idioms: list, rep
         problems.append(f"gate reported unclaimed attribution: {gate_delta['unclaimed']}")
 
     shaped = [a for a in (adhoc_drift.get("actions") or [])
-              if any(str(loc) in want for loc in (a.get("files") or []))]
+              if _action_locs(a.get("files")) & want]
     dated = [a for a in shaped if a.get("date")]
     attributed_delta = int(gate_delta.get("attributedAfter", 0)) - int(gate_delta.get("attributedBefore", 0))
     return {

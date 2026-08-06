@@ -6,15 +6,17 @@ from agent import absorb
 
 def test_compare_restricts_shaped_actions_to_claimed_locs():
     adhoc_drift = {"actions": [
-        {"ref": "Walmart", "date": "2026-06-30", "files": ["src/A.php:15"]},   # claimed + dated → shaped, dated
-        {"ref": "Walmart", "date": None,          "files": ["src/B.php:20"]},   # claimed, undated → shaped, not dated
-        {"ref": "eBay",    "date": "2026-01-01", "files": ["src/Z.php:99"]},   # NOT claimed → excluded
+        # real drift.json vendor actions carry `files` as {href, loc} DICTS, not plain strings
+        {"ref": "Walmart", "date": "2026-06-30", "files": [{"loc": "src/A.php:15", "href": "..."}]},
+        {"ref": "Walmart", "date": None,          "files": ["src/B.php:20"]},   # plain-string form also supported
+        {"ref": "eBay",    "date": "2026-01-01", "files": [{"loc": "src/Z.php:99"}]},   # NOT claimed → excluded
     ]}
     gate = {"attributedBefore": 1, "attributedAfter": 3, "residueBefore": 8, "residueAfter": 6,
             "claims": {"met": ["src/A.php:15", "src/B.php:20"], "missing": []},
             "invented": [], "unclaimed": [], "problems": []}
     out = adhoc.compare(adhoc_drift, ["src/A.php:15", "src/B.php:20"], gate, [{"id": "adhoc/r/1"}], "r")
-    assert {a["files"][0] for a in out["shaped"]} == {"src/A.php:15", "src/B.php:20"}   # eBay (unclaimed) excluded
+    shaped_locs = set().union(*(adhoc._action_locs(a["files"]) for a in out["shaped"]))
+    assert shaped_locs == {"src/A.php:15", "src/B.php:20"}   # eBay (unclaimed) excluded; dict + string forms both matched
     assert out["datedCount"] == 1                     # only the dated Walmart action
     assert out["attributedNew"] == 2                  # from the gate delta (3 - 1)
     assert out["problems"] == []
