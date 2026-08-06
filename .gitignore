@@ -31,3 +31,4 @@ docs/results/
 .drift-fleet-bot/
 
 .pytest_cache/
+adhoc/

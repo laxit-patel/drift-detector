@@ -83,6 +83,43 @@ This clones any URLs and classifies every source — **git repo · plain folder 
 
    **Freshness on demand.** Any time, `"$SCAN" catalog-check --now "$(date +%F)"` re-checks the catalogued vendors (eBay, Shopify) against their live sources and reports what changed — a NEW retirement we lack, a date the vendor MOVED, or a computed rule that drifted. Exit 3 means something changed (stage it and run `absorb`); exit 4 means a source was unreachable. When a scan just ran and `"$D/catalog-check.log"` exists from the weekly job, glance at it and surface any change to the user.
 
+## Ad-hoc shapes — the middle tier (gate-validated, this run) · POC
+
+Between the certified report and the raw AI leads, for **each repo whose shape verdict is UNKNOWN**
+(from `inventory.json` → `coverage.shapes[]`) **unless** its reasons include `no-egress-signal` (that
+is MANUAL — a code release, not an absorption; skip it). This turns "I can't see this repo" into
+**deterministic, gate-validated attribution for this run**, without persisting anything. Let `S` be
+the certified state dir, `R` the repo name, `ABS` its absolute path.
+
+1. **Brief.** `"$SCAN" brief --repo <R> --state "$S"` → an `ABSORPTION.md` naming the exact blind
+   `file:line`s (the residue) and the closed idiom-family set. **These are the ONLY lines you may open.**
+2. **Author.** Open only those lines, work out how each URL is assembled, and write to
+   `"$S/adhoc/<R>/staged/"`: `idioms.yaml` (instances of the closed families, ids `adhoc/<R>/n`) and
+   `claims.yaml` (the `file:line`s you attribute — **a subset of the brief's residue locs**). **Never
+   write a `sunsets.yaml` here — no dates in this lane, ever.**
+3. **Gate.** `"$SCAN" absorb --check --staged "$S/adhoc/<R>/staged" --repo "$ABS"` — capture the
+   `DELTA {…}` line to `"$S/adhoc/<R>/staged/gate-delta.json"`. **Exit 0 = would pass. Exit 3 =
+   rejected** → narrow the pattern, never broaden a claim; after a few tries, abandon the repo and
+   let it fall through to the leads phase. `absorb --check` is the ONLY acceptance signal.
+4. **Materialize + re-scan** (separate state dir + ephemeral overlay — never touch `S`):
+   ```bash
+   A="$S/adhoc/<R>"; mkdir -p "$A/catalog"
+   cp "$HOME/.drift/catalog/"*.local.yaml "$A/catalog/" 2>/dev/null || true   # keep the user's absorbed shapes
+   cp "$A/staged/idioms.yaml" "$A/catalog/idioms.local.yaml"
+   DRIFT_CATALOG_DIR="$A/catalog" "$SCAN" run --root "$ABS" --state "$A/state" --now "$(date +%F)"
+   ```
+5. **Report.** `"$SCAN" adhoc-report --state "$S" --adhoc-state "$A/state" --staged "$A/staged"
+   --gate-delta "$A/staged/gate-delta.json" --repo <R> --now "$(date +%F)"` → writes `"$S/adhoc.html"`
+   (amber, **AI-shaped · gate-validated (this run)**). Show its tally and point to it. It exits 3 if
+   the shape was over-broad — then do NOT present it as validated.
+6. **Offer to persist** (never act): *"N call-sites are now attributed. Absorb these shapes into
+   `~/.drift/catalog` so every future run sees them?"* Only on explicit yes: `"$SCAN" absorb
+   --staged "$A/staged" --repo "$ABS"` (with `DRIFT_CATALOG_DIR="$HOME/.drift/catalog"`).
+
+**Hard rules:** open only briefed lines · claims ⊆ the brief's residue · no dates in this lane ·
+`absorb --check` is the only pass signal · everything ad-hoc writes stays under `"$S/adhoc/"` (the
+certified `drift.json`/`dashboard.html` are read-only here) · never auto-persist.
+
 ## The AI plane — runs WITH every scan (not opt-in)
 
 The probabilistic cross-check is the **third plane**, and it runs **automatically alongside** the
