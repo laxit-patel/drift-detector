@@ -16,6 +16,18 @@ def test_repo_cache_keyed_by_sha(tmp_path):
     assert ir_store.load_repo_cache(str(tmp_path), "acme/web", "def") is None    # changed sha -> miss (re-scan)
 
 
+def test_repo_cache_misses_when_ruleset_signature_changes(tmp_path):
+    # REGRESSION: the cache key folds in the RULESET signature (vendors + idioms). Without it, a
+    # repo scanned once served its stale pre-idiom record forever — so absorbing a local idiom and
+    # re-running "to confirm the residue shrank" checked a cache the new idiom never touched, and
+    # the shape looked like it did nothing. Same path + sha, different ruleset -> MUST miss.
+    rec = {"path": "acme/web", "endpoints": []}
+    ir_store.save_repo_cache(str(tmp_path), "acme/web", "abc", rec, rules_sig="rulesA")
+    assert ir_store.load_repo_cache(str(tmp_path), "acme/web", "abc", rules_sig="rulesA") == rec
+    # a changed ruleset (a new/absorbed idiom) must re-scan, not serve the stale baseline record
+    assert ir_store.load_repo_cache(str(tmp_path), "acme/web", "abc", rules_sig="rulesB") is None
+
+
 def test_repo_path_with_slashes_is_file_safe(tmp_path):
     rec = {"path": "group/sub/proj"}
     ir_store.save_repo_cache(str(tmp_path), "group/sub/proj", "s1", rec)

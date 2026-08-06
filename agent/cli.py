@@ -559,6 +559,12 @@ def _cmd_absorb(args) -> int:
     vendors = load_vendors()
     engine = scan_util.resolve_engine()
 
+    # a repo-scoped idiom is matched on the git IDENTITY, not the local checkout path — the gate
+    # MUST derive repo_id exactly as the scan pipeline does (scan_util.repo_scope_id), or an idiom
+    # scoped to `org/repo` silently never applies for a clone whose folder name differs, leaving
+    # attributedAfter == attributedBefore and every claim wrongly flagged "still unattributed".
+    repo_ident = scan_util.repo_scope_id(args.repo)
+
     def scan(extra_idioms):
         insts = idioms_mod.load_idioms() + list(extra_idioms or [])
         with tempfile.TemporaryDirectory() as td:
@@ -568,7 +574,7 @@ def _cmd_absorb(args) -> int:
         # pass the staged idioms + repo id so a path-constant instance (repo-scoped,
         # vendor-bound) is actually exercised by the gate, not silently ignored
         return scan_endpoints(res["matches"], args.repo, vendors,
-                              idioms=insts, repo_id=args.repo)
+                              idioms=insts, repo_id=repo_ident)
 
     m = absorb.measure_against_repo(args.repo, staged_idioms, claims, scan=scan)
 
@@ -967,6 +973,68 @@ def _cmd_notify(args) -> int:
     return 0
 
 
+def _cmd_adhoc_report(args) -> int:
+    """Assemble the MIDDLE-tier artifact from a validated ad-hoc pass — the certified `drift.json`,
+    the ad-hoc re-scan's `drift.json`, the staged idioms + claims, and the gate's DELTA. Writes
+    `adhoc.json` + `adhoc.html` beside the certified report. `drift.json` is NEVER touched (sibling
+    document, exactly like the probabilistic artifact)."""
+    import json as _json
+    from agent import absorb as _absorb
+    from agent.lib import adhoc, adhoc_render
+    try:
+        certified = _json.load(open(os.path.join(args.state, "drift.json"), encoding="utf-8"))
+        adhoc_drift = _json.load(open(os.path.join(args.adhoc_state, "drift.json"), encoding="utf-8"))
+        gate = _json.load(open(args.gate_delta, encoding="utf-8"))
+    except (OSError, ValueError) as exc:
+        print(f"adhoc-report: bad input — {exc}", file=sys.stderr)
+        return 2
+    idioms = _absorb._load(os.path.join(args.staged, "idioms.yaml")) or []
+    claims = _absorb._load(os.path.join(args.staged, "claims.yaml")) or []
+    per = adhoc.compare(adhoc_drift, claims, gate, idioms, args.repo)
+    doc = adhoc.bundle(certified, [per], args.now)
+    with open(os.path.join(args.state, "adhoc.json"), "w", encoding="utf-8") as fh:
+        _json.dump(doc, fh, indent=2, sort_keys=True)
+    with open(os.path.join(args.state, "adhoc.html"), "w", encoding="utf-8") as fh:
+        fh.write(adhoc_render.render_adhoc(doc))
+    tier = "✗ over-broad (NOT validated)" if per["problems"] else "✓ gate-validated"
+    print(f"adhoc-report: {tier} · {per['attributedNew']} call-site(s) shaped · "
+          f"{per['datedCount']} dated by catalog → {args.state}/adhoc.html")
+    return 3 if per["problems"] else 0
+
+
+def _cmd_render(args) -> int:
+    """Re-render dashboard.html from the state dir: the certified drift.json + optional AI-tier docs
+    (adhoc.json / leads.json). The certified `drift-data` blob is byte-identical to run.py's render,
+    so `verify` stays green — the AI tiers are strictly additive, never a change to the certified one.
+    This is the seam that lets the ad-hoc pass (a second scan) fold its tier into the ONE cockpit."""
+    import json as _json
+    from agent.lib.dashboard_render import build_bundle, render_payload
+
+    def _load(name, required=True):
+        try:
+            with open(os.path.join(args.state, name), encoding="utf-8") as fh:
+                return _json.load(fh)
+        except OSError:
+            if required:
+                raise
+            return None
+    try:
+        payload = _load("drift.json")
+        inv, audit = _load("inventory.json"), _load("audit.json")
+    except OSError as exc:
+        print(f"render: nothing to render — {exc}", file=sys.stderr)
+        return 2
+    adhoc = _load("adhoc.json", required=False)
+    leads = _load("leads.json", required=False)
+    html = render_payload(payload, args.now, bundle=build_bundle(inv, audit, args.now),
+                          adhoc=adhoc, leads=leads)
+    with open(os.path.join(args.state, "dashboard.html"), "w", encoding="utf-8") as fh:
+        fh.write(html)
+    tiers = "certified" + (" + shaped" if adhoc else "") + (" + leads" if leads else "")
+    print(f"render: dashboard.html rewritten ({tiers})")
+    return 0
+
+
 def main(argv: list[str]) -> int:
     p = argparse.ArgumentParser(prog="drift-detector")
     sub = p.add_subparsers(dest="cmd", required=True)
@@ -1004,6 +1072,20 @@ def main(argv: list[str]) -> int:
     pn.add_argument("--report-url")
     pn.add_argument("--run-url")
     pn.set_defaults(func=_cmd_notify)
+
+    par = sub.add_parser("adhoc-report")  # POC: the ad-hoc / gate-validated middle tier -> adhoc.{json,html}
+    par.add_argument("--state", required=True)          # certified state (drift.json + where output lands)
+    par.add_argument("--adhoc-state", required=True)    # the ad-hoc re-scan's state dir
+    par.add_argument("--staged", required=True)         # dir with idioms.yaml + claims.yaml
+    par.add_argument("--gate-delta", required=True)     # the DELTA json captured from `absorb --check`
+    par.add_argument("--repo", required=True)
+    par.add_argument("--now", required=True)
+    par.set_defaults(func=_cmd_adhoc_report)
+
+    prn = sub.add_parser("render")        # re-render dashboard.html from state + optional AI-tier docs
+    prn.add_argument("--state", required=True)
+    prn.add_argument("--now", required=True)
+    prn.set_defaults(func=_cmd_render)
 
     psb = sub.add_parser("sbom")          # SBOM: CycloneDX (+ CVE vulns) and/or SPDX
     psb.add_argument("--state", required=True)

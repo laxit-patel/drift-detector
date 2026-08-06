@@ -7,6 +7,9 @@
   // byte-for-byte what those commands would produce. Read-only, so markRaw skips Vue's deep
   // reactivity conversion (these can be large and never mutate).
   var SBOM = blob("sbom-data"), SPDX = blob("spdx-data"), SARIF = blob("sarif-data");
+  // the AI-SHAPED tier (drift-adhoc/v1) — a SEPARATE, optional blob. null when the ad-hoc pass
+  // never ran: the tab is then HIDDEN, not shown as "0" ("cannot see" ≠ "clean", extended here).
+  var ADHOC = document.getElementById("adhoc-data") ? blob("adhoc-data") : null;
   // generic scan methodology (Sources / Versions / Parked tiers / catalog note) is boilerplate,
   // identical every scan — it goes to its own "methodology" footer, NOT mixed into the
   // data-specific coverage warnings (unaudited vendors, unreachable sources, …).
@@ -36,8 +39,12 @@
       return {
         DATA: DATA, counts: C,
         SBOM: Vue.markRaw(SBOM), SPDX: Vue.markRaw(SPDX), SARIF: Vue.markRaw(SARIF),
+        ADHOC: ADHOC ? Vue.markRaw(ADHOC) : null,
         generated: DATA.generated || "",
         scope: "",            // global repo scope ("" = all)
+        plane: "drift",        // active TOP-LEVEL plane: supply | drift | ai. Opens on Vendor
+                               // Drift (the moat + timeline hero). Each plane owns its own
+                               // tiles, hero and content; SBOM/SARIF live ONLY under supply.
         tab: null,             // active PRIMARY tab = the metric-tile dimension (cockpit IA);
                                // null = OVERVIEW default = no scope = the full ranked action
                                // queue in Summary. Was `filter` pre-restructure.
@@ -65,30 +72,71 @@
         return Object.keys(m).sort(function(a,b){ return m[a].localeCompare(m[b]); })
                      .map(function(k){ return {key:k, label:m[k]}; });
       },
-      tileGroups: function(){
-        var c=this.counts, o=OWN;
-        // mirrors the original server-side `_own` lambda exactly: byOwner sub-dicts carry
-        // lowercase "fixes"/"review" keys (see _build_projection's counts.byOwner), NOT
-        // the uppercase finding-status literals — a case bug here silently zeros both tiles.
-        var own=function(k){ var v=o[k]||{}; return (v.fixes||0)+(v.review||0); };
+      // ---- THREE PLANES (top-level cockpit split, in ascending uniqueness / descending
+      // certainty): Supply Chain (CVE + end-of-life software + SBOM/SARIF — table-stakes
+      // supply-chain hygiene any SCA tool does), Vendor Drift (the deterministic vendor-API
+      // sunsets, all CERTIFIED — the moat, with the retirement timeline as its hero) and AI
+      // Frontier (SHAPED, gate-validated). One tab strip per plane; SBOM/SARIF live ONLY under
+      // Supply Chain so they don't clutter the other two. ----
+      supplyFixes: function(){       // CVE/EOL package upgrades — the Supply Chain slice of "fixes"
+        return (this.DATA.actions||[]).filter(function(a){
+          return a.status==="DEPRECATED" && a.kind!=="sunset"; }).length;
+      },
+      shapedRepos: function(){ return ((this.ADHOC&&this.ADHOC.byRepo)||[]).length; },
+      // all three planes ALWAYS render — the AI Frontier plane is present even when no shaping
+      // pass has run (it then shows an honest empty-state, never a misleading clean zero).
+      planeDefs: function(){
+        var c=this.counts;
         return [
-          {title:"Ownership", tiles:[
-            {key:"devops",label:"DevOps",n:own("devops")},{key:"developer",label:"Developer",n:own("developer")}]},
-          {title:"Security", tiles:[
-            {key:"critical",label:"Critical",n:c.critical,sev:"crit"},{key:"fixes",label:"Fixes",n:c.fixes},
-            {key:"eol",label:"EOL",n:c.eol}]},
-          {title:"Integrations", tiles:[
-            {key:"apis",label:"APIs",n:c.apis},{key:"sunsets",label:"Sunsets",n:c.sunsets},
-            {key:"pastdue",label:"Past-due",n:c.pastDue,sev:"warn"},{key:"unknown",label:"Unknown",n:c.unknown},
-            {key:"private",label:"Private",n:c.private},{key:"unaudited",label:"Unaudited",n:c.unaudited}]}
+          {key:"supply", label:"Supply Chain", tag:"SECURITY",
+           blurb:"CVEs and end-of-life software — the patches your DevOps scanners already expect.",
+           n:(c.critical||0)+(c.eol||0)+this.supplyFixes},
+          {key:"drift", label:"Vendor Drift", tag:"CERTIFIED",
+           blurb:"Retiring vendor APIs, proven to the file:line — the drift nobody else catches.",
+           n:c.sunsets||0},
+          {key:"ai", label:"AI Frontier", tag:"SHAPED",
+           blurb:"Found by AI in code the tool couldn't read on its own, then re-checked on the spot.",
+           n:this.shapedCount}
         ];
       },
-      // tile key -> its count, flattened out of tileGroups. The single place heroMode (and
+      // full tile definition, each group tagged with its plane. `tileGroups` (below) shows only
+      // the ACTIVE plane's tiles; `tileCountsByKey`/knownTabs iterate the FULL set so a
+      // zero-check or a deep-link tab from any plane still resolves.
+      allTileGroups: function(){
+        var c=this.counts;
+        return [
+          {plane:"supply", title:"Supply chain", tiles:[
+            {key:"critical",label:"Critical",n:c.critical,sev:"crit"},
+            {key:"fixes",label:"Fixes",n:this.supplyFixes},
+            {key:"eol",label:"EOL",n:c.eol}]},
+          {plane:"drift", title:"Vendor drift", tiles:[
+            {key:"sunsets",label:"Sunsets",n:c.sunsets},
+            {key:"pastdue",label:"Past-due",n:c.pastDue,sev:"warn"},
+            {key:"apis",label:"APIs",n:c.apis},
+            {key:"unknown",label:"Unknown",n:c.unknown},
+            {key:"private",label:"Private",n:c.private},
+            {key:"unaudited",label:"Unaudited",n:c.unaudited}]},
+          {plane:"ai", title:"AI frontier", tiles:[
+            {key:"shaped",label:"Shaped",n:this.shapedCount},
+            {key:"shapedrepos",label:"Repos",n:this.shapedRepos}]}
+        ];
+      },
+      tileGroups: function(){
+        var pl=this.plane;
+        return this.allTileGroups.filter(function(g){ return g.plane===pl; });
+      },
+      // ownership (devops/developer) is cross-cutting — who owns the fixes spans every plane,
+      // so it's a compact header stat, not a plane of its own.
+      ownStats: function(){
+        var o=OWN, own=function(k){ var v=o[k]||{}; return (v.fixes||0)+(v.review||0); };
+        return {devops:own("devops"), developer:own("developer")};
+      },
+      // tile key -> its count, flattened out of ALL planes' tiles. The single place heroMode (and
       // the empty-state header) look up "is this dimension zero", so the zero-check always
       // agrees with the number printed on the tab itself — no second count computed by hand.
       tileCountsByKey: function(){
         var m = {};
-        this.tileGroups.forEach(function(g){ g.tiles.forEach(function(t){ m[t.key] = t.n; }); });
+        this.allTileGroups.forEach(function(g){ g.tiles.forEach(function(t){ m[t.key] = t.n; }); });
         return m;
       },
       themeLabel: function(){ var m=this.theme; return (m==="dark"?"●":m==="light"?"○":"◐")+" Theme: "+m; },
@@ -109,6 +157,24 @@
         if(this.mode==="catalog")   return this.catalogFor();
         return this.actionsFor();
       },
+
+      // ---- the AI-SHAPED tier: gate-validated this run, not yet in the catalog. Loop var is `sh`
+      // (NOT a/e/p/cv/row) so check_accessor_coverage's certified-row union is not widened. ----
+      hasShaped: function(){ return !!this.ADHOC; },
+      shaped: function(){
+        // params rp/act (NOT r/a) — a/e/p/cv/row are check_accessor_coverage's tracked accessors,
+        // and reusing them here would demand the shaped-record fields on the CERTIFIED sample.
+        var out = [];
+        ((this.ADHOC && this.ADHOC.byRepo) || []).forEach(function(rp){
+          (rp.shaped || []).forEach(function(act){
+            var f = (act.files || [])[0];
+            out.push({ repo: rp.repo, ref: act.ref, op: act.operation || "",
+                       date: act.date || "", loc: (f && f.loc) || f || "" });
+          });
+        });
+        return out;
+      },
+      shapedCount: function(){ return this.shaped.length; },
 
       // ---- JSON views: drift.json / CycloneDX / SPDX / SARIF, pretty-printed for the
       // read-only "view / copy" panels. Same DATA/SBOM/SPDX/SARIF the tables above render
@@ -333,7 +399,13 @@
       //     not scoped to that dimension) rather than lying with a "nothing found" empty-state
       //     over a tab that plainly has rows in the table below.
       heroMode: function(){
-        var TIMELINE_TABS = {sunsets:1, pastdue:1, fixes:1, developer:1};
+        // AI + Supply Chain planes get their own plane-intro hero (a headline card, no
+        // timeline — the timeline is CERTIFIED-only and belongs to Vendor Drift).
+        if(this.plane === "ai") return "ai";
+        if(this.plane === "supply") return "supply";
+        // Vendor Drift plane: the flagship timeline for sunsets/past-due/overview, the vendor
+        // bars for apis/unknown, and the honest empty-state for a genuinely-zero dimension.
+        var TIMELINE_TABS = {sunsets:1, pastdue:1};
         var t = this.tab;
         if(t === null || TIMELINE_TABS[t]) return "timeline";
         if(t === "apis" || t === "unknown") return "vendors";
@@ -341,12 +413,16 @@
       },
       heroTitle: function(){
         var m = this.heroMode;
+        if(m === "ai") return "AI Frontier — shaped, gate-validated";
+        if(m === "supply") return "Supply-chain security";
         if(m === "vendors") return this.tab === "apis" ? "Integrations by vendor" : "Unclassified endpoints";
         if(m === "empty") return this.tabName(this.tab);
         return "Retirement timeline";
       },
       heroWhy: function(){
         var scopeSuffix = this.scope ? (" for " + this.repoLabelOf(this.scope)) : "";
+        if(this.heroMode === "ai") return "call-sites an AI found in code the tool couldn't read, each re-checked on the spot" + scopeSuffix;
+        if(this.heroMode === "supply") return "CVEs and end-of-life software, plus the SBOM and SARIF exports your pipeline consumes" + scopeSuffix;
         if(this.heroMode === "vendors") return "which third-party APIs this code calls" + scopeSuffix;
         if(this.heroMode === "empty") return "";
         return "every vendor API sunset, one row per operation" + scopeSuffix + " — hover a row for detail";
@@ -394,6 +470,9 @@
       // back to null (OVERVIEW — no scope, the full ranked action queue) if it's already
       // active. Was toggleTile/`filter` pre-restructure; same toggle semantics. ----
       toggleTab: function(k){ this.tab = (this.tab===k) ? null : k; this.sub = "summary"; },   // show the filtered rows on tab click
+      // ---- switch the top-level plane: reset the tile filter (each plane has its own tiles),
+      // drop back to the plane's default content view, and clear the search box.
+      switchPlane: function(k){ this.plane = k; this.tab = null; this.sub = "summary"; this.q = ""; },
       cycleTheme: function(){ var m=["auto","light","dark"], i=(m.indexOf(this.theme)+1)%3; this.theme=m[i];
         document.documentElement.style.colorScheme = this.theme==="auto" ? "light dark" : this.theme;
         try{ localStorage.setItem("drift-theme", this.theme); }catch(e){} },
@@ -432,9 +511,21 @@
       },
       hideTip: function(){ this.tip.visible = false; },
 
+      // the action set for the ACTIVE plane — this is the fix-queue split the three-plane
+      // layout is built on: Supply Chain owns CVE/EOL package upgrades (kind !== "sunset"),
+      // Vendor Drift owns the vendor-migration queue (kind === "sunset"), AI owns none (it
+      // renders the shaped table, not the action queue). actionsFor filters this, not the raw
+      // DATA.actions, so the same "Fixes" tile means different things in different planes.
+      planeActionBase: function(){
+        var self = this;
+        if(this.plane === "ai") return [];
+        return (this.DATA.actions || []).filter(function(a){
+          return self.plane === "supply" ? a.kind !== "sunset" : a.kind === "sunset";
+        });
+      },
       actionsFor: function(){
         var f = this.tab, self = this;
-        return (this.DATA.actions || []).filter(function(a){
+        return this.planeActionBase().filter(function(a){
           if(!self.matchesRepo(a.repo)) return false;                 // global repo scope
           // the retiring operation is part of the identity, so it must be searchable too —
           // a PM filtering for "GetCategoryFeatures" has to land on its row
@@ -543,6 +634,7 @@
         try{
           var params = new URLSearchParams();
           if(this.scope) params.set("repo", this.scope);
+          if(this.plane && this.plane !== "drift") params.set("plane", this.plane);
           if(this.tab) params.set("tab", this.tab);
           if(this.sub && this.sub !== "summary") params.set("sub", this.sub);
           var qs = params.toString();
@@ -557,6 +649,7 @@
       // discarded every row's open/closed state) on every tile click / scope change / keystroke.
       // It also (tab/scope only) re-syncs the URL — see the Task 4/7 note on syncUrl above.
       tab: function(){ this.expanded = {}; this.syncUrl(); },
+      plane: function(){ this.expanded = {}; this.syncUrl(); },
       scope: function(){ this.expanded = {}; this.syncUrl(); },
       // sub (Summary/SBOM/SARIF) doesn't scope `rows`/`expanded` — only the primary tab and
       // repo scope do — so switching it just re-syncs the URL, no accordion reset needed.
@@ -577,10 +670,13 @@
         var params = new URLSearchParams(location.search);
         var repo = params.get("repo");
         if(repo && this.repoOptions.some(function(o){ return o.key === repo; })) this.scope = repo;
-        var tab = params.get("tab");
-        var knownTabs = [];
-        this.tileGroups.forEach(function(g){ g.tiles.forEach(function(t){ knownTabs.push(t.key); }); });
-        if(tab && knownTabs.indexOf(tab) > -1) this.tab = tab;
+        // plane first (an explicit ?plane=), then tab — a valid ?tab= also snaps the plane to
+        // the one that owns it, so a deep-link to a tile always lands on the right plane.
+        var plane = params.get("plane");
+        if(plane && ["supply", "drift", "ai"].indexOf(plane) > -1) this.plane = plane;
+        var tab = params.get("tab"), tabPlane = {};
+        this.allTileGroups.forEach(function(g){ g.tiles.forEach(function(t){ tabPlane[t.key] = g.plane; }); });
+        if(tab && (tab in tabPlane)){ this.tab = tab; this.plane = tabPlane[tab]; }
         var sub = params.get("sub");
         if(sub && ["summary", "sbom", "sarif"].indexOf(sub) > -1) this.sub = sub;
       }catch(e){}

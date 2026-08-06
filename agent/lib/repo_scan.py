@@ -1,6 +1,7 @@
 """Scan one repo: git metadata + manifests + ast-grep endpoints -> a superset record."""
 from __future__ import annotations
 
+from agent.lib import scan_util
 from agent.lib.scan_util import git_meta, _default_git
 from agent.lib.manifest_scan import extract_manifest_records
 from agent.lib.record_routing import partition_records
@@ -21,9 +22,10 @@ def scan_repo(repo_abs, repo_name, repo_id, vendors, rules_path, *,
     scan = run_scan(repo_abs, rules_path, engine=engine, run=run)
     # a path-constant idiom is repo-scoped: pass the repo's git identity (its remote, or the
     # local checkout path as a fallback) so a wrapper's constants attribute only in ITS repo.
+    # scan_util.repo_scope_id is the ONE derivation the absorb gate must share (see its docstring).
     scanned_eps = scan_endpoints(scan["matches"], repo_abs, vendors,
                                  idioms=idiom_instances,
-                                 repo_id=meta.get("remote_url") or repo_abs)
+                                 repo_id=scan_util.repo_scope_id(repo_abs, meta))
     endpoints = [e for e in scanned_eps["endpoints"] if e.get("domain")]
 
     record = to_superset_repo(meta, partitioned, endpoints)

@@ -421,6 +421,25 @@ def test_path_constant_requires_an_egress_sink(tmp_path):
                for r in out["residue"].get("pathConstants", []))
 
 
+def test_path_constant_scopes_on_git_identity_not_local_checkout_path(tmp_path):
+    # REGRESSION (absorb-gate bug, fixed via scan_util.repo_scope_id): the SAME matches + idiom,
+    # scoped by the git IDENTITY, attribute — but scoped by the raw local CHECKOUT PATH they do
+    # not, because _repo_in_scope keys on the remote's host/path suffix and a clone folder name
+    # (example-org_catchapi-abc123) carries no such identity. The absorb gate used to pass the
+    # local path, so a repo-scoped idiom silently never applied (attributedAfter == before).
+    ms = [_pc("src/CatchApi/GetOrders.php", 9, 'protected $API_URL = "/api/orders";'),
+          _sink("src/CatchApi/CatchApi.php", 298)]
+    via_identity = scan_endpoints(ms, str(tmp_path), [_CATCH],
+                                  idioms=[_CATCH_INST], repo_id=_CATCH_REMOTE)
+    via_local_path = scan_endpoints(ms, str(tmp_path), [_CATCH],
+                                    idioms=[_CATCH_INST],
+                                    repo_id="/home/ci/clones/example-org_catchapi-abc123")
+    assert [e for e in via_identity["endpoints"] if e["classified"]], \
+        "git identity must attribute the repo-scoped idiom"
+    assert not [e for e in via_local_path["endpoints"] if e["classified"]], \
+        "the local checkout path must NOT attribute — proving why the gate needs repo_scope_id()"
+
+
 def test_path_constant_is_repo_scoped(tmp_path):
     # the SAME Catch rule matching /api/... in a DIFFERENT repo must NOT attribute to Catch
     # (bunnings also has /api/offers — it is Mirakl). Out of scope -> residue, never a finding.
